@@ -26,18 +26,22 @@ The project is the nearest folder with `openspec\` above the current folder (els
 
 ## The screens
 
-**Home** — two lists on the left, the selected item's details on the right.
+**Home** — two lists on the left, the selected item's details on the right, with a scrollbar. `→` moves into the details (`↑` `↓` scroll them), `←` back; `z` zooms the details to the whole width and back.
 
 - *Specifications*: `◆` a platform page (`platform-*`, shown without the prefix), `●` a capability spec;
   the requirement count. Platform pages come first, `overview` on top.
 - *Changes*: `○` draft (no tasks yet), `◆` in progress, `●` completed, `·` archived (hidden until `h`);
   done/total tasks and a bar. Sorted by name (01, 02 ...); `s` cycles name A-Z, Z-A, recently modified.
-- Details of a spec: title, path, purpose (formatted: tables, lists), requirements with their scenario
-  counts.
-- Details of a change: stage, progress, Why / What Changes / Impact from `proposal.md`, the capabilities it
-  touches (`+` added, `~` modified, `-` removed requirements; new or existing spec), the tasks by group.
+- The lists show titles: a spec's `# Title`, a change's number and the title of its proposal
+  (`01 Platform foundations`).
+- On the right, a summary of the selected item (no need to open it):
+  - a spec: its requirement and scenario counts, the first paragraph of its purpose, its requirements, and
+    the changes that will change it (with `+` added, `~` modified, `-` removed requirements);
+  - a change: its progress (bar, %, tasks done), the tasks by group, the capabilities it touches, why (the
+    first paragraph), which documents it has.
+- `Enter` opens the whole page.
 
-**Read** (`Enter`) — the spec, or the change's proposal, design, tasks and delta specs (`←` `→`), formatted:
+**Read** (`Enter`) — the whole page: the spec, or the change's proposal, design, tasks and delta specs (`←` `→`), formatted:
 headings, lists, checkboxes, tables, code, requirements (`◆`), scenarios (`▸`) with WHEN / THEN.
 
 **Run** — the OpenSpec CLI's output, coloured (`✓` passed, `✗` failed, `⚠` warnings).
@@ -50,7 +54,7 @@ It refreshes by itself when files under `openspec/` change (an editor, git, an a
 
 | Screen | Keys |
 |---|---|
-| Home | `↑` `↓` select · `Tab` specs ↔ changes · `Enter` read · `PgUp` `PgDn` scroll the details · `v` validate all · `a` archive the change · `n` new change · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
+| Home | `↑` `↓` select · `Tab` specs ↔ changes · `→` into the details (`↑` `↓` scroll them), `←`/`Esc` back · `z` zoom the details to the whole width (again: the lists back) · `PgUp` `PgDn` `Home` `End` scroll the details · `Enter` read · `v` validate all · `a` archive the change · `n` new change · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
 | Read | `↑` `↓` `PgUp` `PgDn` `Home` `End` scroll · `←` `→` document · `e` edit · `Esc` back |
 | Run | `PgUp` `PgDn` `Home` `End` scroll · `Esc` stop (asked first); when done `Enter`/`Esc` back |
 

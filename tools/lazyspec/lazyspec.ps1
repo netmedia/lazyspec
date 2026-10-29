@@ -28,7 +28,8 @@ Self-contained: Windows PowerShell 5.1 or PowerShell 7, no modules. A terminal w
 characters (Windows Terminal; the Windows console since Windows 10).
 
 Keys (? shows them in the UI too)
-  Home   up/down item, Tab specs <-> changes, Enter read it, PgUp/PgDn scroll the details,
+  Home   up/down item, Tab specs <-> changes, right: into the details (up/down scroll them), left/Esc back,
+         z zoom the details (whole width; z again: the lists back), Enter read it, PgUp/PgDn scroll the details,
          v validate all, a archive the change, n new change, e edit (open in the editor),
          s sort changes, h show/hide archived, / filter, r refresh, ? help, q quit
   Read   up/down/PgUp/PgDn/Home/End scroll, left/right document (proposal, design, tasks, specs),
@@ -140,7 +141,9 @@ function Show-Usage {
     Write-Host ''
     & $b 'KEYS'
     & $y '  Home'
-    & $d '    Up/Down item, Tab specs <-> changes, Enter read it, PgUp/PgDn scroll the details'
+    & $d '    Up/Down item, Tab specs <-> changes, Right into the details (Up/Down scroll), Left back'
+    & $d '    z zoom the details to the whole width (z again: the lists back)'
+    & $d '    Enter read it, PgUp/PgDn/Home/End scroll the details'
     & $d '    v validate all   a archive the change   n new change   e edit   s sort changes'
     & $d '    h show/hide archived   / filter   r refresh   ? help   q quit'
     & $y '  Read'
@@ -359,8 +362,11 @@ function Get-ChangeInfo($Dir, [bool]$Archived) {
             $caps += [pscustomobject]@{ Name = $c.Name; Added = $counts.ADDED; Modified = $counts.MODIFIED; Removed = $counts.REMOVED; Renamed = $counts.RENAMED; Path = (Join-Path $c.FullName 'spec.md') }
         }
     }
+    $title = ''
+    $m = [regex]::Match((Read-Text (Join-Path $Dir.FullName 'proposal.md')), '(?m)^#\s+(.+?)\s*$')
+    if ($m.Success) { $title = $m.Groups[1].Value -replace '^(Change|Proposal)\s*:\s*', '' }
     return [pscustomobject]@{
-        Type = 'change'; Name = $Dir.Name; Stage = $stage; Archived = $Archived; Done = $done; Total = $total
+        Type = 'change'; Name = $Dir.Name; Title = $title; Stage = $stage; Archived = $Archived; Done = $done; Total = $total
         Modified = (Last-Write $Dir.FullName); Dir = $Dir.FullName; Path = (Join-Path $Dir.FullName 'proposal.md'); Caps = $caps; Tasks = $tasks
     }
 }
@@ -396,6 +402,8 @@ $script:filter = ''
 $script:filtering = $false
 $script:message = ''
 $script:detailScroll = 0
+$script:pane = 'list'
+$script:zoom = $false
 $script:readTab = 0
 $script:readScroll = 0
 $script:readCache = @{}
@@ -432,7 +440,7 @@ function Select-ByName([string]$Spec, [string]$Change) {
     for ($i = 0; $i -lt $vs.Count; $i++) { if ($Spec -and $vs[$i].Name -eq $Spec) { $script:specIndex = $i } }
     for ($i = 0; $i -lt $vc.Count; $i++) { if ($Change -and $vc[$i].Name -eq $Change) { $script:changeIndex = $i } }
 }
-function Matches-Filter($Item) { return (-not $script:filter) -or ($Item.Name.ToLower().Contains($script:filter.ToLower())) -or ($Item.Type -eq 'spec' -and $Item.Title.ToLower().Contains($script:filter.ToLower())) }
+function Matches-Filter($Item) { return (-not $script:filter) -or ($Item.Name.ToLower().Contains($script:filter.ToLower())) -or ($Item.Title -and $Item.Title.ToLower().Contains($script:filter.ToLower())) }
 function Get-VisibleSpecs { return @($script:specs | Where-Object { Matches-Filter $_ }) }
 function Get-VisibleChanges {
     $list = @($script:changes | Where-Object { (Matches-Filter $_) -and ($script:showArchived -or -not $_.Archived) })
@@ -444,6 +452,16 @@ function Get-VisibleChanges {
         default { $active = @($active | Sort-Object Name) }
     }
     return @($active) + @($arch)
+}
+# What the lists and headers show: a spec's title (else its name), a change's number and title (else its name).
+function Get-ItemTitle($Item) {
+    if ($Item.Type -eq 'spec') { if ($Item.Title) { return $Item.Title }; return $Item.Short }
+    if ($Item.Title) {
+        $m = [regex]::Match($Item.Name, '^(\d+)-')
+        if ($m.Success) { return "$($m.Groups[1].Value) $($Item.Title)" }
+        return $Item.Title
+    }
+    return $Item.Name
 }
 function Get-Selected {
     if ($script:focus -eq 'specs') { $vs = @(Get-VisibleSpecs); if ($vs.Count) { return $vs[$script:specIndex] } }
@@ -476,6 +494,9 @@ function Render-Table($Lines, $Rows, [int]$Width) {
         $parts = @($t.Trim('|').Split('|') | ForEach-Object { Plain-Inline $_.Trim() })
         $cells += , $parts
     }
+    # A table without a header row ("| | |"): no empty first line.
+    $first = $true
+    if ($cells.Count -ge 2 -and $cells[0] -and -not (@($cells[0] | Where-Object { $_ }).Count) -and -not $cells[1]) { $rest = New-Object Collections.ArrayList; for ($i = 2; $i -lt $cells.Count; $i++) { [void]$rest.Add($cells[$i]) }; $cells = $rest.ToArray(); $first = $false }
     $cols = 0
     foreach ($c in $cells) { if ($c -and $c.Count -gt $cols) { $cols = $c.Count } }
     $w = @(0) * $cols
@@ -488,7 +509,6 @@ function Render-Table($Lines, $Rows, [int]$Width) {
         if ($w[$maxI] -le 6) { break }
         $w[$maxI]--
     }
-    $first = $true
     foreach ($c in $cells) {
         if (-not $c) {
             $line = @((S '  ' ''))
@@ -628,122 +648,255 @@ function Section-Head($Lines, [string]$Title, [string]$Note) {
     [void]$Lines.Add($segs)
 }
 
+# The first paragraph of a markdown text (no headings, tables or code), as at most $Max wrapped lines.
+function Get-Summary([string]$Text, [int]$Width, [int]$Max) {
+    $para = ''
+    foreach ($block in ([regex]::Split($Text.Replace("`r", ''), '\n\s*\n'))) {
+        $b = $block.Trim()
+        if (-not $b -or $b.StartsWith('#') -or $b.StartsWith('|') -or $b.StartsWith('```')) { continue }
+        $para = (@($b.Split("`n") | ForEach-Object { ($_.Trim() -replace '^[-*+]\s+', '') }) -join ' ')
+        break
+    }
+    $out = [string[]](Wrap (Plain-Inline $para) $Width)
+    if ($out.Count -gt $Max) { $out = @($out[0..($Max - 1)]); $out[$Max - 1] = (Short $out[$Max - 1] ($Width - 1)) + $g.ell }
+    return , $out
+}
+function Add-Hint($Lines) {
+    [void]$Lines.Add(@())
+    [void]$Lines.Add(@((S ' Enter' $st.key), (S ' open the whole page' $st.muted), (S "   e" $st.key), (S ' edit' $st.muted)))
+}
 function Get-SpecDetails($Spec, [int]$Width) {
     $lines = New-Object Collections.ArrayList
     $chip = S ' CAPABILITY ' $st.chipOk
     if ($Spec.Platform) { $chip = S ' PLATFORM ' $st.chipOn }
-    $title = $Spec.Title
-    if (-not $title) { $title = $Spec.Name }
-    [void]$lines.Add(@($chip, (S "  $title" $st.title)))
+    [void]$lines.Add(@($chip, (S "  $(Get-ItemTitle $Spec)" $st.title)))
     [void]$lines.Add(@((S " openspec/specs/$($Spec.Name)/spec.md" $st.muted), (S "   modified $(Ago $Spec.Modified)" $st.faint)))
+    [void]$lines.Add(@())
+    [void]$lines.Add(@((S " $($Spec.Reqs)" $st.bold), (S " requirement$(if ($Spec.Reqs -ne 1) { 's' })  $($g.mid)  " $st.muted), (S "$($Spec.Scenarios)" $st.bold), (S " scenario$(if ($Spec.Scenarios -ne 1) { 's' })" $st.muted)))
     [void]$lines.Add(@())
     $purpose = Get-Section $Spec.Text 'Purpose'
     if ($purpose) {
         Section-Head $lines 'PURPOSE' ''
-        foreach ($l in (Render-Markdown $purpose ($Width - 2))) { [void]$lines.Add(@(S ' ') + @($l)) }
+        foreach ($l in (Get-Summary $purpose ($Width - 2) 4)) { [void]$lines.Add(@(S " $l" $st.text)) }
         [void]$lines.Add(@())
     }
-    Section-Head $lines 'REQUIREMENTS' "$($Spec.Reqs) requirement$(if ($Spec.Reqs -ne 1) { 's' }), $($Spec.Scenarios) scenario$(if ($Spec.Scenarios -ne 1) { 's' })"
     $reqs = [regex]::Matches($Spec.Text, '(?ms)^###\s+Requirement:\s*(.+?)\s*$(.*?)(?=^###\s|\z)')
-    foreach ($m in $reqs) {
-        $sc = Count $m.Groups[2].Value '(?m)^####\s+Scenario:'
-        [void]$lines.Add(@((S "  $($g.diamond) " $st.accent), (S (Plain-Inline $m.Groups[1].Value) $st.bold), (S "  $sc scenario$(if ($sc -ne 1) { 's' })" $st.faint)))
+    if ($reqs.Count) {
+        Section-Head $lines 'REQUIREMENTS' ''
+        foreach ($m in $reqs) {
+            $sc = Count $m.Groups[2].Value '(?m)^####\s+Scenario:'
+            [void]$lines.Add(@((S "  $($g.diamond) " $st.accent), (S (Plain-Inline $m.Groups[1].Value) $st.text), (S "  $sc" $st.faint)))
+        }
+        [void]$lines.Add(@())
     }
+    # The changes that will change it (their delta specs for this capability).
+    $touching = @($script:changes | Where-Object { -not $_.Archived -and @($_.Caps | ForEach-Object { $_.Name }) -contains $Spec.Name })
+    if ($touching.Count) {
+        Section-Head $lines 'CHANGED BY' "$($touching.Count) change$(if ($touching.Count -ne 1) { 's' })"
+        foreach ($c in $touching) {
+            $cap = $c.Caps | Where-Object { $_.Name -eq $Spec.Name } | Select-Object -First 1
+            $look = $stageLook[$c.Stage]
+            $row = @((S "  $($look[0]) " $look[1]), (S "$($c.Name)  " $st.text))
+            if ($cap.Added) { $row += (S "+$($cap.Added) " $st.ok) }
+            if ($cap.Modified) { $row += (S "~$($cap.Modified) " $st.warn) }
+            if ($cap.Removed) { $row += (S "-$($cap.Removed) " $st.err) }
+            [void]$lines.Add($row)
+        }
+    }
+    Add-Hint $lines
     return , $lines
 }
 function Get-ChangeDetails($Change, [int]$Width) {
     $lines = New-Object Collections.ArrayList
     $look = $stageLook[$Change.Stage]
-    [void]$lines.Add(@((S " $($Change.Stage.ToUpper()) " $look[2]), (S "  $($Change.Name)" $st.title)))
+    [void]$lines.Add(@((S " $($Change.Stage.ToUpper()) " $look[2]), (S "  $(Get-ItemTitle $Change)" $st.title)))
     $rel = "openspec/changes/$($Change.Name)/"
     if ($Change.Archived) { $rel = "openspec/changes/archive/$($Change.Name)/" }
     [void]$lines.Add(@((S " $rel" $st.muted), (S "   modified $(Ago $Change.Modified)" $st.faint)))
     [void]$lines.Add(@())
     $pct = 0
     if ($Change.Total) { $pct = [int][Math]::Round(100 * $Change.Done / $Change.Total) }
-    [void]$lines.Add(@(S ' ') + (Bar $Change.Done $Change.Total 30 $look[1]) + @(S "  $($Change.Done)/$($Change.Total) tasks ($pct%)" $st.bold))
+    $barW = [Math]::Max(10, [Math]::Min(40, $Width - 26))
+    [void]$lines.Add(@(S ' ') + (Bar $Change.Done $Change.Total $barW $look[1]) + @((S "  $pct%" "1;$($look[1])"), (S "   $($Change.Done) of $($Change.Total) tasks" $st.muted)))
     [void]$lines.Add(@())
-    $proposal = Read-Text (Join-Path $Change.Dir 'proposal.md')
-    foreach ($sec in @('Why', 'What Changes', 'Impact')) {
-        $body = Get-Section $proposal $sec
-        if (-not $body) { continue }
-        Section-Head $lines $sec.ToUpper() ''
-        foreach ($l in (Render-Markdown $body ($Width - 2))) { [void]$lines.Add(@(S ' ') + @($l)) }
-        [void]$lines.Add(@())
-    }
-    if ($Change.Caps.Count) {
-        Section-Head $lines 'CAPABILITIES' "$($Change.Caps.Count) delta spec$(if ($Change.Caps.Count -ne 1) { 's' })"
-        $nw = 0
-        foreach ($c in $Change.Caps) { if ($c.Name.Length -gt $nw) { $nw = $c.Name.Length } }
-        foreach ($c in $Change.Caps) {
-            $exists = Test-Path -LiteralPath (Join-Path $osDir "specs\$($c.Name)\spec.md")
-            $mark = S "  $($g.dot) " $st.ok
-            if ($exists) { $mark = S "  $($g.diamond) " $st.accent }
-            $row = @($mark, (S (Pad $c.Name ($nw + 2)) $st.bold))
-            if ($c.Added) { $row += (S "+$($c.Added) added  " $st.ok) }
-            if ($c.Modified) { $row += (S "~$($c.Modified) modified  " $st.warn) }
-            if ($c.Removed) { $row += (S "-$($c.Removed) removed  " $st.err) }
-            if ($c.Renamed) { $row += (S "$($c.Renamed) renamed  " $st.shared) }
-            if ($exists) { $row += (S 'existing spec' $st.faint) } else { $row += (S 'new spec' $st.faint) }
-            [void]$lines.Add($row)
-        }
-        [void]$lines.Add(@())
-    }
     # Tasks by group: "## 1. Schema" and its checkboxes.
     if ($Change.Tasks) {
         Section-Head $lines 'TASKS' ''
         $groups = [regex]::Matches($Change.Tasks, '(?ms)^##\s+(.+?)\s*$(.*?)(?=^##\s|\z)')
         $gw = 0
         foreach ($m in $groups) { if ($m.Groups[1].Value.Length -gt $gw) { $gw = $m.Groups[1].Value.Length } }
-        $gw = [Math]::Min($gw + 2, [Math]::Max(20, $Width - 30))
+        $gw = [Math]::Min($gw + 2, [Math]::Max(16, $Width - 26))
         foreach ($m in $groups) {
             $d = Count $m.Groups[2].Value '(?mi)^\s*[-*]\s+\[x\]'
             $o = Count $m.Groups[2].Value '(?m)^\s*[-*]\s+\[ \]'
+            $glyph = S "$($g.ring) " $st.faint
             $style = $st.text
-            if ($o -eq 0 -and $d -gt 0) { $style = $st.muted }
-            [void]$lines.Add(@((S '  '), (S (Pad (Short $m.Groups[1].Value ($gw - 2)) $gw) $style)) + (Bar $d ($d + $o) 12 $look[1]) + @(S "  $d/$($d + $o)" $st.muted))
+            if ($o -eq 0 -and $d -gt 0) { $glyph = S "$($g.check) " $st.ok; $style = $st.muted }
+            elseif ($d -gt 0) { $glyph = S "$($g.diamond) " $st.accent }
+            [void]$lines.Add(@((S '  '), $glyph, (S (Pad (Short $m.Groups[1].Value ($gw - 2)) $gw) $style)) + (Bar $d ($d + $o) 10 $look[1]) + @(S "  $d/$($d + $o)" $st.muted))
         }
+        [void]$lines.Add(@())
     }
+    if ($Change.Caps.Count) {
+        Section-Head $lines 'CAPABILITIES' ''
+        $nw = 0
+        foreach ($c in $Change.Caps) { if ($c.Name.Length -gt $nw) { $nw = $c.Name.Length } }
+        foreach ($c in $Change.Caps) {
+            $exists = Test-Path -LiteralPath (Join-Path (Join-Path (Join-Path $osDir 'specs') $c.Name) 'spec.md')
+            $mark = S "  $($g.dot) " $st.ok
+            if ($exists) { $mark = S "  $($g.diamond) " $st.accent }
+            $row = @($mark, (S (Pad $c.Name ($nw + 2)) $st.text))
+            if ($c.Added) { $row += (S "+$($c.Added) " $st.ok) }
+            if ($c.Modified) { $row += (S "~$($c.Modified) " $st.warn) }
+            if ($c.Removed) { $row += (S "-$($c.Removed) " $st.err) }
+            if ($c.Renamed) { $row += (S "$($c.Renamed) renamed " $st.shared) }
+            if ($exists) { $row += (S ' existing' $st.faint) } else { $row += (S ' new' $st.faint) }
+            [void]$lines.Add($row)
+        }
+        [void]$lines.Add(@())
+    }
+    $proposal = Read-Text (Join-Path $Change.Dir 'proposal.md')
+    $why = Get-Section $proposal 'Why'
+    if ($why) {
+        Section-Head $lines 'WHY' ''
+        foreach ($l in (Get-Summary $why ($Width - 2) 4)) { [void]$lines.Add(@(S " $l" $st.text)) }
+        [void]$lines.Add(@())
+    }
+    $docs = @((S ' ') )
+    foreach ($f in @(@('proposal', 'proposal.md'), @('design', 'design.md'), @('tasks', 'tasks.md'))) {
+        if (Test-Path -LiteralPath (Join-Path $Change.Dir $f[1])) { $docs += (S "$($g.check) $($f[0])   " $st.ok) } else { $docs += (S "$($g.ring) $($f[0])   " $st.faint) }
+    }
+    $docs += (S "$($Change.Caps.Count) delta spec$(if ($Change.Caps.Count -ne 1) { 's' })" $st.muted)
+    Section-Head $lines 'DOCUMENTS' ''
+    [void]$lines.Add($docs)
+    Add-Hint $lines
     return , $lines
 }
 
+# A scrollbar for a pane of $Rows rows showing $Total lines from $Top: one character per row.
+function Get-ScrollBar([int]$Rows, [int]$Total, [int]$Top, [bool]$Focused) {
+    $out = @()
+    if ($Total -le $Rows -or $Rows -lt 1) { for ($i = 0; $i -lt $Rows; $i++) { $out += , (S ' ' '') }; return , $out }
+    $thumb = [Math]::Max(1, [int][Math]::Floor($Rows * $Rows / $Total))
+    $max = $Total - $Rows
+    $pos = [int][Math]::Round(($Rows - $thumb) * $Top / $max)
+    $style = $st.faint
+    if ($Focused) { $style = $st.accent }
+    for ($i = 0; $i -lt $Rows; $i++) {
+        if ($i -ge $pos -and $i -lt $pos + $thumb) { $out += , (S $g.full $style) } else { $out += , (S $g.light $st.faint) }
+    }
+    return , $out
+}
+# The details' lines on screen: $Rows rows of width $Width (the last column is the scrollbar).
+function Get-DetailRows($Details, [int]$Rows, [int]$Width, [bool]$Focused) {
+    $max = [Math]::Max(0, $Details.Count - $Rows)
+    if ($script:detailScroll -gt $max) { $script:detailScroll = $max }
+    $bar = Get-ScrollBar $Rows $Details.Count $script:detailScroll $Focused
+    $out = @()
+    for ($i = 0; $i -lt $Rows; $i++) {
+        $l = $null
+        if ($script:detailScroll + $i -lt $Details.Count) { $l = $Details[$script:detailScroll + $i] }
+        $out += , ((Fit $l ($Width - 1)) + @($bar[$i]))
+    }
+    return , $out
+}
+function Get-Details($Width) {
+    $sel = Get-Selected
+    if ($sel -and $sel.Type -eq 'spec') { return Get-SpecDetails $sel $Width }
+    if ($sel) { return Get-ChangeDetails $sel $Width }
+    return , @(@(), @(S ' Nothing selected.' $st.muted))
+}
+function Bottom-Line([int]$W, [int]$Split) {
+    $rows = @()
+    if ($script:confirm) {
+        $c = $script:confirm
+        $yes = S ' Yes ' $st.chip; $no = S ' No ' $st.chip
+        if ($c.Choice -eq 0) { $yes = S ' Yes ' $st.chipDanger } else { $no = S ' No ' $st.chipOn }
+        $rows += , (@(S $g.v $st.border) + (Fit @((S ' ? ' $st.key), (S "$($c.Text)  " $st.bold), $yes, (S ' '), $no) ($W - 2)) + @(S $g.v $st.border))
+    } elseif ($script:input) {
+        $i = $script:input
+        $rows += , (@(S $g.v $st.border) + (Fit @((S ' ? ' $st.key), (S "$($i.Label)  " $st.bold), (S "$($i.Value)$($g.cursor)" $st.accent), (S "   $($i.Hint)" $st.faint)) ($W - 2)) + @(S $g.v $st.border))
+    } elseif ($script:message) {
+        $rows += , (@(S $g.v $st.border) + (Fit @((S ' ! ' $st.warn), (S $script:message $st.warn)) ($W - 2)) + @(S $g.v $st.border))
+    }
+    return , $rows
+}
+function Home-Hints {
+    if ($script:confirm) { return , @(@('y n', 'yes, no'), @("$([string][char]0x2190)$([string][char]0x2192)", 'choose'), @('Enter', 'ok'), @('Esc', 'cancel')) }
+    if ($script:input) { return , @(@('Enter', 'ok'), @('Esc', 'cancel')) }
+    if ($script:filtering) { return , @(@('type', 'filter'), @('Enter', 'keep'), @('Esc', 'clear')) }
+    if ($script:zoom) { return , @(@("$($g.up)$($g.down) PgUp PgDn", 'scroll'), @('z Esc', 'show the lists'), @('Enter', 'read'), @('e', 'edit'), @('?', 'help'), @('q', 'quit')) }
+    if ($script:pane -eq 'details') { return , @(@("$($g.up)$($g.down) PgUp PgDn", 'scroll'), @("$([string][char]0x2190) Esc", 'lists'), @('z', 'zoom'), @('Enter', 'read'), @('e', 'edit'), @('?', 'help'), @('q', 'quit')) }
+    return , @(@("$($g.up)$($g.down)", 'select'), @('Enter', 'open'), @('Tab', 'specs/changes'), @('v', 'validate'), @('a', 'archive'), @('n', 'new'), @('e', 'edit'), @('s', 'sort'), @('/', 'filter'), @('?', 'help'), @('q', 'quit'))
+}
+
+function Home-Status([int]$Active, [int]$Lines, [int]$Rows) {
+    $status = "openspec/  $($g.mid)  $($script:specs.Count) specs  $($g.mid)  $Active changes"
+    if ($Lines -gt $Rows) {
+        $pct = [int][Math]::Round(100 * $script:detailScroll / [Math]::Max(1, $Lines - $Rows))
+        $status = "details $pct%  $($g.mid)  $status"
+    }
+    return $status
+}
 function Draw-Home([int]$W, [int]$H) {
-    $Lw = [Math]::Min(46, [Math]::Max(34, [int]($W * 0.36)))
+    $bottom = Bottom-Line $W 0
+    $bodyRows = $H - 3 - $bottom.Count
+    $active = @($script:changes | Where-Object { -not $_.Archived }).Count
+    $rows = New-Object Collections.ArrayList
+
+    # Zoomed: the details over the whole width (z or Esc brings the lists back).
+    if ($script:zoom) {
+        $sel = Get-Selected
+        $label = $projectName
+        if ($sel) { $label = "$projectName $($g.mid) $(if ($sel.Type -eq 'spec') { $sel.Short } else { $sel.Name })" }
+        $details = Get-Details ($W - 4)
+        $shown = Get-DetailRows $details $bodyRows ($W - 2) $true
+        [void]$rows.Add((Border-Top $W $label (Home-Status $active $details.Count $bodyRows) 0))
+        foreach ($r in $shown) { [void]$rows.Add((@(S $g.v $st.border) + @($r) + @(S $g.v $st.border))) }
+        foreach ($r in $bottom) { [void]$rows.Add($r) }
+        [void]$rows.Add((Border-Line $W $g.lt $g.h $g.rt 0 ''))
+        [void]$rows.Add((Border-Bottom $W (Home-Hints) 0))
+        return , $rows
+    }
+
+    $Lw = [Math]::Min(40, [Math]::Max(30, [int]($W * 0.30)))
     $left = New-Object Collections.ArrayList
     $bg = @{}
     $vs = @(Get-VisibleSpecs)
     $vc = @(Get-VisibleChanges)
-    $nameW = $Lw - 14
+    $listFocus = $script:pane -ne 'details'
+    $selBg = $st.sel
+    if (-not $listFocus) { $selBg = '48;5;234' }
     # Specifications.
-    $specNote = "$($vs.Count)"
-    [void]$left.Add(@((S ' SPECIFICATIONS ' $st.title), (S "$($g.mid) $specNote" $st.muted)))
+    [void]$left.Add(@((S ' SPECIFICATIONS ' $st.title), (S "$($g.mid) $($vs.Count)" $st.muted)))
     if (-not $vs.Count) { [void]$left.Add(@(S '   none yet' $st.faint)) }
+    $sw = $Lw - 9
     for ($i = 0; $i -lt $vs.Count; $i++) {
         $s = $vs[$i]
         $mark = '  '
-        if ($i -eq $script:specIndex -and $script:focus -eq 'specs') { $mark = "$($g.tri) "; $bg[$left.Count] = $st.sel }
+        if ($i -eq $script:specIndex -and $script:focus -eq 'specs') { $mark = "$($g.tri) "; $bg[$left.Count] = $selBg }
         $glyph = S "$($g.dot) " $st.ok
         if ($s.Platform) { $glyph = S "$($g.diamond) " $st.accent }
-        [void]$left.Add(@((S " $mark" $st.accent), $glyph, (S (Pad (Short $s.Short $nameW) $nameW) $st.text), (S (PadL "$($s.Reqs)" 4) $st.muted), (S ' req ' $st.faint)))
+        [void]$left.Add(@((S " $mark" $st.accent), $glyph, (S (Pad (Short (Get-ItemTitle $s) $sw) $sw) $st.text), (S (PadL "$($s.Reqs)" 3) $st.muted)))
     }
     [void]$left.Add(@())
     # Changes.
-    $active = @($script:changes | Where-Object { -not $_.Archived }).Count
     $archived = @($script:changes | Where-Object { $_.Archived }).Count
     $note = "$active"
     if ($archived) { if ($script:showArchived) { $note += " + $archived archived" } else { $note += " $($g.mid) $archived archived (h)" } }
     [void]$left.Add(@((S ' CHANGES ' $st.title), (S "$($g.mid) $note" $st.muted)))
-    if (-not $vc.Count) { [void]$left.Add(@(S '   none yet  (n: new change)' $st.faint)) }
+    if (-not $vc.Count) { [void]$left.Add(@(S '   none yet  (n: new)' $st.faint)) }
+    $cw = $Lw - 12
     for ($i = 0; $i -lt $vc.Count; $i++) {
         $c = $vc[$i]
         $mark = '  '
-        if ($i -eq $script:changeIndex -and $script:focus -eq 'changes') { $mark = "$($g.tri) "; $bg[$left.Count] = $st.sel }
+        if ($i -eq $script:changeIndex -and $script:focus -eq 'changes') { $mark = "$($g.tri) "; $bg[$left.Count] = $selBg }
         $look = $stageLook[$c.Stage]
         $style = $st.text
         if ($c.Archived) { $style = $st.faint }
-        $count = "$($c.Done)/$($c.Total)"
-        $cw = $Lw - 19
-        [void]$left.Add(@((S " $mark" $st.accent), (S "$($look[0]) " $look[1]), (S (Pad (Short $c.Name $cw) $cw) $style), (S (PadL $count 6) $st.muted), (S ' ' '')) + (Bar $c.Done $c.Total 6 $look[1]))
+        $countStyle = $st.muted
+        if ($c.Stage -eq 'Completed') { $countStyle = $st.ok }
+        [void]$left.Add(@((S " $mark" $st.accent), (S "$($look[0]) " $look[1]), (S (Pad (Short (Get-ItemTitle $c) $cw) $cw) $style), (S (PadL "$($c.Done)/$($c.Total)" 6) $countStyle)))
     }
     [void]$left.Add(@())
     [void]$left.Add(@((S '   s' $st.key), (S ' sort: ' $st.muted), (S $sortLabels[$script:sort] $st.accent)))
@@ -754,19 +907,8 @@ function Draw-Home([int]$W, [int]$H) {
     }
 
     $Rw = $W - $Lw - 3
-    $sel = Get-Selected
-    $details = @()
-    if ($sel -and $sel.Type -eq 'spec') { $details = Get-SpecDetails $sel ($Rw - 1) }
-    elseif ($sel) { $details = Get-ChangeDetails $sel ($Rw - 1) }
-    else { $details = @(@(), @(S ' Nothing selected.' $st.muted)) }
-
-    $extra = 0
-    if ($script:message -or $script:confirm -or $script:input) { $extra = 1 }
-    $bodyRows = $H - 3 - $extra
-    $max = [Math]::Max(0, $details.Count - $bodyRows)
-    if ($script:detailScroll -gt $max) { $script:detailScroll = $max }
-    $right = @()
-    for ($i = $script:detailScroll; $i -lt $details.Count; $i++) { $right += , $details[$i] }
+    $details = Get-Details ($Rw - 2)
+    $right = Get-DetailRows $details $bodyRows $Rw (-not $listFocus)
 
     # Whose it is, and where help is: at the bottom of the column (links open in the browser).
     $bar = S " $($g.bar) " $st.brandBar
@@ -792,28 +934,11 @@ function Draw-Home([int]$W, [int]$H) {
         for ($i = 0; $i -lt $gap; $i++) { [void]$left.Add(@()) }
         foreach ($b in $brand) { [void]$left.Add($b) }
     }
-    $status = "openspec/  $($g.mid)  $($script:specs.Count) specs  $($g.mid)  $active changes"
-    if ($script:detailScroll) { $status = "$($g.up) $($script:detailScroll)  $($g.mid)  $status" }
-    $rows = New-Object Collections.ArrayList
-    [void]$rows.Add((Border-Top $W $projectName $status ($Lw + 1)))
+    [void]$rows.Add((Border-Top $W $projectName (Home-Status $active $details.Count $bodyRows) ($Lw + 1)))
     foreach ($r in (Columns $bodyRows $W $Lw $left $right $bg)) { [void]$rows.Add($r) }
-    if ($script:confirm) {
-        $c = $script:confirm
-        $yes = S ' Yes ' $st.chip; $no = S ' No ' $st.chip
-        if ($c.Choice -eq 0) { $yes = S ' Yes ' $st.chipDanger } else { $no = S ' No ' $st.chipOn }
-        [void]$rows.Add((@(S $g.v $st.border) + (Fit @((S ' ? ' $st.key), (S "$($c.Text)  " $st.bold), $yes, (S ' '), $no) ($W - 2)) + @(S $g.v $st.border)))
-    } elseif ($script:input) {
-        $i = $script:input
-        [void]$rows.Add((@(S $g.v $st.border) + (Fit @((S ' ? ' $st.key), (S "$($i.Label)  " $st.bold), (S "$($i.Value)$($g.cursor)" $st.accent), (S "   $($i.Hint)" $st.faint)) ($W - 2)) + @(S $g.v $st.border)))
-    } elseif ($script:message) {
-        [void]$rows.Add((@(S $g.v $st.border) + (Fit @((S ' ! ' $st.warn), (S $script:message $st.warn)) ($W - 2)) + @(S $g.v $st.border)))
-    }
+    foreach ($r in $bottom) { [void]$rows.Add($r) }
     [void]$rows.Add((Border-Line $W $g.lt $g.h $g.rt ($Lw + 1) $g.bt))
-    $hints = @(@("$($g.up)$($g.down)", 'select'), @('Tab', 'specs/changes'), @('Enter', 'read'), @('v', 'validate'), @('a', 'archive'), @('n', 'new'), @('e', 'edit'), @('s', 'sort'), @('/', 'filter'), @('?', 'help'), @('q', 'quit'))
-    if ($script:confirm) { $hints = @(@('y n', 'yes, no'), @("$([string][char]0x2190)$([string][char]0x2192)", 'choose'), @('Enter', 'ok'), @('Esc', 'cancel')) }
-    elseif ($script:input) { $hints = @(@('Enter', 'ok'), @('Esc', 'cancel')) }
-    elseif ($script:filtering) { $hints = @(@('type', 'filter'), @('Enter', 'keep'), @('Esc', 'clear')) }
-    [void]$rows.Add((Border-Bottom $W $hints 0))
+    [void]$rows.Add((Border-Bottom $W (Home-Hints) 0))
     return , $rows
 }
 
@@ -863,8 +988,7 @@ function Draw-Read([int]$W, [int]$H) {
     $lines = New-Object Collections.ArrayList
     foreach ($l in $head) { [void]$lines.Add($l) }
     for ($i = $script:readScroll; $i -lt [Math]::Min($doc.Count, $script:readScroll + $bodyRows); $i++) { [void]$lines.Add(@(S '  ') + @($doc[$i])) }
-    $title = $item.Name
-    if ($item.Type -eq 'spec' -and $item.Title) { $title = "$($item.Short) $($g.mid) $($item.Title)" }
+    $title = Get-ItemTitle $item
     $pos = 'all'
     if ($max -gt 0) { $pos = "$([int][Math]::Round(100 * $script:readScroll / $max))%" }
     $rows = New-Object Collections.ArrayList
@@ -1097,8 +1221,10 @@ function Draw-Help([int]$W, [int]$H) {
         [void]$lines.Add(@())
     }
     & $section 'HOME' @(
-        @("$($g.up) $($g.down)", 'select a spec or a change'), @('Tab', 'specifications <-> changes'), @('Enter', 'read it in full'),
-        @('PgUp PgDn', 'scroll the details'), @('v', 'validate all (openspec validate --all --strict)'),
+        @("$($g.up) $($g.down)", 'select a spec or a change (in the details: scroll)'), @('Tab', 'specifications <-> changes'),
+        @("$([string][char]0x2192) l", 'into the details (then up/down scroll them)'), @("$([string][char]0x2190) Esc", 'back to the lists'),
+        @('z', 'zoom: the details over the whole width (z again or Esc: the lists back)'),
+        @('PgUp PgDn', 'scroll the details a page (Home, End: top, end)'), @('Enter', 'read it in full'), @('v', 'validate all (openspec validate --all --strict)'),
         @('a', 'archive the selected change (asked first; merges its delta specs into openspec/specs)'),
         @('n', 'new change (asks its name: kebab-case, e.g. add-user-login)'), @('e', 'edit: open the spec or the proposal in your editor'),
         @('s', 'sort changes: name A-Z, name Z-A, recently modified'), @('h', 'show or hide archived changes'),
@@ -1228,30 +1354,44 @@ function On-Key($K) {
     if ([string]$ch -eq '?' -and @('home', 'read') -contains $script:screen) { $script:helpBack = $script:screen; $script:helpScroll = 0; $script:screen = 'help'; return }
     if ($script:screen -eq 'home') {
         $script:message = ''
-        if ($name -eq 'Up') { Move-Selection -1; return }
-        if ($name -eq 'Down') { Move-Selection 1; return }
-        if ($name -eq 'Tab' -or $name -eq 'Left' -or $name -eq 'Right') {
+        $inDetails = $script:zoom -or $script:pane -eq 'details'
+        if ($name -eq 'Up') { if ($inDetails) { $script:detailScroll = [Math]::Max(0, $script:detailScroll - 1) } else { Move-Selection -1 }; return }
+        if ($name -eq 'Down') { if ($inDetails) { $script:detailScroll++ } else { Move-Selection 1 }; return }
+        if ($name -eq 'Tab') {
+            if ($script:zoom) { return }
             if ($script:focus -eq 'specs') { $script:focus = 'changes' } else { $script:focus = 'specs' }
-            $script:detailScroll = 0; return
+            $script:pane = 'list'; $script:detailScroll = 0; return
         }
-        if ($name -eq 'PgDn') { $script:detailScroll += 10; return }
+        if ($name -eq 'Right') { if (-not $script:zoom) { $script:pane = 'details' }; return }
+        if ($name -eq 'Left') { if ($script:zoom) { $script:zoom = $false }; $script:pane = 'list'; return }
+        if ($name -eq 'PgDn' -or $name -eq 'Space') { $script:detailScroll += 10; return }
         if ($name -eq 'PgUp') { $script:detailScroll = [Math]::Max(0, $script:detailScroll - 10); return }
         if ($name -eq 'Home') { $script:detailScroll = 0; return }
+        if ($name -eq 'End') { $script:detailScroll = 1000000; return }
         if ($name -eq 'Enter') {
             $sel = Get-Selected
             if ($sel) { $script:readItem = $sel; $script:readTab = 0; $script:readScroll = 0; $script:screen = 'read' }
             return
         }
-        if ($name -eq 'Esc') { if ($script:filter) { $script:filter = '' }; return }
+        if ($name -eq 'Esc') {
+            if ($script:zoom) { $script:zoom = $false; $script:pane = 'list' }
+            elseif ($script:pane -eq 'details') { $script:pane = 'list' }
+            elseif ($script:filter) { $script:filter = '' }
+            return
+        }
         switch -CaseSensitive ([string]$ch) {
             'q' { $script:quit = $true }
+            'z' { $script:zoom = -not $script:zoom; if ($script:zoom) { $script:pane = 'details' } else { $script:pane = 'list' } }
+            'l' { if (-not $script:zoom) { $script:pane = 'details' } }
+            'j' { if ($inDetails) { $script:detailScroll++ } else { Move-Selection 1 } }
+            'k' { if ($inDetails) { $script:detailScroll = [Math]::Max(0, $script:detailScroll - 1) } else { Move-Selection -1 } }
             'v' { Start-Cli 'Validate all' @('validate', '--all', '--strict', '--no-interactive') }
             'a' { Start-Archive }
             'n' { Start-NewChange }
             'e' { $sel = Get-Selected; if ($sel) { Open-InEditor $sel.Path } }
             's' { $script:sort = $sortModes[([array]::IndexOf($sortModes, $script:sort) + 1) % $sortModes.Count]; $script:changeIndex = 0; $script:message = "Changes sorted by $($sortLabels[$script:sort])." }
             'h' { $script:showArchived = -not $script:showArchived; $script:changeIndex = 0 }
-            '/' { $script:filtering = $true }
+            '/' { $script:filtering = $true; $script:zoom = $false; $script:pane = 'list' }
             'r' { Reload; $script:message = 'Refreshed.' }
         }
         return
