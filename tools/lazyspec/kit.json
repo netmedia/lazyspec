@@ -1,0 +1,12 @@
+{
+  "$comment": "LazySpec: the kit's version and the files that are the kit's (initintoproject.ps1 -Update replaces these; the project's openspec/ is never touched).",
+  "name": "LazySpec",
+  "version": "0.1.0",
+  "author": "Netmedia",
+  "web": "https://netmedia.agency",
+  "email": "netmedia@netmedia.hr",
+  "repository": "https://github.com/netmedia/lazyspec",
+  "files": ["lazyspec.ps1", "lazyspec.exe", "LAZYSPEC.md", "kit.json"],
+  "$rootFiles": "Also put into the project's root, so lazyspec starts from there too: it finds tools/lazyspec/lazyspec.ps1.",
+  "rootFiles": ["lazyspec.exe"]
+}
