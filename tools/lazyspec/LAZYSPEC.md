@@ -28,9 +28,9 @@ The project is the nearest folder with `openspec\` above the current folder (els
 
 **Home** — two lists on the left, the selected item's details on the right, with a scrollbar. `→` moves into the details (`↑` `↓` scroll them), `←` back; `z` zooms the details to the whole width and back.
 
-- *Specifications*: `◆` a platform page (`platform-*`, shown without the prefix), `●` a capability spec;
+- *Scope* (the specifications): `◆` a platform page (`platform-*`, shown without the prefix), `●` a capability spec;
   the requirement count. Platform pages come first, `overview` on top.
-- *Changes*: `○` draft (no tasks yet), `◆` in progress, `●` completed, `·` archived (hidden until `h`);
+- *Plan* (the changes): `○` draft (no tasks yet), `◆` in progress, `●` completed, `·` archived (hidden until `h`);
   done/total tasks and a bar. Sorted by name (01, 02 ...); `s` cycles name A-Z, Z-A, recently modified.
 - The lists show titles: a spec's `# Title`, a change's number and the title of its proposal
   (`01 Platform foundations`).
@@ -54,7 +54,7 @@ It refreshes by itself when files under `openspec/` change (an editor, git, an a
 
 | Screen | Keys |
 |---|---|
-| Home | `↑` `↓` select · `Tab` specs ↔ changes · `→` into the details (`↑` `↓` scroll them), `←`/`Esc` back · `z` zoom the details to the whole width (again: the lists back) · `PgUp` `PgDn` `Home` `End` scroll the details · `Enter` read · `v` validate all · `a` archive the change · `n` new change · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
+| Home | `↑` `↓` select · `Tab` scope ↔ plan · `→` into the details (`↑` `↓` scroll them), `←`/`Esc` back · `z` zoom the details to the whole width (again: the lists back) · `PgUp` `PgDn` `Home` `End` scroll the details · `Enter` read · `v` validate all · `a` archive the change · `n` new change · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
 | Read | `↑` `↓` `PgUp` `PgDn` `Home` `End` scroll · `←` `→` document · `e` edit · `Esc` back |
 | Run | `PgUp` `PgDn` `Home` `End` scroll · `Esc` stop (asked first); when done `Enter`/`Esc` back |
 
@@ -75,6 +75,16 @@ It refreshes by itself when files under `openspec/` change (an editor, git, an a
 - `openspec/changes/<name>/` — `proposal.md` (`## Why`, `## What Changes`, `## Impact`), `design.md`,
   `tasks.md` (`## 1. Group` + `- [ ]` / `- [x]`), `specs/<capability>/spec.md` (`## ADDED|MODIFIED|REMOVED|RENAMED Requirements`).
 - `openspec/changes/archive/<date>-<name>/` — archived changes.
+
+## The project's settings
+
+`tools/lazyspec/lazyspec.json` (optional, the project's own; `initintoproject -Update` keeps it):
+
+```json
+{ "specOrder": ["platform-overview", "platform-functional", "platform-architecture"] }
+```
+
+`specOrder` — the order of the Scope list (spec names); the rest follow (platform pages, then capabilities).
 
 ## The kit
 

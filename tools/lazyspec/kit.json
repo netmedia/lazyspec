@@ -8,5 +8,7 @@
   "repository": "https://github.com/netmedia/lazyspec",
   "files": ["lazyspec.ps1", "lazyspec.exe", "LAZYSPEC.md", "kit.json"],
   "$rootFiles": "Also put into the project's root, so lazyspec starts from there too: it finds tools/lazyspec/lazyspec.ps1.",
-  "rootFiles": ["lazyspec.exe"]
+  "rootFiles": ["lazyspec.exe"],
+  "$projectFiles": "The project's own: kept by -Update.",
+  "projectFiles": ["lazyspec.json"]
 }

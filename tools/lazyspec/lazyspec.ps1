@@ -321,6 +321,13 @@ function Last-Write([string]$Dir) {
     return $max
 }
 $platformPrefix = 'platform-'
+# The project's own settings (tools/lazyspec/lazyspec.json; initintoproject -Update keeps it).
+$specOrder = @()
+$settingsFile = Join-Path $kitDir 'lazyspec.json'
+if (Test-Path -LiteralPath $settingsFile) {
+    try { $specOrder = @((Get-Content -LiteralPath $settingsFile -Raw -Encoding UTF8 | ConvertFrom-Json).specOrder | Where-Object { $_ } | ForEach-Object { [string]$_ }) } catch { }
+}
+$specOrder = [string[]]$specOrder
 function Load-Specs {
     $list = @()
     if (-not $hasRoot) { return $list }
@@ -340,8 +347,10 @@ function Load-Specs {
             Modified = (Get-Item -LiteralPath $file).LastWriteTime; Path = $file; Dir = $d.FullName; Text = $text
         }
     }
-    # The overview first, then the other platform pages, then the capabilities.
-    return @($list | Sort-Object @{ Expression = { if ($_.Short -eq 'overview') { 0 } elseif ($_.Platform) { 1 } else { 2 } } }, Name)
+    # The project's order (lazyspec.json: "specOrder"), then the overview, the other platform pages, the capabilities.
+    return @($list | Sort-Object @{ Expression = {
+                $i = [array]::IndexOf($specOrder, $_.Name)
+                if ($i -ge 0) { $i } elseif ($_.Short -eq 'overview') { 1000 } elseif ($_.Platform) { 1001 } else { 1002 } } }, Name)
 }
 function Get-ChangeInfo($Dir, [bool]$Archived) {
     $tasks = Read-Text (Join-Path $Dir.FullName 'tasks.md')
@@ -827,11 +836,11 @@ function Home-Hints {
     if ($script:filtering) { return , @(@('type', 'filter'), @('Enter', 'keep'), @('Esc', 'clear')) }
     if ($script:zoom) { return , @(@("$($g.up)$($g.down) PgUp PgDn", 'scroll'), @('z Esc', 'show the lists'), @('Enter', 'read'), @('e', 'edit'), @('?', 'help'), @('q', 'quit')) }
     if ($script:pane -eq 'details') { return , @(@("$($g.up)$($g.down) PgUp PgDn", 'scroll'), @("$([string][char]0x2190) Esc", 'lists'), @('z', 'zoom'), @('Enter', 'read'), @('e', 'edit'), @('?', 'help'), @('q', 'quit')) }
-    return , @(@("$($g.up)$($g.down)", 'select'), @('Enter', 'open'), @('Tab', 'specs/changes'), @('v', 'validate'), @('a', 'archive'), @('n', 'new'), @('e', 'edit'), @('s', 'sort'), @('/', 'filter'), @('?', 'help'), @('q', 'quit'))
+    return , @(@("$($g.up)$($g.down)", 'select'), @('Enter', 'open'), @('Tab', 'scope/plan'), @('v', 'validate'), @('a', 'archive'), @('n', 'new'), @('e', 'edit'), @('s', 'sort'), @('/', 'filter'), @('?', 'help'), @('q', 'quit'))
 }
 
 function Home-Status([int]$Active, [int]$Lines, [int]$Rows) {
-    $status = "openspec/  $($g.mid)  $($script:specs.Count) specs  $($g.mid)  $Active changes"
+    $status = "openspec/  $($g.mid)  scope $($script:specs.Count)  $($g.mid)  plan $Active"
     if ($Lines -gt $Rows) {
         $pct = [int][Math]::Round(100 * $script:detailScroll / [Math]::Max(1, $Lines - $Rows))
         $status = "details $pct%  $($g.mid)  $status"
@@ -868,7 +877,7 @@ function Draw-Home([int]$W, [int]$H) {
     $selBg = $st.sel
     if (-not $listFocus) { $selBg = '48;5;234' }
     # Specifications.
-    [void]$left.Add(@((S ' SPECIFICATIONS ' $st.title), (S "$($g.mid) $($vs.Count)" $st.muted)))
+    [void]$left.Add(@((S ' SCOPE ' $st.title), (S "$($g.mid) $($vs.Count)" $st.muted)))
     if (-not $vs.Count) { [void]$left.Add(@(S '   none yet' $st.faint)) }
     $sw = $Lw - 9
     for ($i = 0; $i -lt $vs.Count; $i++) {
@@ -884,8 +893,8 @@ function Draw-Home([int]$W, [int]$H) {
     $archived = @($script:changes | Where-Object { $_.Archived }).Count
     $note = "$active"
     if ($archived) { if ($script:showArchived) { $note += " + $archived archived" } else { $note += " $($g.mid) $archived archived (h)" } }
-    [void]$left.Add(@((S ' CHANGES ' $st.title), (S "$($g.mid) $note" $st.muted)))
-    if (-not $vc.Count) { [void]$left.Add(@(S '   none yet  (n: new)' $st.faint)) }
+    [void]$left.Add(@((S ' PLAN ' $st.title), (S "$($g.mid) $note" $st.muted)))
+    if (-not $vc.Count) { [void]$left.Add(@(S '   nothing planned  (n: new change)' $st.faint)) }
     $cw = $Lw - 12
     for ($i = 0; $i -lt $vc.Count; $i++) {
         $c = $vc[$i]
@@ -1221,7 +1230,7 @@ function Draw-Help([int]$W, [int]$H) {
         [void]$lines.Add(@())
     }
     & $section 'HOME' @(
-        @("$($g.up) $($g.down)", 'select a spec or a change (in the details: scroll)'), @('Tab', 'specifications <-> changes'),
+        @("$($g.up) $($g.down)", 'select a spec or a change (in the details: scroll)'), @('Tab', 'scope (specifications) <-> plan (changes)'),
         @("$([string][char]0x2192) l", 'into the details (then up/down scroll them)'), @("$([string][char]0x2190) Esc", 'back to the lists'),
         @('z', 'zoom: the details over the whole width (z again or Esc: the lists back)'),
         @('PgUp PgDn', 'scroll the details a page (Home, End: top, end)'), @('Enter', 'read it in full'), @('v', 'validate all (openspec validate --all --strict)'),
