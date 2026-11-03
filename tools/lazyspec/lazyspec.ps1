@@ -222,6 +222,8 @@ function Show-Usage {
     & $d '  One document: a cover, the contents, a chapter per spec (in the Scope order); with'
     & $d '  -IncludeChanges the active changes too. Written to export\ in the project (-Out: elsewhere).'
     & $d '  PDF: Edge or Chrome. Word: Microsoft Word, else pandoc. The cover: lazyspec.json "export".'
+    & $d '  -ClientFriendly: scenarios as sentences (When x, then y.). In the workflow schema''s language:'
+    & $d '  "language: hr" in schema.yaml translates the export''s texts and OpenSpec''s English headings.'
     Write-Host ''
     & $b 'PLAIN lazyspec (WITHOUT .\)'
     & $g '  .\lazyspec.exe -Install Profile    # a function in your profile: the project''s own copy'
@@ -348,22 +350,63 @@ function Install-Profile([string]$Installed) {
     }
 }
 
+# The kit's files (kit.json "files"), copied from here into the global folder.
+function Copy-ToGlobal {
+    $files = @()
+    try { $files = @((Get-Content -LiteralPath (Join-Path $kitDir 'kit.json') -Raw -Encoding UTF8 | ConvertFrom-Json).files | Where-Object { $_ }) } catch { }
+    if (-not $files.Count) { $files = @('lazyspec.exe', 'lazyspec.ps1', 'kit.json', 'LAZYSPEC.md', 'export-texts.json') }
+    [void](New-Item -ItemType Directory -Force -Path $globalDir)
+    foreach ($f in $files) {
+        $src = Join-Path $kitDir $f
+        if (-not (Test-Path -LiteralPath $src)) { continue }
+        try { Copy-Item -LiteralPath $src -Destination (Join-Path $globalDir $f) -Force }
+        catch { throw "$f in $globalDir`: $($_.Exception.Message) (is lazyspec running? close it and run this again)" }
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $globalDir 'lazyspec.exe'))) { throw "lazyspec.exe is missing next to $PSCommandPath." }
+}
+function Get-GlobalVersion {
+    try { return [string](Get-Content -LiteralPath (Join-Path $globalDir 'kit.json') -Raw -Encoding UTF8 | ConvertFrom-Json).version } catch { return '' }
+}
+
 function Install-Global {
     if (-not (Test-SameDir $kitDir $globalDir)) {
-        [void](New-Item -ItemType Directory -Force -Path $globalDir)
-        foreach ($f in 'lazyspec.exe', 'lazyspec.ps1', 'kit.json', 'LAZYSPEC.md') {
-            $src = Join-Path $kitDir $f
-            if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination $globalDir -Force }
-        }
-        if (-not (Test-Path -LiteralPath (Join-Path $globalDir 'lazyspec.exe'))) { throw "lazyspec.exe is missing next to $PSCommandPath." }
+        Copy-ToGlobal
         Write-Host "  + LazySpec$(if ($kitVersion) { " $kitVersion" }) copied to $globalDir" -ForegroundColor Green
     }
+    Add-GlobalToPath
+}
+function Add-GlobalToPath {
     $entries = @((Get-UserPath) -split ';' | Where-Object { $_ })
     if (-not ($entries | Where-Object { Test-SameDir ([Environment]::ExpandEnvironmentVariables($_)) $globalDir })) {
         Set-UserPath (($entries + $globalDir) -join ';')
         Write-Host "  + $globalDir on your user PATH" -ForegroundColor Green
     }
     else { Write-Host "  = $globalDir is on your user PATH already" -ForegroundColor DarkGray }
+}
+
+# Update: the global copy from here (the LazySpec repository), and the profile function (keeping what it falls back to).
+function Update-Installed {
+    if (Test-SameDir $kitDir $globalDir) { throw 'Update from the LazySpec repository (install.exe Update): this is the global copy itself.' }
+    $hasGlobal = Test-Path -LiteralPath (Join-Path $globalDir 'lazyspec.exe')
+    $profiles = @(Get-ProfilePaths | Where-Object { (Test-Path -LiteralPath $_) -and ((Get-Content -LiteralPath $_ -Raw -Encoding UTF8) -match [regex]::Escape($profileBegin)) })
+    if (-not $hasGlobal -and -not $profiles.Count) { throw 'LazySpec isn''t installed on this PC: install.exe Profile, Global or Both.' }
+    if ($hasGlobal) {
+        $before = Get-GlobalVersion
+        Copy-ToGlobal
+        $what = "LazySpec $kitVersion"
+        if ($before -and $before -ne $kitVersion) { $what = "LazySpec $before -> $kitVersion" }
+        elseif ($before) { $what = "LazySpec $kitVersion (the same version, its files refreshed)" }
+        Write-Host "  + $what in $globalDir" -ForegroundColor Green
+        Add-GlobalToPath
+    }
+    else { Write-Host "  = no global copy ($globalDir): install.exe Global puts one there" -ForegroundColor DarkGray }
+    if ($profiles.Count) {
+        # The function as this version writes it; what it falls back to stays.
+        $m = [regex]::Match((Get-Content -LiteralPath $profiles[0] -Raw -Encoding UTF8), "(?m)^\s*\`$installed = '((?:[^']|'')*)'")
+        $fallback = ''
+        if ($m.Success) { $fallback = $m.Groups[1].Value.Replace("''", "'") }
+        Install-Profile $fallback
+    }
 }
 
 function Uninstall-All {
@@ -402,8 +445,15 @@ if ($Install -or $Uninstall) {
         # "Profile,Global" arrives as one string through lazyspec.exe / install.exe (powershell -File).
         $modes = @($Install | ForEach-Object { $_ -split '[,\s]+' } | Where-Object { $_ })
         if ($modes -contains 'Both') { $modes = @('Profile', 'Global') }
-        foreach ($m in $modes) { if ($m -notin 'Profile', 'Global') { Write-Host "  -Install: Profile, Global or both (Profile,Global), not '$m'." -ForegroundColor Red; exit 1 } }
-        # The kit of a project is <project>	ools\lazyspec; else this is the repository's or the global copy.
+        foreach ($m in $modes) { if ($m -notin 'Profile', 'Global', 'Update') { Write-Host "  -Install: Profile, Global, Both or Update, not '$m'." -ForegroundColor Red; exit 1 } }
+        if ($modes -contains 'Update') {
+            try { Update-Installed } catch { Write-Host "  $($_.Exception.Message)" -ForegroundColor Red; exit 1 }
+            Write-Host ''
+            Write-Host '  Updated. A lazyspec that is open keeps the old version until it starts again.' -ForegroundColor White
+            Write-Host ''
+            exit 0
+        }
+        # The kit of a project is <project>\tools\lazyspec; else this is the repository's or the global copy.
         $inProject = Test-Path -LiteralPath (Join-Path (Split-Path (Split-Path $kitDir -Parent) -Parent) 'openspec') -PathType Container
         $installed = ''
         if ($modes -contains 'Global') { Install-Global; $installed = Join-Path $globalDir 'lazyspec.exe' }
@@ -1034,6 +1084,7 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
     $lists = New-Object Collections.ArrayList
     $code = $null
     $gap = $false
+    $inScenario = $false
     # Client-friendly: a scenario's WHEN / THEN ... steps as one sentence ("When x, then y.").
     $steps = New-Object Collections.ArrayList
     $flushSteps = {
@@ -1074,7 +1125,7 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
             else { $code += $raw }
             continue
         }
-        if ($script:clientFriendly) {
+        if ($script:exportFriendly) {
             # "MORA (MUST)": the normative keyword in brackets is for OpenSpec, not for the client.
             $raw = $raw -replace '\s*\((?:MUST|SHALL|SHOULD|MAY|REQUIRED)(?: NOT)?\)', ''
             $sm = [regex]::Match($raw, '^\s*[-*+]\s+\*\*([^*\s]+)\*\*:?\s+(.*)$')
@@ -1095,11 +1146,22 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
         if ($t.Trim().StartsWith('|')) { & $flushPara; & $flushQuote; $table.Add($t); continue }
         if ($t -match '^(#{1,6})\s+(.*?)\s*#*$') {
             & $flushPara; & $flushQuote
-            $level = [Math]::Min(6, $Matches[1].Length + $Shift)
+            $mdLevel = $Matches[1].Length
+            $level = [Math]::Min(6, $mdLevel + $Shift)
             $h = $Matches[2]
+            if ($inScenario) { [void]$out.Append("</div>`n"); $inScenario = $false }
+            # The classes make the levels clear whatever the document's depth: a section (## Purpose,
+            # ## ADDED Requirements ...), a requirement, a scenario (its text in a block of its own), a subheading.
             if ($h -match '^(Requirement|Zahtjev|Anforderung):\s*(.*)$') { [void]$out.Append("<h$level class=`"req`"><span class=`"tag`">$(Html (Get-ExportText 'requirement'))</span> $(ConvertTo-HtmlInline $Matches[2])</h$level>`n") }
-            elseif ($h -match '^(Scenario|Scenarij|Szenario):\s*(.*)$') { [void]$out.Append("<h$level class=`"scn`"><span class=`"tag`">$(Html (Get-ExportText 'scenario'))</span> $(ConvertTo-HtmlInline $Matches[2])</h$level>`n") }
-            else { [void]$out.Append("<h$level>$(ConvertTo-HtmlInline (Get-ExportHeading $h))</h$level>`n") }
+            elseif ($h -match '^(Scenario|Scenarij|Szenario):\s*(.*)$') {
+                [void]$out.Append("<h$level class=`"scn`"><span class=`"tag`">$(Html (Get-ExportText 'scenario'))</span> $(ConvertTo-HtmlInline $Matches[2])</h$level>`n<div class=`"scenario`">`n")
+                $inScenario = $true
+            }
+            else {
+                $cls = 'sub'
+                if ($mdLevel -le 2) { $cls = 'sec' }
+                [void]$out.Append("<h$level class=`"$cls`">$(ConvertTo-HtmlInline (Get-ExportHeading $h))</h$level>`n")
+            }
             continue
         }
         if ($t -match '^(-{3,}|\*{3,}|_{3,})$') { & $flushPara; & $flushQuote; [void]$out.Append("<hr>`n"); continue }
@@ -1116,7 +1178,7 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
                 if ($Matches[1] -eq ' ') { $body = ConvertTo-HtmlInline $Matches[2] } else { $body = '<span class="done">&#10003;</span> ' + (ConvertTo-HtmlInline $Matches[2]); $cls = ' class="task-done"' }
             }
             else {
-                if ($body -match '^\*\*(WHEN|THEN|AND|GIVEN|BUT)\*\*') { $cls = ' class="step"' }
+                if ($body -match '^\*\*([^*\s]+)\*\*' -and $stepWords -contains $Matches[1].ToUpper()) { $cls = ' class="step"' }
                 $body = ConvertTo-HtmlInline $body
             }
             & $closeLists $indent
@@ -1137,18 +1199,67 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
     if ($null -ne $code) { [void]$out.Append((ConvertTo-HtmlPre $code)) }
     & $flushSteps
     & $flushTable; & $flushPara; & $flushQuote; & $closeLists -1
+    if ($inScenario) { [void]$out.Append("</div>`n") }
     return $out.ToString()
 }
 # A document's text without its first "# " title (the chapter has its own).
 function Remove-DocTitle([string]$Text) { return [regex]::Replace($Text, '\A\s*#\s+[^\r\n]*\r?\n?', '') }
+# The project's export settings in openspec/config.yaml, under "lazyspec:" (the OpenSpec CLI ignores keys it
+# doesn't know): name (the project's name on the cover), subtitle, client, author, language, and titles
+# (a capability's or spec's name -> its title in the export): for every change, or in a group per change
+# (the change's folder name, then its capabilities). Read once; only what LazySpec needs: no YAML module.
+$script:projectConfig = $null
+function Get-ProjectConfig {
+    if ($null -ne $script:projectConfig) { return $script:projectConfig }
+    $cfg = @{ Values = @{}; Titles = @{}; ChangeTitles = @{} }
+    $script:projectConfig = $cfg
+    if (-not $hasRoot) { return $cfg }
+    $in = $false; $keyIndent = -1; $sub = ''; $titleIndent = -1; $group = ''
+    foreach ($line in (Read-Text (Join-Path $osDir 'config.yaml')).Replace("`r", '').Split("`n")) {
+        if (-not $line.Trim() -or $line.TrimStart().StartsWith('#')) { continue }
+        $indent = $line.Length - $line.TrimStart().Length
+        if ($indent -eq 0) { $in = $line -match '^lazyspec:\s*$'; $keyIndent = -1; $sub = ''; continue }
+        if (-not $in) { continue }
+        if ($keyIndent -lt 0) { $keyIndent = $indent }
+        if ($line -notmatch '^\s*("[^"]*"|''[^'']*''|[^:#]+?):(?:\s+(.*))?$') { continue }
+        $k = Unquote $Matches[1]
+        $v = ''
+        if ($Matches[2]) { $v = Unquote $Matches[2] }
+        if ($indent -eq $keyIndent) { $sub = ''; $titleIndent = -1; $group = ''; if ($v) { $cfg.Values[$k] = $v } else { $sub = $k } }
+        elseif ($sub -eq 'titles') {
+            if ($titleIndent -lt 0) { $titleIndent = $indent }
+            # "name: title" for every change; "change:" then its own "name: title" lines, deeper.
+            if ($indent -eq $titleIndent) {
+                $group = ''
+                if ($v) { $cfg.Titles[$k] = $v } else { $group = $k; $cfg.ChangeTitles[$k] = @{} }
+            }
+            elseif ($group -and $v) { $cfg.ChangeTitles[$group][$k] = $v }
+        }
+    }
+    return $cfg
+}
+# An export setting: openspec/config.yaml "lazyspec:" (title: its "name"), else lazyspec.json "export", else $Default.
 function Get-ExportSetting([string]$Name, [string]$Default) {
+    $values = (Get-ProjectConfig).Values
+    if ($Name -eq 'title' -and $values['name']) { return [string]$values['name'] }
+    if ($values[$Name]) { return [string]$values[$Name] }
     if ($exportSettings -and $exportSettings.$Name) { return [string]$exportSettings.$Name }
+    return $Default
+}
+# A capability's or spec's title in the export: "lazyspec: titles:" in config.yaml (the change's own group
+# first, then the ones for every change), else lazyspec.json export.titles.
+function Get-FriendlyTitle([string]$Name, [string]$Default, [string]$Change) {
+    $cfg = Get-ProjectConfig
+    if ($Change -and $cfg.ChangeTitles[$Change] -and $cfg.ChangeTitles[$Change][$Name]) { return [string]$cfg.ChangeTitles[$Change][$Name] }
+    $titles = $cfg.Titles
+    if ($titles[$Name]) { return [string]$titles[$Name] }
+    if ($exportSettings -and $exportSettings.titles -and $exportSettings.titles.$Name) { return [string]$exportSettings.titles.$Name }
     return $Default
 }
 # The export's language: the workflow schema's "language:" (LazySpec's own key), else lazyspec.json
 # export.language, else en. Its texts and OpenSpec's fixed English headings: export-texts.json (UTF-8).
 $script:exportLang = 'en'
-$script:clientFriendly = $false
+$script:exportFriendly = $false
 $script:exportTexts = $null
 function Load-ExportTexts {
     if ($null -ne $script:exportTexts) { return }
@@ -1196,7 +1307,7 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
     }
     Load-ExportTexts
     $script:exportLang = Get-ExportLanguage $one
-    $script:clientFriendly = $Friendly
+    $script:exportFriendly = $Friendly
     $title = Get-ExportSetting 'title' $projectName
     $subtitle = Get-ExportSetting 'subtitle' (Get-ExportText 'specification')
     $client = Get-ExportSetting 'client' ''
@@ -1220,7 +1331,7 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
                 if ($d.IsSpecs) {
                     if (-not $one.Caps.Count) { continue }
                     foreach ($cap in $one.Caps) {
-                        [void]$sb.Append("<h2>$(Html (Get-ExportText 'capability')): $(Html $cap.Name)</h2>`n")
+                        [void]$sb.Append("<h2 class=`"cap`">$(Html (Get-ExportText 'capability')): $(Html (Get-FriendlyTitle $cap.Name $cap.Name $one.Name))</h2>`n")
                         [void]$sb.Append((ConvertTo-HtmlBody (Remove-DocTitle (Read-Text $cap.Path)) 1))
                     }
                 }
@@ -1247,6 +1358,7 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
         $n++
         $name = $s.Title
         if (-not $name) { $name = Get-ArtifactTitle $s.Short }
+        $name = Get-FriendlyTitle $s.Name $name
         $chapters += [pscustomobject]@{ Id = "spec-$($s.Name)"; Title = "$n. $name"; Part = 'specs'; Body = (ConvertTo-HtmlBody (Remove-DocTitle $s.Text)) }
     }
     foreach ($c in $changes) {
@@ -1254,7 +1366,7 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
         $proposal = Join-Path $c.Dir 'proposal.md'
         if (Test-Path -LiteralPath $proposal) { [void]$sb.Append((ConvertTo-HtmlBody (Remove-DocTitle (Read-Text $proposal)))) }
         foreach ($cap in $c.Caps) {
-            [void]$sb.Append("<h2>$(Html (Get-ExportText 'capability')): $(Html $cap.Name)</h2>`n")
+            [void]$sb.Append("<h2 class=`"cap`">$(Html (Get-ExportText 'capability')): $(Html (Get-FriendlyTitle $cap.Name $cap.Name $c.Name))</h2>`n")
             [void]$sb.Append((ConvertTo-HtmlBody (Remove-DocTitle (Read-Text $cap.Path)) 1))
         }
         $chapters += [pscustomobject]@{ Id = "change-$($c.Name)"; Title = (Get-ItemTitle $c); Part = 'changes'; Body = $sb.ToString() }
@@ -1285,9 +1397,15 @@ h1.part { font-size: 28pt; border: none; margin-top: 90mm; text-align: center; }
 h2 { font-size: 15pt; font-weight: 600; color: #0b3c5d; margin: 18pt 0 6pt; }
 h3 { font-size: 12pt; font-weight: 600; color: #1f2933; margin: 14pt 0 4pt; }
 h4, h5, h6 { font-size: 10.5pt; font-weight: 600; margin: 10pt 0 3pt; }
+/* The levels, largest first: the capability, a section (Purpose, ADDED Requirements ...), a requirement, a scenario, its text. */
+h2.cap { font-size: 18pt; color: #0b3c5d; margin: 30pt 0 10pt; padding-bottom: 4pt; border-bottom: 1.5pt solid #4a90c2; }
+.sec { font-size: 14pt; font-weight: 600; color: #0b3c5d; margin: 26pt 0 10pt; padding-bottom: 3pt; border-bottom: 1px solid #c9d3dc; }
+.sub { font-size: 12pt; font-weight: 600; color: #1f2933; margin: 16pt 0 5pt; }
 h2, h3, h4, h5, h6 { page-break-after: avoid; break-after: avoid; page-break-inside: avoid; break-inside: avoid; }
-.req { border-left: 3pt solid #4a90c2; padding-left: 7pt; }
-.scn { color: #5b3f9e; }
+.req { font-size: 12.5pt; font-weight: 600; color: #1f2933; border-left: 3pt solid #4a90c2; padding-left: 7pt; margin: 24pt 0 6pt; }
+.scn { font-size: 11pt; font-weight: 600; color: #5b3f9e; margin: 14pt 0 3pt 10pt; }
+.scenario { font-size: 9.5pt; color: #3e4c59; margin: 0 0 6pt 10pt; padding: 1pt 0 1pt 8pt; border-left: 1.5pt solid #d9cdee; }
+.scenario p, .scenario li { font-size: 9.5pt; }
 .tag { display: block; font-size: 7.5pt; font-weight: 600; letter-spacing: 0.6pt; text-transform: uppercase; color: #8a96a3; }
 li.step { list-style: none; margin-left: -12pt; }
 li.task-done { color: #52606d; }
@@ -1733,7 +1851,15 @@ function Bottom-Line([int]$W, [int]$Split) {
 }
 function Home-Hints {
     if ($script:confirm) { return , @(@('y n', 'yes, no'), @("$([string][char]0x2190)$([string][char]0x2192)", 'choose'), @('Enter', 'ok'), @('Esc', 'cancel')) }
-    if ($script:choose) { return , @(@("$([string][char]0x2190)$([string][char]0x2192)", 'choose'), @(($script:choose.Keys -join ' '), 'pick'), @('Enter', 'ok'), @('Esc', 'cancel')) }
+    if ($script:choose) {
+        # Each key with what it picks: "p pdf  w word  h html".
+        $c = $script:choose
+        $names = $c.Options
+        if ($c.PSObject.Properties['Short']) { $names = $c.Short }
+        $hints = @()
+        for ($i = 0; $i -lt $c.Keys.Count; $i++) { $hints += , @($c.Keys[$i], ([string]$names[$i]).ToLower()) }
+        return , ($hints + @(, @("$([string][char]0x2190)$([string][char]0x2192)", 'choose')) + @(, @('Enter', 'ok')) + @(, @('Esc', 'cancel')))
+    }
     if ($script:input) { return , @(@('Enter', 'ok'), @('Esc', 'cancel')) }
     if ($script:filtering) { return , @(@('type', 'filter'), @('Enter', 'keep'), @('Esc', 'clear')) }
     if ($script:zoom) { return , @(@("$($g.up)$($g.down) PgUp PgDn", 'scroll'), @('z Esc', 'show the lists'), @('Enter', 'read'), @('e', 'edit'), @('?', 'help'), @('q', 'quit')) }
@@ -1906,7 +2032,7 @@ function Draw-Read([int]$W, [int]$H) {
     [void]$head.Add($chips)
     [void]$head.Add(@())
     # The export's question (x), at the bottom as on Home.
-    $bottom = @(Bottom-Line $W 0)
+    $bottom = Bottom-Line $W 0
     $bodyRows = $H - 3 - $head.Count - $bottom.Count
     $max = [Math]::Max(0, $doc.Count - $bodyRows)
     if ($script:readScroll -gt $max) { $script:readScroll = $max }
@@ -2242,7 +2368,8 @@ function Start-Archive {
     $text = "Archive $($sel.Name)?"
     if ($sel.Total -and $sel.Done -lt $sel.Total) { $text = "Archive $($sel.Name)? $($sel.Total - $sel.Done) of $($sel.Total) tasks are still open." }
     $name = $sel.Name
-    $script:confirm = [pscustomobject]@{ Text = $text; Choice = 1; Do = { Start-Cli "Archive $name" @('archive', $name, '--yes') }.GetNewClosure() }
+    # No GetNewClosure: its scriptblock can't see this script's functions when lazyspec.exe starts it. The question carries its data.
+    $script:confirm = [pscustomobject]@{ Text = $text; Choice = 1; Name = $name; Do = { param($c) Start-Cli "Archive $($c.Name)" @('archive', $c.Name, '--yes') } }
 }
 function Start-NewChange {
     $script:input = [pscustomobject]@{ Label = 'New change:'; Value = ''; Hint = 'kebab-case, e.g. add-user-login'; Do = {
@@ -2264,10 +2391,10 @@ function Start-ExportMenu {
             $format = @('Pdf', 'Word', 'Html')[$i]
             $active = @($script:changes | Where-Object { -not $_.Archived }).Count
             if (-not $active) { Start-ExportAudience $format $false ''; return }
-            $script:choose = [pscustomobject]@{ Text = "$($format.ToUpper()):"; Options = @('Specs only', "Specs + the plan ($active changes)"); Keys = @('s', 'p'); Choice = 0; Do = {
-                    param($j)
-                    Start-ExportAudience $format ($j -eq 1) ''
-                }.GetNewClosure() }
+            $script:choose = [pscustomobject]@{ Text = "$($format.ToUpper()):"; Options = @('Specs only', "Specs + the plan ($active changes)"); Short = @('specs only', 'with the plan'); Keys = @('s', 'p'); Choice = 0; Format = $format; Do = {
+                    param($j, $c)
+                    Start-ExportAudience $c.Format ($j -eq 1) ''
+                } }
         } }
 }
 # x in the read screen: what is being read, alone: the spec, or the change with all its workflow's documents.
@@ -2275,17 +2402,18 @@ function Start-ItemExportMenu($Item) {
     $what = 'the spec'
     if ($Item.Type -eq 'change') { $what = 'the change' }
     $name = $Item.Name
-    $script:choose = [pscustomobject]@{ Text = "Export $what $name as"; Options = @('PDF', 'Word', 'HTML'); Keys = @('p', 'w', 'h'); Choice = 0; Do = {
-            param($i)
-            Start-ExportAudience @('Pdf', 'Word', 'Html')[$i] $false $name
-        }.GetNewClosure() }
+    $script:choose = [pscustomobject]@{ Text = "Export $what $name as"; Options = @('PDF', 'Word', 'HTML'); Keys = @('p', 'w', 'h'); Choice = 0; Item = $name; Do = {
+            param($i, $c)
+            Start-ExportAudience @('Pdf', 'Word', 'Html')[$i] $false $c.Item
+        } }
 }
 # The export's last question: for the client (scenarios as sentences) or as written.
 function Start-ExportAudience([string]$Format, [bool]$WithChanges, [string]$ItemName) {
-    $script:choose = [pscustomobject]@{ Text = "$($Format.ToUpper()) for:"; Options = @('The client (scenarios as sentences)', 'Technical (as written)'); Keys = @('c', 't'); Choice = 0; Do = {
-            param($k)
-            Start-Export $Format $WithChanges $ItemName ($k -eq 0)
-        }.GetNewClosure() }
+    $script:choose = [pscustomobject]@{ Text = "$($Format.ToUpper()) for:"; Options = @('The client (scenarios as sentences)', 'Technical (as written)'); Short = @('client', 'technical'); Keys = @('c', 't'); Choice = 0
+        Format = $Format; WithChanges = $WithChanges; Item = $ItemName; Do = {
+            param($k, $c)
+            Start-Export $c.Format $c.WithChanges $c.Item ($k -eq 0)
+        } }
 }
 function On-Key($K) {
     $name = $K.Name
@@ -2312,7 +2440,7 @@ function On-Key($K) {
         $lc = ([string]$ch).ToLower()
         if ($name -eq 'Left' -or $name -eq 'Right' -or $name -eq 'Tab') { $c.Choice = 1 - $c.Choice; return }
         if ($name -eq 'Esc' -or $lc -eq 'n') { $script:confirm = $null; return }
-        if ($lc -eq 'y' -or ($name -eq 'Enter' -and $c.Choice -eq 0)) { $script:confirm = $null; & $c.Do; return }
+        if ($lc -eq 'y' -or ($name -eq 'Enter' -and $c.Choice -eq 0)) { $script:confirm = $null; & $c.Do $c; return }
         if ($name -eq 'Enter') { $script:confirm = $null }
         return
     }
@@ -2326,7 +2454,7 @@ function On-Key($K) {
         if ($name -eq 'Esc') { $script:choose = $null; return }
         $pick = -1
         if ($name -eq 'Enter') { $pick = $c.Choice } elseif ($lc) { $pick = [array]::IndexOf($c.Keys, $lc) }
-        if ($pick -ge 0) { $script:choose = $null; & $c.Do $pick }
+        if ($pick -ge 0) { $script:choose = $null; & $c.Do $pick $c }
         return
     }
     # A text answer at the bottom of Home.

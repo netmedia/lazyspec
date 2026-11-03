@@ -62,6 +62,7 @@ lazyspec                            # in a new terminal
 | `.\install.exe Profile` | A `lazyspec` function in your PowerShell profiles: the project's own copy when it has one, else this repository's `tools\lazyspec\lazyspec.exe` (a `git pull` here updates it). |
 | `.\install.exe Global` | A copy in `%LOCALAPPDATA%\Programs\LazySpec`, on your user PATH, like lazygit: works in cmd and other shells too. A fixed version: install again to update. |
 | `.\install.exe Both` | Both: the function runs the project's own copy, else the global one. |
+| `.\install.exe Update` | After a `git pull` here: the global copy gets this repository's version (old → new shown), the profile function is rewritten as this version writes it. |
 | `.\install.exe -Uninstall` | Removes them. |
 
 Open a new terminal afterwards. The profile needs an execution policy that runs local scripts

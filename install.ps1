@@ -27,12 +27,14 @@
       Global   A copy in %LOCALAPPDATA%\Programs\LazySpec, on your user PATH (like lazygit): works in
                cmd and other shells too. A fixed version: install again to update.
       Both     Both: the function runs the project's own copy, else the global one.
+      Update   After a git pull here: the global copy gets this repository's version, the profile
+               function is rewritten as this version writes it (what it falls back to stays).
 
     The projects' settings (specOrder, export) go into lazyspec.json in the project's root.
     Same as tools\lazyspec\lazyspec.ps1 -Install / -Uninstall, which this calls.
 
 .PARAMETER Mode
-    Profile, Global or Both.
+    Profile, Global, Both or Update.
 
 .PARAMETER Uninstall
     Removes the profile function and the global copy with its PATH entry.
@@ -45,6 +47,9 @@
 
 .EXAMPLE
     .\install.exe Both
+
+.EXAMPLE
+    git pull; .\install.exe Update
 
 .EXAMPLE
     .\install.exe -Uninstall
@@ -100,6 +105,7 @@ function Show-Usage {
     & $g '  .\install.exe Profile      # a lazyspec function: the project''s copy, else this repository''s'
     & $g '  .\install.exe Global       # a copy on your PATH, like lazygit (install again to update)'
     & $g '  .\install.exe Both         # both: the project''s copy, else the global one'
+    & $g '  .\install.exe Update       # after git pull: the global copy gets this version'
     & $g '  .\install.exe -Uninstall   # removes them'
     Write-Host ''
     & $d '  Nothing goes into the projects: run lazyspec anywhere inside one (a folder with openspec\).'
@@ -114,7 +120,7 @@ if ($Help -or (-not $Mode -and -not $Uninstall)) { Show-Usage; exit 0 }
 if ($Uninstall) { & $lazyspec -Uninstall }
 else {
     $m = $Mode.Trim()
-    if ($m -notin 'Profile', 'Global', 'Both') { Write-Host "  Profile, Global or Both, not '$Mode'." -ForegroundColor Red; Show-Usage; exit 1 }
+    if ($m -notin 'Profile', 'Global', 'Both', 'Update') { Write-Host "  Profile, Global, Both or Update, not '$Mode'." -ForegroundColor Red; Show-Usage; exit 1 }
     & $lazyspec -Install $m
 }
 exit $LASTEXITCODE

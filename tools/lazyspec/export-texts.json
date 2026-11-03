@@ -1,0 +1,57 @@
+{
+  "$comment": "LazySpec: the export's own texts and OpenSpec's fixed English headings, per language (the workflow schema's \"language:\"). A language that is missing here, or a missing text, falls back to en.",
+  "en": {
+    "labels": {
+      "proposal": "Proposal", "specs": "Specifications", "design": "Design", "tasks": "Tasks", "open-questions": "Open questions",
+      "requirement": "Requirement", "scenario": "Scenario", "capability": "Capability",
+      "contents": "Contents", "client": "Client", "date": "Date", "preparedBy": "Prepared by", "scope": "Scope",
+      "specification": "Specification", "plannedChanges": "Planned changes",
+      "nChapters": "chapters", "nRequirements": "requirements", "nChanges": "planned changes",
+      "nDocuments": "documents", "nCapabilities": "capabilities", "nTasks": "tasks", "workflow": "workflow",
+      "dateFormat": "yyyy-MM-dd"
+    },
+    "headings": {}
+  },
+  "hr": {
+    "labels": {
+      "proposal": "Prijedlog", "specs": "Specifikacije", "design": "Dizajn", "tasks": "Zadaci", "open-questions": "Otvorena pitanja",
+      "requirement": "Zahtjev", "scenario": "Scenarij", "capability": "Funkcionalnost",
+      "contents": "Sadržaj", "client": "Klijent", "date": "Datum", "preparedBy": "Pripremio", "scope": "Opseg",
+      "specification": "Specifikacija", "plannedChanges": "Planirane promjene",
+      "nChapters": "poglavlja", "nRequirements": "zahtjeva", "nChanges": "planiranih promjena",
+      "nDocuments": "dokumenata", "nCapabilities": "funkcionalnosti", "nTasks": "zadataka", "workflow": "tijek rada",
+      "dateFormat": "d. M. yyyy."
+    },
+    "headings": {
+      "why": "Zašto", "what changes": "Što se mijenja", "capabilities": "Funkcionalnosti",
+      "new capabilities": "Nove funkcionalnosti", "modified capabilities": "Izmijenjene funkcionalnosti", "removed capabilities": "Uklonjene funkcionalnosti",
+      "impact": "Utjecaj", "purpose": "Svrha", "requirements": "Zahtjevi",
+      "added requirements": "Novi zahtjevi", "modified requirements": "Izmijenjeni zahtjevi",
+      "removed requirements": "Uklonjeni zahtjevi", "renamed requirements": "Preimenovani zahtjevi",
+      "context": "Kontekst", "goals / non-goals": "Ciljevi i ne-ciljevi", "goals": "Ciljevi", "non-goals": "Ne-ciljevi",
+      "decisions": "Odluke", "risks / trade-offs": "Rizici i kompromisi", "migration plan": "Plan uvođenja",
+      "open questions": "Otvorena pitanja", "tasks": "Zadaci"
+    }
+  },
+  "de": {
+    "labels": {
+      "proposal": "Vorschlag", "specs": "Spezifikationen", "design": "Design", "tasks": "Aufgaben", "open-questions": "Offene Fragen",
+      "requirement": "Anforderung", "scenario": "Szenario", "capability": "Fähigkeit",
+      "contents": "Inhalt", "client": "Kunde", "date": "Datum", "preparedBy": "Erstellt von", "scope": "Umfang",
+      "specification": "Spezifikation", "plannedChanges": "Geplante Änderungen",
+      "nChapters": "Kapitel", "nRequirements": "Anforderungen", "nChanges": "geplante Änderungen",
+      "nDocuments": "Dokumente", "nCapabilities": "Fähigkeiten", "nTasks": "Aufgaben", "workflow": "Workflow",
+      "dateFormat": "dd.MM.yyyy"
+    },
+    "headings": {
+      "why": "Warum", "what changes": "Was sich ändert", "capabilities": "Fähigkeiten",
+      "new capabilities": "Neue Fähigkeiten", "modified capabilities": "Geänderte Fähigkeiten", "removed capabilities": "Entfernte Fähigkeiten",
+      "impact": "Auswirkungen", "purpose": "Zweck", "requirements": "Anforderungen",
+      "added requirements": "Neue Anforderungen", "modified requirements": "Geänderte Anforderungen",
+      "removed requirements": "Entfernte Anforderungen", "renamed requirements": "Umbenannte Anforderungen",
+      "context": "Kontext", "goals / non-goals": "Ziele / Nicht-Ziele", "goals": "Ziele", "non-goals": "Nicht-Ziele",
+      "decisions": "Entscheidungen", "risks / trade-offs": "Risiken / Kompromisse", "migration plan": "Migrationsplan",
+      "open questions": "Offene Fragen", "tasks": "Aufgaben"
+    }
+  }
+}

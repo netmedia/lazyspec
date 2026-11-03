@@ -28,6 +28,7 @@ from a project's kit (`.\lazyspec.exe -Install ...`):
 | `install.exe Profile`, `lazyspec.exe -Install Profile` | A `lazyspec` function in your PowerShell profiles: the nearest project's own `lazyspec.exe` (subfolders too); else, installed from the repository, the repository's copy |
 | `install.exe Global`, `lazyspec.exe -Install Global` | A copy in `%LOCALAPPDATA%\Programs\LazySpec`, on your user PATH: one version for every project |
 | `install.exe Both`, `lazyspec.exe -Install Both` | Both: the project's copy first, else the global one |
+| `install.exe Update` | After a `git pull` in the repository: the global copy and the profile function get its version |
 | `install.exe -Uninstall`, `lazyspec.exe -Uninstall` | Removes them |
 
 Then open a new terminal. Installed on the PC, LazySpec puts nothing into the projects.
@@ -77,8 +78,8 @@ It refreshes by itself when files under `openspec/` change (an editor, git, an a
 | `v` | `openspec validate --all --strict --no-interactive` | |
 | `a` | `openspec archive <change> --yes` | asked first (with the open task count); merges the delta specs into `openspec/specs` |
 | `n` | `openspec new change <name>` | the name is asked: kebab-case (a space becomes `-`) |
-| `x` | `lazyspec -Export Pdf\|Word\|Html [-IncludeChanges] -Open` | the format is asked (`p` `w` `h`), then, with active changes, specs only or with the plan; no specs yet: the selected change alone; see [Export](#export-for-the-client) |
-| `x` (Read) | `lazyspec -Export Pdf\|Word\|Html -Item <name> -Open` | the spec or change being read, alone; the format is asked (`p` `w` `h`) |
+| `x` | `lazyspec -Export Pdf\|Word\|Html [-IncludeChanges] -Open` | the format is asked (`p` `w` `h`), then, with active changes, specs only or with the plan, then for the client or technical (`c` `t`); no specs yet: the selected change alone; see [Export](#export-for-the-client) |
+| `x` (Read) | `lazyspec -Export Pdf\|Word\|Html -Item <name> -Open` | the spec or change being read, alone; the format is asked (`p` `w` `h`), then for the client or technical (`c` `t`) |
 | `e` | `$env:VISUAL` / `$env:EDITOR` (in the console), else VS Code (`code`), else the file's default app | the spec, or the proposal / the document being read |
 
 ## Conventions it understands
@@ -122,6 +123,26 @@ one's proposal and delta specs).
 document of its [workflow](#the-workflow-schema), a chapter each in its order (proposal, specifications,
 design, ... tasks). Works with no specs in `openspec/specs` yet. Written to `export\<project>-<name>-<date>.<ext>`.
 
+**For the client or technical** (asked last in the UI; `-ClientFriendly` on the command line): for the
+client, a scenario's steps become one sentence (`- **WHEN** x` / `- **THEN** y` → *When x, then y.*; also
+`KADA` / `TADA`, `WENN` / `DANN` ...), and the normative keywords in brackets (`MORA (MUST)`) go. The text
+itself stays as written. Technical: as written. Tasks are bullets either way (done ones with `✓`).
+
+**The language:** the workflow schema's `language:` (LazySpec's own key; the OpenSpec CLI ignores it):
+
+```yaml
+name: nava-spec-driven
+version: 1
+language: hr
+artifacts: ...
+```
+
+else `lazyspec.json` `export.language`, else `en`. In the export, everything LazySpec writes (the chapters
+*Proposal*, *Tasks* ..., *Requirement*, *Scenario*, the cover, the contents, the date) and OpenSpec's fixed
+English headings (`## ADDED Requirements`, `## Purpose`, `## Why` ...) are in that language; in the
+documents themselves and in the UI they stay English, as OpenSpec needs them. `en`, `hr` and `de` are in
+`tools/lazyspec/export-texts.json`: another language is another block there.
+
 | Format | Made with | Notes |
 |---|---|---|
 | PDF | Microsoft Edge (else Google Chrome), headless | page numbers and the title in the footer, links in the contents |
@@ -147,8 +168,26 @@ and opens the document when it's done.
 `specOrder` — the order of the Scope list (spec names); the rest follow (platform pages, then capabilities).
 It is the order of the exported chapters too.
 
+**In the project's OpenSpec config** (`openspec/config.yaml`, under `lazyspec:`; the OpenSpec CLI ignores
+it), the export's settings that belong to the specification; they win over `lazyspec.json`:
+
+```yaml
+lazyspec:
+  name: Nava – Backoffice i javni API      # on the cover, instead of the folder's name
+  client: Nava d.o.o.                      # also: subtitle, author, language
+  titles:                                  # a capability's (or spec's) title in the export
+    add-charter-reservation-payment:       # a group per change (its folder's name): for that change
+      reservation-booking: Rezervacija bookinga
+    fix-mmk-extras-import:
+      mmk-extras-import: Uvoz dodataka iz MMK-a
+    platform-overview: Pregled platforme   # straight under titles: for every change, and for specs
+```
+
+A capability's title: its change's group first, then the ones straight under `titles`, then its name.
+
 `export` — the cover page of an export, all optional: `title` (default: the project folder's name),
-`subtitle` (`Specification`), `client` (none), `author` (`Netmedia`).
+`subtitle` (`Specification`, in the export's language), `client` (none), `author` (`Netmedia`), `language`
+(when the workflow schema has none), `titles` (capability or spec name → its title in the export).
 
 ## The kit
 
@@ -158,6 +197,7 @@ It is the order of the exported chapters too.
 | `tools/lazyspec/lazyspec.exe` | Starts it (also in the project's root) |
 | `tools/lazyspec/kit.json` | Version and the kit's files |
 | `tools/lazyspec/LAZYSPEC.md` | This |
+| `tools/lazyspec/export-texts.json` | The export's texts and OpenSpec's headings per language (en, hr, de) |
 
 Put into a project and updated by `initintoproject.ps1` of the LazySpec repository
 (`.\initintoproject.ps1 <project> [-Update]`). Commit `tools/lazyspec/` and `lazyspec.exe`: everyone
