@@ -73,6 +73,14 @@ workflow (proposal, delta specs, design, tasks ...). Default file: export\<proje
 normative keywords in brackets ("(MUST)"). The export's language (its texts and OpenSpec's English
 headings): the workflow schema's "language:" (e.g. hr), else lazyspec.json export.language, else en.
 
+.PARAMETER RefreshDiagrams
+-Export: the diagrams ("lazyspec: diagrams:" in openspec/config.yaml, Figma links) the latest from Figma,
+through its REST API with a personal access token ("lazyspec: figmaToken:" in config.yaml, or FIGMA_TOKEN).
+With a token that is what an export does anyway; when a download fails, the saved image is used.
+
+.PARAMETER KeepDiagrams
+-Export: the saved diagrams only, even with a token: no Figma. A diagram without a saved image is left out.
+
 .PARAMETER Open
 -Export: opens the document when it's written.
 
@@ -125,6 +133,8 @@ param(
     [string]$Item,
     [switch]$IncludeChanges,
     [switch]$ClientFriendly,
+    [switch]$RefreshDiagrams,
+    [switch]$KeepDiagrams,
     [switch]$Open,
     [string]$Keys,
     [string]$Frames,
@@ -224,6 +234,7 @@ function Show-Usage {
     & $d '  PDF: Edge or Chrome. Word: Microsoft Word, else pandoc. The cover: lazyspec.json "export".'
     & $d '  -ClientFriendly: scenarios as sentences (When x, then y.). In the workflow schema''s language:'
     & $d '  "language: hr" in schema.yaml translates the export''s texts and OpenSpec''s English headings.'
+    & $d '  Diagrams: lazyspec: diagrams: in openspec\config.yaml (FigJam links; -RefreshDiagrams, FIGMA_TOKEN).'
     Write-Host ''
     & $b 'PLAIN lazyspec (WITHOUT .\)'
     & $g '  .\lazyspec.exe -Install Profile    # a function in your profile: the project''s own copy'
@@ -890,6 +901,7 @@ function Reload {
     if ($vc.Count -gt $script:changeIndex) { $keepChange = $vc[$script:changeIndex].Name }
     $script:workflows = @{}
     $script:projectSchema = $null
+    $script:projectConfig = $null
     $script:specs = @(Load-Specs)
     $script:changes = @(Load-Changes)
     $script:readCache = @{}
@@ -1075,6 +1087,7 @@ function ConvertTo-HtmlPre($Lines) {
 $stepWords = @('GIVEN', 'WHEN', 'THEN', 'AND', 'BUT', 'OR', 'AKO', 'ZADANO', 'KADA', 'TADA', 'I', 'TE', 'ALI', 'ILI', 'GEGEBEN', 'WENN', 'DANN', 'UND', 'ABER', 'ODER')
 $stepJoin = @('and', 'or', 'i', 'te', 'ili', 'und', 'oder')
 # A markdown document as HTML. $Shift: added to every heading's level (a document inside a chapter).
+$script:docSeq = 0
 function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
     $out = New-Object Text.StringBuilder
     $src = $Text.Replace("`r", '').Split("`n")
@@ -1085,6 +1098,27 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
     $code = $null
     $gap = $false
     $inScenario = $false
+    # The headings first (outside code), for their ids and the small contents: a section's requirements
+    # (## ADDED Requirements: a list of links), a requirement's scenarios (one line, comma-separated).
+    $script:docSeq++
+    $heads = New-Object Collections.ArrayList
+    $fence = $false
+    foreach ($l in $src) {
+        if ($l.Trim().StartsWith('```')) { $fence = -not $fence; continue }
+        if ($fence -or $l.TrimEnd() -notmatch '^(#{1,6})\s+(.*?)\s*#*$') { continue }
+        $kind = 'sub'; $txt = $Matches[2]; $lvl = $Matches[1].Length
+        if ($txt -match '^(Requirement|Zahtjev|Anforderung):\s*(.*)$') { $kind = 'req'; $txt = $Matches[2] }
+        elseif ($txt -match '^(Scenario|Scenarij|Szenario):\s*(.*)$') { $kind = 'scn'; $txt = $Matches[2] }
+        elseif ($lvl -le 2) { $kind = 'sec' }
+        [void]$heads.Add([pscustomobject]@{ Kind = $kind; Text = $txt; Id = "d$($script:docSeq)-$($heads.Count)"; Children = (New-Object Collections.ArrayList) })
+    }
+    $sec = $null; $req = $null
+    foreach ($hd in $heads) {
+        if ($hd.Kind -eq 'sec') { $sec = $hd; $req = $null }
+        elseif ($hd.Kind -eq 'req') { if ($sec) { [void]$sec.Children.Add($hd) }; $req = $hd }
+        elseif ($hd.Kind -eq 'scn') { if ($req) { [void]$req.Children.Add($hd) } }
+    }
+    $headIndex = 0
     # Client-friendly: a scenario's WHEN / THEN ... steps as one sentence ("When x, then y.").
     $steps = New-Object Collections.ArrayList
     $flushSteps = {
@@ -1150,17 +1184,30 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
             $level = [Math]::Min(6, $mdLevel + $Shift)
             $h = $Matches[2]
             if ($inScenario) { [void]$out.Append("</div>`n"); $inScenario = $false }
+            # Its id (and a bookmark for Word), from the first pass.
+            $hd = $null
+            if ($headIndex -lt $heads.Count) { $hd = $heads[$headIndex] }
+            $headIndex++
+            $id = ''; $mark = ''
+            if ($hd) { $id = " id=`"$($hd.Id)`""; $mark = "<a name=`"$($hd.Id)`"></a>" }
             # The classes make the levels clear whatever the document's depth: a section (## Purpose,
             # ## ADDED Requirements ...), a requirement, a scenario (its text in a block of its own), a subheading.
-            if ($h -match '^(Requirement|Zahtjev|Anforderung):\s*(.*)$') { [void]$out.Append("<h$level class=`"req`"><span class=`"tag`">$(Html (Get-ExportText 'requirement'))</span> $(ConvertTo-HtmlInline $Matches[2])</h$level>`n") }
+            if ($h -match '^(Requirement|Zahtjev|Anforderung):\s*(.*)$') {
+                [void]$out.Append("<h$level class=`"req`"$id>$mark<span class=`"tag`">$(Html (Get-ExportText 'requirement'))</span> $(ConvertTo-HtmlInline $Matches[2])</h$level>`n")
+                if ($hd -and $hd.Children.Count) {
+                    $links = @($hd.Children | ForEach-Object { "<a href=`"#$($_.Id)`">$(ConvertTo-HtmlInline $_.Text)</a>" }) -join ', '
+                    [void]$out.Append("<p class=`"toc-scn`"><span class=`"lbl`">$(Html (Get-ExportText 'scenarios')):</span> $links</p>`n")
+                }
+            }
             elseif ($h -match '^(Scenario|Scenarij|Szenario):\s*(.*)$') {
-                [void]$out.Append("<h$level class=`"scn`"><span class=`"tag`">$(Html (Get-ExportText 'scenario'))</span> $(ConvertTo-HtmlInline $Matches[2])</h$level>`n<div class=`"scenario`">`n")
+                [void]$out.Append("<h$level class=`"scn`"$id>$mark<span class=`"tag`">$(Html (Get-ExportText 'scenario'))</span> $(ConvertTo-HtmlInline $Matches[2])</h$level>`n<div class=`"scenario`">`n")
                 $inScenario = $true
             }
             else {
                 $cls = 'sub'
                 if ($mdLevel -le 2) { $cls = 'sec' }
-                [void]$out.Append("<h$level class=`"$cls`">$(ConvertTo-HtmlInline (Get-ExportHeading $h))</h$level>`n")
+                [void]$out.Append("<h$level class=`"$cls`"$id>$mark$(ConvertTo-HtmlInline (Get-ExportHeading $h))</h$level>`n")
+                if ($hd -and $hd.Children.Count) { [void]$out.Append((Get-TocHtml $hd.Children)) }
             }
             continue
         }
@@ -1211,7 +1258,8 @@ function Remove-DocTitle([string]$Text) { return [regex]::Replace($Text, '\A\s*#
 $script:projectConfig = $null
 function Get-ProjectConfig {
     if ($null -ne $script:projectConfig) { return $script:projectConfig }
-    $cfg = @{ Values = @{}; Titles = @{}; ChangeTitles = @{} }
+    # Maps: titles and diagrams, each with the entries for every change (All) and a group per change (Groups).
+    $cfg = @{ Values = @{}; Maps = @{ titles = @{ All = @{}; Groups = @{} }; diagrams = @{ All = @{}; Groups = @{} } } }
     $script:projectConfig = $cfg
     if (-not $hasRoot) { return $cfg }
     $in = $false; $keyIndent = -1; $sub = ''; $titleIndent = -1; $group = ''
@@ -1226,14 +1274,15 @@ function Get-ProjectConfig {
         $v = ''
         if ($Matches[2]) { $v = Unquote $Matches[2] }
         if ($indent -eq $keyIndent) { $sub = ''; $titleIndent = -1; $group = ''; if ($v) { $cfg.Values[$k] = $v } else { $sub = $k } }
-        elseif ($sub -eq 'titles') {
+        elseif ($cfg.Maps.ContainsKey($sub)) {
+            $map = $cfg.Maps[$sub]
             if ($titleIndent -lt 0) { $titleIndent = $indent }
-            # "name: title" for every change; "change:" then its own "name: title" lines, deeper.
+            # "name: value" for every change; "change:" then its own "name: value" lines, deeper.
             if ($indent -eq $titleIndent) {
                 $group = ''
-                if ($v) { $cfg.Titles[$k] = $v } else { $group = $k; $cfg.ChangeTitles[$k] = @{} }
+                if ($v) { $map.All[$k] = $v } else { $group = $k; $map.Groups[$k] = @{} }
             }
-            elseif ($group -and $v) { $cfg.ChangeTitles[$group][$k] = $v }
+            elseif ($group -and $v) { $map.Groups[$group][$k] = $v }
         }
     }
     return $cfg
@@ -1248,13 +1297,195 @@ function Get-ExportSetting([string]$Name, [string]$Default) {
 }
 # A capability's or spec's title in the export: "lazyspec: titles:" in config.yaml (the change's own group
 # first, then the ones for every change), else lazyspec.json export.titles.
+# A "titles:" or "diagrams:" entry: the change's group first, then the ones for every change.
+function Get-ConfigEntry([string]$Map, [string]$Name, [string]$Change) {
+    $m = (Get-ProjectConfig).Maps[$Map]
+    if ($Change -and $m.Groups[$Change] -and $m.Groups[$Change][$Name]) { return [string]$m.Groups[$Change][$Name] }
+    if ($m.All[$Name]) { return [string]$m.All[$Name] }
+    return ''
+}
 function Get-FriendlyTitle([string]$Name, [string]$Default, [string]$Change) {
-    $cfg = Get-ProjectConfig
-    if ($Change -and $cfg.ChangeTitles[$Change] -and $cfg.ChangeTitles[$Change][$Name]) { return [string]$cfg.ChangeTitles[$Change][$Name] }
-    $titles = $cfg.Titles
-    if ($titles[$Name]) { return [string]$titles[$Name] }
+    $t = Get-ConfigEntry 'titles' $Name $Change
+    if ($t) { return $t }
     if ($exportSettings -and $exportSettings.titles -and $exportSettings.titles.$Name) { return [string]$exportSettings.titles.$Name }
     return $Default
+}
+
+# --- diagrams: a FigJam (or Figma) section, or an image file, at the top of a chapter or a capability ------
+# "lazyspec: diagrams:" in config.yaml, as titles: a group per change ("change" there: the whole change's
+# diagram), entries straight under diagrams for every change and for specs. A Figma link is saved as PNG in
+# the change's diagrams\ folder (openspec\diagrams\ for specs), its white margins cut: commit it, and the
+# export works without Figma. Downloaded (again with -RefreshDiagrams) through the Figma REST API with a
+# personal access token in FIGMA_TOKEN.
+$script:diagramsRefresh = $false
+$script:diagramsOffline = $false
+$script:figmaRefused = $false
+$script:exportFormat = 'Pdf'
+$script:imageTool = $false
+function Initialize-ImageTool {
+    if ($script:imageTool) { return }
+    Add-Type -AssemblyName System.Drawing
+    $refs = @('System.Drawing')
+    if ($PSVersionTable.PSEdition -eq 'Core') { $refs = @('System.Drawing.Common', 'System.Drawing.Primitives', 'System.Runtime.InteropServices') }
+    Add-Type -ReferencedAssemblies $refs -TypeDefinition @'
+using System;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
+using System.Runtime.InteropServices;
+public static class LazySpecImage {
+    // Cuts an image's margins off (transparent, white, or light grey without colour: a FigJam section's
+    // background and its frame), keeping a border; transparency becomes white.
+    public static void Trim(string path, int border) {
+        Bitmap src;
+        using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read)) using (Image img = Image.FromStream(fs)) { src = new Bitmap(img); }
+        using (src) {
+            int w = src.Width, h = src.Height;
+            BitmapData data = src.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            int[] px = new int[w * h];
+            Marshal.Copy(data.Scan0, px, 0, px.Length);
+            src.UnlockBits(data);
+            int minX = w, minY = h, maxX = -1, maxY = -1;
+            for (int y = 0; y < h; y++) {
+                int row = y * w;
+                for (int x = 0; x < w; x++) {
+                    int c = px[row + x];
+                    int a = (c >> 24) & 255, r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
+                    int hi = Math.Max(r, Math.Max(g, b)), lo = Math.Min(r, Math.Min(g, b));
+                    if (a < 16 || (lo > 215 && hi - lo < 12)) { continue; }
+                    if (x < minX) { minX = x; }
+                    if (x > maxX) { maxX = x; }
+                    if (y < minY) { minY = y; }
+                    if (y > maxY) { maxY = y; }
+                }
+            }
+            if (maxX < 0) { return; }
+            int x0 = Math.Max(0, minX - border), y0 = Math.Max(0, minY - border);
+            int x1 = Math.Min(w - 1, maxX + border), y1 = Math.Min(h - 1, maxY + border);
+            using (Bitmap dst = new Bitmap(x1 - x0 + 1, y1 - y0 + 1, PixelFormat.Format24bppRgb)) {
+                using (Graphics gr = Graphics.FromImage(dst)) {
+                    gr.Clear(Color.White);
+                    gr.DrawImage(src, new Rectangle(0, 0, dst.Width, dst.Height), new Rectangle(x0, y0, dst.Width, dst.Height), GraphicsUnit.Pixel);
+                }
+                dst.Save(path, ImageFormat.Png);
+            }
+        }
+    }
+    public static int[] Size(string path) {
+        using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read)) using (Image img = Image.FromStream(fs, false, false)) { return new int[] { img.Width, img.Height }; }
+    }
+}
+'@
+    $script:imageTool = $true
+}
+# A Figma link's file and node (".../board/<file>/<name>?node-id=35-2839").
+function Get-FigmaNode([string]$Url) {
+    $m = [regex]::Match($Url, 'figma\.com/(?:board|design|file|proto|slides)/([0-9A-Za-z]+)[^?]*\?(?:[^#]*&)?node-id=(\d+)(?:-|:|%3A)(\d+)')
+    if (-not $m.Success) { return $null }
+    return [pscustomobject]@{ File = $m.Groups[1].Value; Node = "$($m.Groups[2].Value):$($m.Groups[3].Value)"; Slug = "$($m.Groups[2].Value)-$($m.Groups[3].Value)" }
+}
+# The Figma personal access token: "lazyspec: figmaToken:" in config.yaml (in git: everyone with the
+# repository has it), else FIGMA_TOKEN (the process's, else the user's).
+function Get-FigmaToken {
+    $t = (Get-ProjectConfig).Values['figmaToken']
+    if (-not $t) { $t = $env:FIGMA_TOKEN }
+    if (-not $t) { $t = [Environment]::GetEnvironmentVariable('FIGMA_TOKEN', 'User') }
+    return [string]$t
+}
+# Any diagrams in the project's config?
+function Test-Diagrams {
+    $m = (Get-ProjectConfig).Maps['diagrams']
+    return [bool]($m.All.Count -or @($m.Groups.Values | Where-Object { $_.Count }).Count)
+}
+function Save-FigmaImage($Node, [string]$Target) {
+    $token = Get-FigmaToken
+    if (-not $token) { throw 'no Figma token (lazyspec: figmaToken: in openspec/config.yaml, or FIGMA_TOKEN) to download it' }
+    if ($script:figmaRefused) { throw 'Figma refused the token' }
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
+    $api = "https://api.figma.com/v1/images/$($Node.File)?ids=$([Uri]::EscapeDataString($Node.Node))&format=png&scale=2"
+    try { $r = Invoke-RestMethod -Uri $api -Headers @{ 'X-Figma-Token' = $token } -UseBasicParsing }
+    catch {
+        # 401 / 403: the token is wrong, expired or can't read the file: not again for the other diagrams.
+        if ("$($_.Exception.Message)" -match '\((401|403)\)') { $script:figmaRefused = $true; throw "Figma refused the token ($($Matches[1])): check it in Figma (Settings, Security)" }
+        throw
+    }
+    $url = $r.images.($Node.Node)
+    if (-not $url) { throw "Figma rendered no image for node $($Node.Node) $($r.err)" }
+    [void](New-Item -ItemType Directory -Force -Path (Split-Path $Target))
+    # Next to it first: the saved one stays when the download or the cut fails.
+    $part = "$Target.download"
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $part -UseBasicParsing
+        try { Initialize-ImageTool; [LazySpecImage]::Trim($part, 24) } catch { Write-Host "  ! $(Split-Path $Target -Leaf): margins not cut ($($_.Exception.Message))" }
+        Move-Item -LiteralPath $part -Destination $Target -Force
+    }
+    finally { if (Test-Path -LiteralPath $part) { Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue } }
+}
+# A diagram's image file, or '' (with a note in the output why not).
+function Get-Diagram([string]$Key, [string]$Change, [string]$BaseDir) {
+    $v = Get-ConfigEntry 'diagrams' $Key $Change
+    if (-not $v) { return '' }
+    $node = Get-FigmaNode $v
+    if (-not $node) {
+        # An image file: relative to the change's folder, else to the project's root.
+        foreach ($p in @((Join-Path $BaseDir $v), (Join-Path $Root $v), $v)) { if (Test-Path -LiteralPath $p -PathType Leaf -ErrorAction SilentlyContinue) { return (Resolve-Path -LiteralPath $p).Path } }
+        Write-Host "  ! diagram $($Key): $v not found"
+        return ''
+    }
+    $file = Join-Path (Join-Path $BaseDir 'diagrams') "$Key.$($node.Slug).png"
+    if ((Test-Path -LiteralPath $file) -and -not $script:diagramsRefresh) { return $file }
+    # The saved ones only (-KeepDiagrams): no Figma; none saved, no diagram.
+    if ($script:diagramsOffline) {
+        if (Test-Path -LiteralPath $file) { return $file }
+        Write-Host "  ! diagram $($Key): none saved yet"
+        return ''
+    }
+    try { Save-FigmaImage $node $file; Write-Host "  $($g.caret) diagram $($Key): downloaded from Figma ($($node.Node))"; return $file }
+    catch {
+        if (Test-Path -LiteralPath $file) {
+            # After a refused token once, the saved ones without a word each.
+            if ($script:figmaRefused -and $_.Exception.Message -eq 'Figma refused the token') { return $file }
+            Write-Host "  ! diagram $($Key): not refreshed ($($_.Exception.Message)); the saved one is used"; return $file
+        }
+        Write-Host "  ! diagram $($Key): $($_.Exception.Message)"
+        return ''
+    }
+}
+# A diagram in the document, the page's width at most: Word gets the file (and embeds it), the others the image itself.
+function Get-DiagramHtml([string]$Path, [string]$Caption) {
+    if (-not $Path) { return '' }
+    $attr = ''
+    try {
+        Initialize-ImageTool
+        $size = [LazySpecImage]::Size($Path)
+        $k = [Math]::Min(1.0, [Math]::Min(640.0 / $size[0], 860.0 / $size[1]))
+        $attr = " width=`"$([int]($size[0] * $k))`" height=`"$([int]($size[1] * $k))`""
+    } catch { }
+    if ($script:exportFormat -eq 'Word') { $src = ([Uri]$Path).AbsoluteUri }
+    else {
+        $mime = @{ '.png' = 'image/png'; '.jpg' = 'image/jpeg'; '.jpeg' = 'image/jpeg'; '.gif' = 'image/gif'; '.svg' = 'image/svg+xml'; '.webp' = 'image/webp' }[[IO.Path]::GetExtension($Path).ToLower()]
+        if (-not $mime) { $mime = 'image/png' }
+        $src = "data:$mime;base64," + [Convert]::ToBase64String([IO.File]::ReadAllBytes($Path))
+    }
+    return "<div class=`"diagram`"><img src=`"$src`"$attr alt=`"$(Html $Caption)`"><p class=`"caption`">$(Html "$(Get-ExportText 'diagram'): $Caption")</p></div>`n"
+}
+# A small contents: links, one a line.
+function Get-TocHtml($Entries) {
+    if (-not @($Entries).Count) { return '' }
+    return '<ul class="toc-list">' + (-join @($Entries | ForEach-Object { "<li><a href=`"#$($_.Id)`">$(ConvertTo-HtmlInline $_.Text)</a></li>" })) + "</ul>`n"
+}
+# A change's capabilities: a small contents, then each one: its title, its diagram, its delta spec.
+function Get-CapabilitiesHtml($Change) {
+    $sb = New-Object Text.StringBuilder
+    $caps = @($Change.Caps | ForEach-Object {
+            [pscustomobject]@{ Cap = $_; Id = "cap-$($Change.Name)-$($_.Name)"; Text = (Get-FriendlyTitle $_.Name $_.Name $Change.Name) } })
+    [void]$sb.Append((Get-TocHtml $caps))
+    foreach ($c in $caps) {
+        [void]$sb.Append("<h2 class=`"cap`" id=`"$($c.Id)`"><a name=`"$($c.Id)`"></a>$(Html (Get-ExportText 'capability')): $(Html $c.Text)</h2>`n")
+        [void]$sb.Append((Get-DiagramHtml (Get-Diagram $c.Cap.Name $Change.Name $Change.Dir) $c.Text))
+        [void]$sb.Append((ConvertTo-HtmlBody (Remove-DocTitle (Read-Text $c.Cap.Path)) 1))
+    }
+    return $sb.ToString()
 }
 # The export's language: the workflow schema's "language:" (LazySpec's own key), else lazyspec.json
 # export.language, else en. Its texts and OpenSpec's fixed English headings: export-texts.json (UTF-8).
@@ -1308,6 +1539,7 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
     Load-ExportTexts
     $script:exportLang = Get-ExportLanguage $one
     $script:exportFriendly = $Friendly
+    $script:exportFormat = $Format
     $title = Get-ExportSetting 'title' $projectName
     $subtitle = Get-ExportSetting 'subtitle' (Get-ExportText 'specification')
     $client = Get-ExportSetting 'client' ''
@@ -1330,10 +1562,9 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
                 $sb = New-Object Text.StringBuilder
                 if ($d.IsSpecs) {
                     if (-not $one.Caps.Count) { continue }
-                    foreach ($cap in $one.Caps) {
-                        [void]$sb.Append("<h2 class=`"cap`">$(Html (Get-ExportText 'capability')): $(Html (Get-FriendlyTitle $cap.Name $cap.Name $one.Name))</h2>`n")
-                        [void]$sb.Append((ConvertTo-HtmlBody (Remove-DocTitle (Read-Text $cap.Path)) 1))
-                    }
+                    # The whole change's diagram first, then its capabilities.
+                    [void]$sb.Append((Get-DiagramHtml (Get-Diagram 'change' $one.Name $one.Dir) (Get-ItemTitle $one)))
+                    [void]$sb.Append((Get-CapabilitiesHtml $one))
                 }
                 else {
                     if (-not $d.Files.Count) { continue }
@@ -1359,16 +1590,16 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
         $name = $s.Title
         if (-not $name) { $name = Get-ArtifactTitle $s.Short }
         $name = Get-FriendlyTitle $s.Name $name
-        $chapters += [pscustomobject]@{ Id = "spec-$($s.Name)"; Title = "$n. $name"; Part = 'specs'; Body = (ConvertTo-HtmlBody (Remove-DocTitle $s.Text)) }
+        # A spec's diagram ("diagrams:" straight under it, by the spec's name; saved in openspec\diagrams\).
+        $body = (Get-DiagramHtml (Get-Diagram $s.Name '' $osDir) $name) + (ConvertTo-HtmlBody (Remove-DocTitle $s.Text))
+        $chapters += [pscustomobject]@{ Id = "spec-$($s.Name)"; Title = "$n. $name"; Part = 'specs'; Body = $body }
     }
     foreach ($c in $changes) {
         $sb = New-Object Text.StringBuilder
+        [void]$sb.Append((Get-DiagramHtml (Get-Diagram 'change' $c.Name $c.Dir) (Get-ItemTitle $c)))
         $proposal = Join-Path $c.Dir 'proposal.md'
         if (Test-Path -LiteralPath $proposal) { [void]$sb.Append((ConvertTo-HtmlBody (Remove-DocTitle (Read-Text $proposal)))) }
-        foreach ($cap in $c.Caps) {
-            [void]$sb.Append("<h2 class=`"cap`">$(Html (Get-ExportText 'capability')): $(Html (Get-FriendlyTitle $cap.Name $cap.Name $c.Name))</h2>`n")
-            [void]$sb.Append((ConvertTo-HtmlBody (Remove-DocTitle (Read-Text $cap.Path)) 1))
-        }
+        [void]$sb.Append((Get-CapabilitiesHtml $c))
         $chapters += [pscustomobject]@{ Id = "change-$($c.Name)"; Title = (Get-ItemTitle $c); Part = 'changes'; Body = $sb.ToString() }
     }
 
@@ -1411,6 +1642,13 @@ li.step { list-style: none; margin-left: -12pt; }
 li.task-done { color: #52606d; }
 li.task-done .done { color: #2e8b57; font-weight: 600; }
 p.steps { margin: 3pt 0 8pt; }
+.diagram { margin: 6pt 0 16pt; text-align: center; page-break-inside: avoid; break-inside: avoid; }
+.diagram img { max-width: 100%; max-height: 230mm; height: auto; border: 1px solid #e1e4e8; }
+.diagram .caption { font-size: 8.5pt; color: #8a96a3; margin: 3pt 0 0; }
+ul.toc-list { margin: 4pt 0 14pt; padding-left: 16pt; }
+ul.toc-list li { font-size: 10pt; margin: 1.5pt 0; }
+p.toc-scn { font-size: 9pt; color: #52606d; margin: 2pt 0 8pt; }
+p.toc-scn .lbl { font-weight: 600; }
 table { border-collapse: collapse; width: 100%; margin: 6pt 0 12pt; font-size: 9pt; }
 th, td { border: 1px solid #c9d3dc; padding: 3pt 6pt; margin: 0; text-align: left; vertical-align: top; }
 th { background: #eaf1f7; font-weight: 600; }
@@ -1518,6 +1756,8 @@ function Export-Word([string]$HtmlPath, [string]$Target) {
             $word.DisplayAlerts = 0
             $doc = $word.Documents.Open($HtmlPath, $false, $true, $false)
             $doc.ActiveWindow.View.Type = 3                     # print layout, not web layout
+            # The diagrams come in as links to the files: into the document with them.
+            foreach ($shape in @($doc.InlineShapes)) { try { if ($shape.LinkFormat) { $shape.LinkFormat.SavePictureWithDocument = $true; $shape.LinkFormat.BreakLink() } } catch { } }
             $doc.PageSetup.PaperSize = 7                        # A4
             $doc.PageSetup.TopMargin = 56.7; $doc.PageSetup.BottomMargin = 62.4
             $doc.PageSetup.LeftMargin = 51; $doc.PageSetup.RightMargin = 51
@@ -1593,6 +1833,10 @@ function Invoke-Export([string]$Format, [string]$Target, [bool]$WithChanges, [bo
 if ($Export) {
     # Shown in LazySpec's run screen too (it reads this as UTF-8).
     try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+    # The diagrams: the latest from Figma when there is a token (the saved ones when that fails), unless
+    # -KeepDiagrams; -RefreshDiagrams: the latest in any case (and says so when there is no token).
+    $script:diagramsRefresh = $RefreshDiagrams.IsPresent -or (-not $KeepDiagrams.IsPresent -and [bool](Get-FigmaToken))
+    $script:diagramsOffline = $KeepDiagrams.IsPresent -and -not $RefreshDiagrams.IsPresent
     try { Invoke-Export $Export $Out $IncludeChanges.IsPresent $Open.IsPresent $Item $ClientFriendly.IsPresent; exit 0 }
     catch { Write-Host "$($g.cross) Export failed: $($_.Exception.Message)" -ForegroundColor Red; exit 1 }
 }
@@ -2081,11 +2325,12 @@ function Start-Cli([string]$Label, [string[]]$CliArgs) {
     } else { Start-RunProcess $tool $argLine }
 }
 # Export in the run screen: this script again, in a PowerShell of its own (-Export), its output shown here.
-function Start-Export([string]$Format, [bool]$WithChanges, [string]$ItemName, [bool]$Friendly) {
+function Start-Export([string]$Format, [bool]$WithChanges, [string]$ItemName, [bool]$Friendly, [string]$Diagrams) {
     $cliArgs = @('-Root', $Root, '-Export', $Format)
     if ($ItemName) { $cliArgs += @('-Item', $ItemName) }
     if ($WithChanges) { $cliArgs += '-IncludeChanges' }
     if ($Friendly) { $cliArgs += '-ClientFriendly' }
+    if ($Diagrams -eq 'refresh') { $cliArgs += '-RefreshDiagrams' } elseif ($Diagrams -eq 'keep') { $cliArgs += '-KeepDiagrams' }
     if (-not $harness) { $cliArgs += '-Open' }
     $label = "Export $Format"
     if ($ItemName) { $label += " ($ItemName)" }
@@ -2412,7 +2657,17 @@ function Start-ExportAudience([string]$Format, [bool]$WithChanges, [string]$Item
     $script:choose = [pscustomobject]@{ Text = "$($Format.ToUpper()) for:"; Options = @('The client (scenarios as sentences)', 'Technical (as written)'); Short = @('client', 'technical'); Keys = @('c', 't'); Choice = 0
         Format = $Format; WithChanges = $WithChanges; Item = $ItemName; Do = {
             param($k, $c)
-            Start-Export $c.Format $c.WithChanges $c.Item ($k -eq 0)
+            Start-ExportDiagrams $c.Format $c.WithChanges $c.Item ($k -eq 0)
+        } }
+}
+# With a Figma token and diagrams in the config: the latest from Figma, or the saved ones? Else straight on.
+function Start-ExportDiagrams([string]$Format, [bool]$WithChanges, [string]$ItemName, [bool]$Friendly) {
+    $script:projectConfig = $null
+    if (-not ((Test-Diagrams) -and (Get-FigmaToken))) { Start-Export $Format $WithChanges $ItemName $Friendly 'keep'; return }
+    $script:choose = [pscustomobject]@{ Text = 'Diagrams:'; Options = @('Download the latest from Figma', 'Use the saved ones'); Short = @('download', 'saved'); Keys = @('d', 's'); Choice = 0
+        Format = $Format; WithChanges = $WithChanges; Item = $ItemName; Friendly = $Friendly; Do = {
+            param($k, $c)
+            Start-Export $c.Format $c.WithChanges $c.Item $c.Friendly (@('refresh', 'keep')[$k])
         } }
 }
 function On-Key($K) {

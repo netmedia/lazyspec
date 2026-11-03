@@ -7,7 +7,7 @@
       "contents": "Contents", "client": "Client", "date": "Date", "preparedBy": "Prepared by", "scope": "Scope",
       "specification": "Specification", "plannedChanges": "Planned changes",
       "nChapters": "chapters", "nRequirements": "requirements", "nChanges": "planned changes",
-      "nDocuments": "documents", "nCapabilities": "capabilities", "nTasks": "tasks", "workflow": "workflow",
+      "nDocuments": "documents", "nCapabilities": "capabilities", "nTasks": "tasks", "workflow": "workflow", "diagram": "Diagram", "scenarios": "Scenarios",
       "dateFormat": "yyyy-MM-dd"
     },
     "headings": {}
@@ -19,7 +19,7 @@
       "contents": "Sadržaj", "client": "Klijent", "date": "Datum", "preparedBy": "Pripremio", "scope": "Opseg",
       "specification": "Specifikacija", "plannedChanges": "Planirane promjene",
       "nChapters": "poglavlja", "nRequirements": "zahtjeva", "nChanges": "planiranih promjena",
-      "nDocuments": "dokumenata", "nCapabilities": "funkcionalnosti", "nTasks": "zadataka", "workflow": "tijek rada",
+      "nDocuments": "dokumenata", "nCapabilities": "funkcionalnosti", "nTasks": "zadataka", "workflow": "tijek rada", "diagram": "Dijagram", "scenarios": "Scenariji",
       "dateFormat": "d. M. yyyy."
     },
     "headings": {
@@ -40,7 +40,7 @@
       "contents": "Inhalt", "client": "Kunde", "date": "Datum", "preparedBy": "Erstellt von", "scope": "Umfang",
       "specification": "Spezifikation", "plannedChanges": "Geplante Änderungen",
       "nChapters": "Kapitel", "nRequirements": "Anforderungen", "nChanges": "geplante Änderungen",
-      "nDocuments": "Dokumente", "nCapabilities": "Fähigkeiten", "nTasks": "Aufgaben", "workflow": "Workflow",
+      "nDocuments": "Dokumente", "nCapabilities": "Fähigkeiten", "nTasks": "Aufgaben", "workflow": "Workflow", "diagram": "Diagramm", "scenarios": "Szenarien",
       "dateFormat": "dd.MM.yyyy"
     },
     "headings": {
