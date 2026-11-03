@@ -2,7 +2,7 @@
 
 #  +==========================================================================+
 #  |   LazySpec  -  initintoproject.ps1                                       |
-#  |   Puts LazySpec into a project, or updates it there                      |
+#  |   Puts LazySpec into a project, updates it there, or removes it          |
 #  |                                                                          |
 #  |   Author  : Netmedia                                                     |
 #  |   Web     : https://netmedia.agency                                      |
@@ -12,7 +12,8 @@
 
 <#
 .SYNOPSIS
-    Puts LazySpec into a project (tools\lazyspec\ and lazyspec.exe in its root), or updates the kit there.
+    Puts LazySpec into a project (tools\lazyspec\ and lazyspec.exe in its root), updates the kit there, or
+    removes it (-Remove: LazySpec installed on the PC runs the project instead).
 
 .AUTHOR
     Netmedia  |  https://netmedia.agency  |  netmedia@netmedia.hr
@@ -29,6 +30,12 @@
     Update (-Update):
       Replaces the kit's files in a project that has LazySpec.
 
+    Remove (-Remove):
+      Takes the kit out of the project (tools\lazyspec\ and lazyspec.exe in its root) for LazySpec
+      installed on the PC (install.exe in this repository). The project's settings move from
+      tools\lazyspec\lazyspec.json to lazyspec.json in its root, where installed LazySpec reads them.
+      openspec\ is never touched.
+
 .PARAMETER Target
     (Required) The project's root (the folder with openspec\, or where openspec init will make it),
     e.g. D:\Development\Netmedia\MyProject.
@@ -36,8 +43,11 @@
 .PARAMETER Update
     Update the kit's files of a project that has LazySpec.
 
+.PARAMETER Remove
+    Take LazySpec out of the project (its settings stay, in lazyspec.json in the project's root).
+
 .PARAMETER DryRun
-    Show what would be copied, change nothing.
+    Show what would be copied or removed, change nothing.
 
 .PARAMETER Help
     Display the usage guide and exit.
@@ -50,6 +60,10 @@
     # A project's kit up to date with this repository
     .\initintoproject.ps1 D:\Development\Netmedia\MyProject -Update
 
+.EXAMPLE
+    # The project without its own copy: LazySpec installed on the PC runs it
+    .\initintoproject.ps1 D:\Development\Netmedia\MyProject -Remove
+
 .NOTES
     LazySpec is a Netmedia product: https://netmedia.agency, netmedia@netmedia.hr,
     https://github.com/netmedia/lazyspec. Documentation: tools\lazyspec\LAZYSPEC.md.
@@ -61,6 +75,7 @@ param(
     [Alias('h')]
     [switch]$Help,
     [switch]$Update,
+    [switch]$Remove,
     [switch]$DryRun
 )
 
@@ -101,7 +116,7 @@ function Show-Author {
     Row ''
     Row "$esc[1m$title$esc[0m" $title 'Cyan'
     Row 'A project''s OpenSpec specs and changes in one screen' -color 'White'
-    Row 'puts the kit into a project, or updates it there' -color 'White'
+    Row 'puts the kit into a project, updates it, or removes it' -color 'White'
     Row ''
     Row "by Netmedia  |  LazySpec $($manifest.version)" -color 'DarkGray'
     Row 'https://netmedia.agency  |  netmedia@netmedia.hr' -color 'DarkGray'
@@ -117,7 +132,7 @@ function Show-Usage {
     $g = { param($t) Write-Host "  $t" -ForegroundColor Green }
     $y = { param($t) Write-Host "  $t" -ForegroundColor Yellow }
     & $b 'USAGE'
-    & $g '  .\initintoproject.ps1  <Target>  [-Update]  [-DryRun]'
+    & $g '  .\initintoproject.ps1  <Target>  [-Update | -Remove]  [-DryRun]'
     Write-Host ''
     & $b 'ARGUMENTS'
     & $y '  <Target>  (required)'
@@ -127,8 +142,11 @@ function Show-Usage {
     & $b 'OPTIONS'
     & $y '  -Update'
     & $d '    The project has LazySpec: replace the kit''s files (kit.json lists them).'
+    & $y '  -Remove'
+    & $d '    Take the kit out of the project (tools\lazyspec\, lazyspec.exe): LazySpec installed on'
+    & $d '    the PC (install.exe) runs it. Its settings move to lazyspec.json in the project''s root.'
     & $y '  -DryRun'
-    & $d '    Show what would be copied; change nothing.'
+    & $d '    Show what would be copied or removed; change nothing.'
     & $y '  -Help  (-h)'
     & $d '    Show this usage guide and exit.'
     Write-Host ''
@@ -138,6 +156,9 @@ function Show-Usage {
     Write-Host ''
     & $g '  # A project''s kit up to date with this repository'
     & $g '  .\initintoproject.ps1  D:\Development\Netmedia\MyProject  -Update'
+    Write-Host ''
+    & $g '  # The project without its own copy (LazySpec installed on the PC instead)'
+    & $g '  .\initintoproject.ps1  D:\Development\Netmedia\MyProject  -Remove'
     Write-Host ''
     & $b 'THEN, FROM THE PROJECT''S ROOT'
     & $d '  1. openspec init                 (once, if the project has no openspec\ yet)'
@@ -165,6 +186,76 @@ $Target = [IO.Path]::GetFullPath($Target).TrimEnd('\', '/')
 if ((Split-Path $Target -Leaf) -ieq 'lazyspec' -and (Split-Path (Split-Path $Target -Parent) -Leaf) -ieq 'tools') { $Target = Split-Path (Split-Path $Target -Parent) -Parent }
 $dest = Join-Path $Target 'tools\lazyspec'
 $has = Test-Path (Join-Path $dest 'lazyspec.ps1')
+if ($Update -and $Remove) { Write-Err '-Update or -Remove, not both.'; exit 1 }
+
+# --- -Remove: the kit out of the project ----------------------------------------------------------------
+if ($Remove) {
+    if (-not $has -and -not (Test-Path (Join-Path $Target 'lazyspec.exe'))) { Write-Err "$Target has no LazySpec to remove."; exit 1 }
+    if ($DryRun) { Write-Host "`n  == DRY RUN - nothing is removed ==" -ForegroundColor Cyan }
+    Write-Banner '[1/2] LazySpec -> out of the project'
+    Write-Info "project: $Target"
+    Write-Host ''
+    $failed = 0
+    # The project's settings: to its root, where LazySpec installed on the PC reads them.
+    foreach ($f in @($manifest.projectFiles)) {
+        if (-not $f) { continue }
+        $from = Join-Path $dest $f
+        $to = Join-Path $Target $f
+        if (-not (Test-Path $from)) { continue }
+        if (Test-Path $to) {
+            if ((Get-FileHash $from).Hash -eq (Get-FileHash $to).Hash) {
+                if ($DryRun) { Write-Skip "would remove tools\lazyspec\$f (the same as $f in the root)"; continue }
+                Remove-Item -LiteralPath $from -Force; Write-OK "tools\lazyspec\$f removed (the same as $f in the root)"; continue
+            }
+            Write-Warn "tools\lazyspec\$f kept: the project's root has a different $f (merge them, then delete it)"
+            $failed++
+            continue
+        }
+        if ($DryRun) { Write-Skip "would move tools\lazyspec\$f to $f (the project's root)"; continue }
+        Move-Item -LiteralPath $from -Destination $to
+        Write-OK "tools\lazyspec\$f -> $f (the project's root)"
+    }
+    # The kit's files (kit.json lists them), and lazyspec.exe in the root.
+    $targets = @($manifest.files | Where-Object { $_ } | ForEach-Object { [pscustomobject]@{ Path = (Join-Path $dest $_); Name = "tools\lazyspec\$_" } })
+    $targets += @($manifest.rootFiles | Where-Object { $_ } | ForEach-Object { [pscustomobject]@{ Path = (Join-Path $Target $_); Name = "$_ in the project's root" } })
+    foreach ($t in $targets) {
+        if (-not (Test-Path $t.Path)) { continue }
+        if ($DryRun) { Write-Skip "would remove $($t.Name)"; continue }
+        try { Remove-Item -LiteralPath $t.Path -Recurse -Force; Write-OK "$($t.Name) removed" }
+        catch { Write-Warn "$($t.Name): $($_.Exception.Message) (is it running? close it and run this again)"; $failed++ }
+    }
+    # The folders, when nothing else is in them.
+    foreach ($d in @($dest, (Join-Path $Target 'tools'))) {
+        if (-not (Test-Path $d)) { continue }
+        $rel = $d.Substring($Target.Length + 1)
+        if ($DryRun) { Write-Skip "would remove $rel\ when it's empty"; continue }
+        $left = @(Get-ChildItem -LiteralPath $d -Force)
+        if ($left.Count) { if ($d -eq $dest) { Write-Warn "$rel\ kept: it has files the kit doesn't list ($(@($left | ForEach-Object { $_.Name }) -join ', '))" }; continue }
+        Remove-Item -LiteralPath $d -Force
+        Write-OK "$rel\ removed (empty)"
+    }
+
+    Write-Banner '[2/2] Next'
+    if ($DryRun) { Write-Info 'Run it again without -DryRun to remove.'; exit 0 }
+    if ($failed) { Write-Warn "Done, with $failed thing(s) left (above)." } else { Write-OK "LazySpec is out of $Target." }
+    # Installed on this PC? Else lazyspec doesn't start in the project any more.
+    $docs = [Environment]::GetFolderPath('MyDocuments')
+    $installed = Test-Path (Join-Path $env:LOCALAPPDATA 'Programs\LazySpec\lazyspec.exe')
+    foreach ($pp in @((Join-Path $docs 'WindowsPowerShell\profile.ps1'), (Join-Path $docs 'PowerShell\profile.ps1'))) {
+        if ((Test-Path $pp) -and (Select-String -LiteralPath $pp -SimpleMatch '# >>> LazySpec (Netmedia) >>>' -Quiet)) { $installed = $true }
+    }
+    Write-Host ''
+    if ($installed) { Write-Host '  In the project, in a new terminal:  lazyspec' -ForegroundColor Green }
+    else {
+        Write-Warn 'LazySpec isn''t installed on this PC: install it to run the project now.'
+        Write-Host "    $(Join-Path $PSScriptRoot 'install.exe') Profile      (or Global, Both)" -ForegroundColor Green
+    }
+    Write-Host ''
+    Write-Host '  Commit the removal (tools\lazyspec\, lazyspec.exe, the moved lazyspec.json): the team then' -ForegroundColor DarkGray
+    Write-Host '  uses LazySpec installed on their PCs too (install.exe in the LazySpec repository).' -ForegroundColor DarkGray
+    Write-Host ''
+    exit 0
+}
 if ($has -and -not $Update) { Write-Err "$Target has LazySpec already: -Update replaces the kit's files there."; exit 1 }
 if (-not $has -and $Update) { Write-Err "$Target has no LazySpec to update: leave -Update out to put it there."; exit 1 }
 
