@@ -185,6 +185,42 @@ lazyspec:
 
 A capability's title: its change's group first, then the ones straight under `titles`, then its name.
 
+**Diagrams** (`diagrams:`, grouped as `titles`): a FigJam (or Figma) section, or an image file, at the top
+of what it belongs to. `change` in a change's group: the whole change's diagram, at the top of its
+specifications; a capability's: at the top of the capability, before its purpose; straight under
+`diagrams`, by a spec's name: at the top of that spec's chapter.
+
+```yaml
+lazyspec:
+  diagrams:
+    add-charter-reservation-payment:
+      change: https://www.figma.com/board/<file>/<name>?node-id=18-350      # FigJam: Copy link to selection
+      reservation-availability: https://www.figma.com/board/<file>/<name>?node-id=35-2839
+      reservation-booking: diagrams/booking.png                               # or an image, in the change's folder
+```
+
+A Figma link is saved as a PNG in the change's `diagrams\` folder (`openspec\diagrams\` for specs), as
+`<name>.<node>.png`, its margins cut (a FigJam section's background and frame): commit it, and the export
+works without Figma, for everyone. In PDF and HTML the images are inside the document; Word embeds them too.
+
+**Every export** (PDF, Word, HTML; the UI and the command line), for each diagram:
+
+- with a Figma token: the latest from Figma; when that fails, the saved image (a refused token is tried once);
+- without one: the saved image;
+- no saved image: no diagram (the output says so).
+
+The token: a Figma personal access token (Figma: Settings, Security, Personal access tokens; read access to
+file content is enough, give it an expiry), `figmaToken:` under `lazyspec:` in `openspec/config.yaml`, else
+`FIGMA_TOKEN` (`[Environment]::SetEnvironmentVariable('FIGMA_TOKEN', '<token>', 'User')`). config.yaml is in
+git: everyone with the repository can use that token; `FIGMA_TOKEN` keeps it on your PC.
+
+With a token and diagrams, the UI asks last: the latest from Figma (`d`), or the saved ones (`s`). The
+command line: `-KeepDiagrams` the saved ones only (no Figma), `-RefreshDiagrams` the latest in any case.
+
+**Small contents** in the export: at the top of the specifications, the capabilities; under a section
+with requirements (*Novi zahtjevi* ...), its requirements; under a requirement, its scenarios on one line,
+comma-separated. All of them links within the document (in PDF and Word too).
+
 `export` — the cover page of an export, all optional: `title` (default: the project folder's name),
 `subtitle` (`Specification`, in the export's language), `client` (none), `author` (`Netmedia`), `language`
 (when the workflow schema has none), `titles` (capability or spec name → its title in the export).
