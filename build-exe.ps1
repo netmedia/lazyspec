@@ -2,7 +2,7 @@
 
 #  +==========================================================================+
 #  |   LazySpec  -  build-exe.ps1                                             |
-#  |   Builds lazyspec.exe and initintoproject.exe (launchers of the .ps1)    |
+#  |   Builds lazyspec.exe, initintoproject.exe, install.exe (launchers)      |
 #  |                                                                          |
 #  |   Author  : Netmedia                                                     |
 #  |   Web     : https://netmedia.agency                                      |
@@ -12,7 +12,7 @@
 
 <#
 .SYNOPSIS
-    Builds lazyspec.exe and initintoproject.exe: launchers of the .ps1 files of the same name.
+    Builds lazyspec.exe, initintoproject.exe and install.exe: launchers of the .ps1 files of the same name.
 
 .AUTHOR
     Netmedia  |  https://netmedia.agency  |  netmedia@netmedia.hr
@@ -27,6 +27,7 @@
 
       launcher\launcher.cs  ->  tools\lazyspec\lazyspec.exe   (next to tools\lazyspec\lazyspec.ps1)
                             ->  initintoproject.exe           (next to initintoproject.ps1)
+                            ->  install.exe                   (next to install.ps1)
 
 .PARAMETER Help
     Display the usage guide and exit.
@@ -65,7 +66,7 @@ function Show-Author {
     Write-Host "  $([char]0x256D)$hLine$([char]0x256E)" -ForegroundColor Cyan
     Row ''
     Row "$esc[1m$title$esc[0m" $title 'Cyan'
-    Row 'Builds lazyspec.exe and initintoproject.exe' -color 'White'
+    Row 'Builds lazyspec.exe, initintoproject.exe and install.exe' -color 'White'
     Row ''
     Row "by Netmedia  |  LazySpec $($manifest.version)" -color 'DarkGray'
     Row 'https://netmedia.agency  |  netmedia@netmedia.hr' -color 'DarkGray'
@@ -79,7 +80,7 @@ if ($Help) {
     Write-Host '  USAGE' -ForegroundColor White
     Write-Host '    .\build-exe.ps1' -ForegroundColor Green
     Write-Host ''
-    Write-Host '    launcher\launcher.cs -> tools\lazyspec\lazyspec.exe and initintoproject.exe. Each starts the' -ForegroundColor DarkGray
+    Write-Host '    launcher\launcher.cs -> tools\lazyspec\lazyspec.exe, initintoproject.exe, install.exe. Each starts the' -ForegroundColor DarkGray
     Write-Host '    .ps1 of the same name next to it; the .ps1 files stay the program (no rebuild after changing them).' -ForegroundColor DarkGray
     Write-Host ''
     exit 0
@@ -98,7 +99,7 @@ $text = (Get-Content (Join-Path $root 'launcher\launcher.cs') -Raw -Encoding UTF
 
 $code = 0
 try {
-    foreach ($out in @((Join-Path $root 'tools\lazyspec\lazyspec.exe'), (Join-Path $root 'initintoproject.exe'))) {
+    foreach ($out in @((Join-Path $root 'tools\lazyspec\lazyspec.exe'), (Join-Path $root 'initintoproject.exe'), (Join-Path $root 'install.exe'))) {
         $result = & $csc /nologo /optimize+ /target:exe /platform:anycpu "/out:$out" $source 2>&1
         if ($LASTEXITCODE -ne 0) { Write-Host "  $([char]0x2717) $(Split-Path $out -Leaf): $result" -ForegroundColor Red; $code = 1; continue }
         Write-Host "  $([char]0x2713) $((Resolve-Path $out -Relative)) ($version, $([int]((Get-Item $out).Length / 1KB)) KB)" -ForegroundColor Green
