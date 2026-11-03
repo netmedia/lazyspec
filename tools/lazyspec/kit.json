@@ -6,7 +6,7 @@
   "web": "https://netmedia.agency",
   "email": "netmedia@netmedia.hr",
   "repository": "https://github.com/netmedia/lazyspec",
-  "files": ["lazyspec.ps1", "lazyspec.exe", "LAZYSPEC.md", "kit.json"],
+  "files": ["lazyspec.ps1", "lazyspec.exe", "LAZYSPEC.md", "kit.json", "export-texts.json"],
   "$rootFiles": "Also put into the project's root, so lazyspec starts from there too: it finds tools/lazyspec/lazyspec.ps1.",
   "rootFiles": ["lazyspec.exe"],
   "$projectFiles": "The project's own: kept by -Update.",
