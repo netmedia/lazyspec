@@ -68,6 +68,11 @@ workflow (proposal, delta specs, design, tasks ...). Default file: export\<proje
 .PARAMETER IncludeChanges
 -Export: adds the plan, the active changes (their proposal and delta specs), after the specs.
 
+.PARAMETER ClientFriendly
+-Export: for the client: a scenario's WHEN / THEN steps as one sentence ("When x, then y."), without the
+normative keywords in brackets ("(MUST)"). The export's language (its texts and OpenSpec's English
+headings): the workflow schema's "language:" (e.g. hr), else lazyspec.json export.language, else en.
+
 .PARAMETER Open
 -Export: opens the document when it's written.
 
@@ -119,6 +124,7 @@ param(
     [string]$Out,
     [string]$Item,
     [switch]$IncludeChanges,
+    [switch]$ClientFriendly,
     [switch]$Open,
     [string]$Keys,
     [string]$Frames,
@@ -312,7 +318,10 @@ public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wP
     [void][LazySpec.Env]::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$result)
 }
 function Test-SameDir([string]$A, [string]$B) {
-    return [IO.Path]::GetFullPath($A).TrimEnd('\') -ieq [IO.Path]::GetFullPath($B).TrimEnd('\')
+    # A PATH can hold entries that aren't paths (":\Users\...", quotes): those are just text, never ours.
+    $full = { param([string]$P) try { [IO.Path]::GetFullPath($P.Trim().Trim('"')).TrimEnd('\') } catch { $P.Trim().Trim('"').TrimEnd('\') } }
+    if (-not $A.Trim() -or -not $B.Trim()) { return $false }
+    return (& $full $A) -ieq (& $full $B)
 }
 
 function Install-Profile([string]$Installed) {
@@ -576,7 +585,7 @@ $specOrder = [string[]]$specOrder
 # $env:XDG_DATA_HOME\openspec\schemas), then the CLI's built-in ones. Without any: spec-driven as built in here.
 function New-Artifact([string]$Id, [string]$Generates) { return [pscustomobject]@{ Id = $Id; Generates = $Generates } }
 $defaultWorkflow = [pscustomobject]@{
-    Name = 'spec-driven'; Tracks = 'tasks.md'; Missing = ''
+    Name = 'spec-driven'; Tracks = 'tasks.md'; Missing = ''; Language = ''
     Artifacts = @((New-Artifact 'proposal' 'proposal.md'), (New-Artifact 'specs' 'specs/**/*.md'), (New-Artifact 'design' 'design.md'), (New-Artifact 'tasks' 'tasks.md'))
 }
 $script:workflows = @{}
@@ -596,10 +605,16 @@ function Get-YamlValue([string]$Text, [string]$Key) {
 function Read-Workflow([string]$File, [string]$Name) {
     $artifacts = @()
     $tracks = ''
+    $language = ''
     $section = ''; $itemIndent = -1; $keyIndent = -1; $cur = $null
     foreach ($line in (Read-Text $File).Replace("`r", '').Split("`n")) {
         if (-not $line.Trim() -or $line.TrimStart().StartsWith('#')) { continue }
-        if ($line -match '^([A-Za-z_][\w-]*):') { $section = $Matches[1]; $itemIndent = -1; $keyIndent = -1; $cur = $null; continue }
+        if ($line -match '^([A-Za-z_][\w-]*):\s*(.*)$') {
+            $section = $Matches[1]; $itemIndent = -1; $keyIndent = -1; $cur = $null
+            # LazySpec's own key (the CLI ignores keys it doesn't know): the language the documents are written in.
+            if ($section -eq 'language') { $language = (Unquote $Matches[2]).ToLower() }
+            continue
+        }
         $indent = $line.Length - $line.TrimStart().Length
         if ($section -eq 'artifacts') {
             if ($line -match '^(\s*)-\s+([\w-]+):\s*(.*)$' -and ($itemIndent -lt 0 -or $Matches[1].Length -eq $itemIndent)) {
@@ -619,7 +634,7 @@ function Read-Workflow([string]$File, [string]$Name) {
     $artifacts = @($artifacts | Where-Object { $_.Id -and $_.Generates })
     if (-not $artifacts.Count) { return $null }
     if (-not $tracks) { $t = @($artifacts | Where-Object { $_.Id -eq 'tasks' }); if ($t.Count) { $tracks = $t[0].Generates } }
-    return [pscustomobject]@{ Name = $Name; Tracks = $tracks; Missing = ''; Artifacts = $artifacts }
+    return [pscustomobject]@{ Name = $Name; Tracks = $tracks; Missing = ''; Language = $language; Artifacts = $artifacts }
 }
 function Get-SchemaDirs {
     $dirs = @()
@@ -653,7 +668,7 @@ function Get-Workflow([string]$ChangeDir) {
     }
     if (-not $wf) {
         $wf = $defaultWorkflow
-        if ($name -ne 'spec-driven') { $wf = [pscustomobject]@{ Name = $defaultWorkflow.Name; Tracks = $defaultWorkflow.Tracks; Missing = $name; Artifacts = $defaultWorkflow.Artifacts } }
+        if ($name -ne 'spec-driven') { $wf = [pscustomobject]@{ Name = $defaultWorkflow.Name; Tracks = $defaultWorkflow.Tracks; Missing = $name; Language = ''; Artifacts = $defaultWorkflow.Artifacts } }
     }
     $script:workflows[$name] = $wf
     return $wf
@@ -1006,6 +1021,9 @@ function ConvertTo-HtmlPre($Lines) {
     if ($max -gt 95) { $style = " style=`"font-size: $([Math]::Max(5, [Math]::Round(800 / $max, 1)).ToString([Globalization.CultureInfo]::InvariantCulture))pt`"" }
     return "<pre$style><code$style>" + (Html (@($Lines) -join "`n")) + "</code></pre>`n"
 }
+# The steps of a scenario (en, hr, de) and the ones that join without a comma ("when x and y, then z").
+$stepWords = @('GIVEN', 'WHEN', 'THEN', 'AND', 'BUT', 'OR', 'AKO', 'ZADANO', 'KADA', 'TADA', 'I', 'TE', 'ALI', 'ILI', 'GEGEBEN', 'WENN', 'DANN', 'UND', 'ABER', 'ODER')
+$stepJoin = @('and', 'or', 'i', 'te', 'ili', 'und', 'oder')
 # A markdown document as HTML. $Shift: added to every heading's level (a document inside a chapter).
 function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
     $out = New-Object Text.StringBuilder
@@ -1016,6 +1034,21 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
     $lists = New-Object Collections.ArrayList
     $code = $null
     $gap = $false
+    # Client-friendly: a scenario's WHEN / THEN ... steps as one sentence ("When x, then y.").
+    $steps = New-Object Collections.ArrayList
+    $flushSteps = {
+        if (-not $steps.Count) { return }
+        $sentence = ''
+        for ($i = 0; $i -lt $steps.Count; $i++) {
+            $w = $steps[$i][0].ToLower()
+            $txt = $steps[$i][1].Trim().TrimEnd('.', ';', ',')
+            if ($i -eq 0) { $sentence = $w.Substring(0, 1).ToUpper() + $w.Substring(1) + ' ' + $txt }
+            elseif ($stepJoin -contains $w) { $sentence += " $w $txt" }
+            else { $sentence += ", $w $txt" }
+        }
+        [void]$out.Append('<p class="steps">' + (ConvertTo-HtmlInline "$sentence.") + "</p>`n")
+        $steps.Clear()
+    }
     $flushPara = { if ($para.Count) { [void]$out.Append('<p>' + (ConvertTo-HtmlInline ($para -join ' ')) + "</p>`n"); $para.Clear() } }
     $flushQuote = { if ($quote.Count) { [void]$out.Append('<blockquote><p>' + (ConvertTo-HtmlInline ($quote -join ' ')) + "</p></blockquote>`n"); $quote.Clear() } }
     $closeLists = { param([int]$Indent)
@@ -1041,6 +1074,16 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
             else { $code += $raw }
             continue
         }
+        if ($script:clientFriendly) {
+            # "MORA (MUST)": the normative keyword in brackets is for OpenSpec, not for the client.
+            $raw = $raw -replace '\s*\((?:MUST|SHALL|SHOULD|MAY|REQUIRED)(?: NOT)?\)', ''
+            $sm = [regex]::Match($raw, '^\s*[-*+]\s+\*\*([^*\s]+)\*\*:?\s+(.*)$')
+            if ($sm.Success -and $stepWords -contains $sm.Groups[1].Value.ToUpper()) {
+                & $flushPara; & $flushQuote; & $closeLists -1
+                [void]$steps.Add(@($sm.Groups[1].Value, $sm.Groups[2].Value)); continue
+            }
+            if ($steps.Count) { & $flushSteps }
+        }
         $t = $raw.TrimEnd()
         if ($table.Count -and -not $t.Trim().StartsWith('|')) { & $flushTable }
         if (-not $t.Trim()) { & $flushPara; & $flushQuote; $gap = $true; continue }
@@ -1054,9 +1097,9 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
             & $flushPara; & $flushQuote
             $level = [Math]::Min(6, $Matches[1].Length + $Shift)
             $h = $Matches[2]
-            if ($h -match '^Requirement:\s*(.*)$') { [void]$out.Append("<h$level class=`"req`"><span class=`"tag`">Requirement</span> $(ConvertTo-HtmlInline $Matches[1])</h$level>`n") }
-            elseif ($h -match '^Scenario:\s*(.*)$') { [void]$out.Append("<h$level class=`"scn`"><span class=`"tag`">Scenario</span> $(ConvertTo-HtmlInline $Matches[1])</h$level>`n") }
-            else { [void]$out.Append("<h$level>$(ConvertTo-HtmlInline $h)</h$level>`n") }
+            if ($h -match '^(Requirement|Zahtjev|Anforderung):\s*(.*)$') { [void]$out.Append("<h$level class=`"req`"><span class=`"tag`">$(Html (Get-ExportText 'requirement'))</span> $(ConvertTo-HtmlInline $Matches[2])</h$level>`n") }
+            elseif ($h -match '^(Scenario|Scenarij|Szenario):\s*(.*)$') { [void]$out.Append("<h$level class=`"scn`"><span class=`"tag`">$(Html (Get-ExportText 'scenario'))</span> $(ConvertTo-HtmlInline $Matches[2])</h$level>`n") }
+            else { [void]$out.Append("<h$level>$(ConvertTo-HtmlInline (Get-ExportHeading $h))</h$level>`n") }
             continue
         }
         if ($t -match '^(-{3,}|\*{3,}|_{3,})$') { & $flushPara; & $flushQuote; [void]$out.Append("<hr>`n"); continue }
@@ -1068,9 +1111,9 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
             if ($item.Groups[2].Value -match '^\d') { $tag = 'ol' }
             $body = $item.Groups[3].Value
             $cls = ''
+            # A task: a bullet like any other (done ones with a check mark).
             if ($body -match '^\[([ xX])\]\s+(.*)$') {
-                if ($Matches[1] -eq ' ') { $body = '&#9744; ' + (ConvertTo-HtmlInline $Matches[2]) } else { $body = '&#9745; ' + (ConvertTo-HtmlInline $Matches[2]) }
-                $cls = ' class="task"'
+                if ($Matches[1] -eq ' ') { $body = ConvertTo-HtmlInline $Matches[2] } else { $body = '<span class="done">&#10003;</span> ' + (ConvertTo-HtmlInline $Matches[2]); $cls = ' class="task-done"' }
             }
             else {
                 if ($body -match '^\*\*(WHEN|THEN|AND|GIVEN|BUT)\*\*') { $cls = ' class="step"' }
@@ -1092,6 +1135,7 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
         $para.Add($t.Trim())
     }
     if ($null -ne $code) { [void]$out.Append((ConvertTo-HtmlPre $code)) }
+    & $flushSteps
     & $flushTable; & $flushPara; & $flushQuote; & $closeLists -1
     return $out.ToString()
 }
@@ -1101,30 +1145,73 @@ function Get-ExportSetting([string]$Name, [string]$Default) {
     if ($exportSettings -and $exportSettings.$Name) { return [string]$exportSettings.$Name }
     return $Default
 }
+# The export's language: the workflow schema's "language:" (LazySpec's own key), else lazyspec.json
+# export.language, else en. Its texts and OpenSpec's fixed English headings: export-texts.json (UTF-8).
+$script:exportLang = 'en'
+$script:clientFriendly = $false
+$script:exportTexts = $null
+function Load-ExportTexts {
+    if ($null -ne $script:exportTexts) { return }
+    $script:exportTexts = @{}
+    try { $j = (Read-Text (Join-Path $kitDir 'export-texts.json')) | ConvertFrom-Json } catch { return }
+    if (-not $j) { return }
+    foreach ($p in $j.PSObject.Properties) { if (-not $p.Name.StartsWith('$')) { $script:exportTexts[$p.Name] = $p.Value } }
+}
+function Get-ExportLanguage($Item) {
+    $wf = $null
+    if ($Item -and $Item.Type -eq 'change') { $wf = $Item.Workflow } elseif ($hasRoot) { $wf = Get-Workflow (Join-Path $osDir 'changes\-') }
+    $l = ''
+    if ($wf -and $wf.Language) { $l = $wf.Language } else { $l = Get-ExportSetting 'language' '' }
+    $l = ($l.ToLower() -split '[-_]')[0]
+    if (-not $l) { $l = 'en' }
+    return $l
+}
+# A text of the export in its language (else English, else $Default).
+function Get-ExportText([string]$Key, [string]$Default) {
+    foreach ($l in @($script:exportLang, 'en')) {
+        $t = $script:exportTexts[$l]
+        if ($t -and $t.labels -and $t.labels.$Key) { return [string]$t.labels.$Key }
+    }
+    if ($Default) { return $Default }
+    return $Key
+}
+# OpenSpec's English headings (## Why, ## ADDED Requirements ...) in the export's language; others as written.
+function Get-ExportHeading([string]$Heading) {
+    $t = $script:exportTexts[$script:exportLang]
+    if (-not $t -or -not $t.headings) { return $Heading }
+    $v = $t.headings.(($Heading -replace '\s+', ' ').Trim().ToLower())
+    if ($v) { return [string]$v }
+    return $Heading
+}
 
 # The whole document as HTML. Word: a [[TOC]] mark where Word puts its own table of contents.
-function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName) {
+function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, [bool]$Friendly) {
     $specs = @(Load-Specs)
     $changes = @()
     if ($WithChanges) { $changes = @(Load-Changes | Where-Object { -not $_.Archived } | Sort-Object Name) }
-    $title = Get-ExportSetting 'title' $projectName
-    $subtitle = Get-ExportSetting 'subtitle' 'Specification'
-    $client = Get-ExportSetting 'client' ''
-    $author = Get-ExportSetting 'author' 'Netmedia'
-    $date = Get-Date -Format 'yyyy-MM-dd'
-    $reqs = 0
-    $chapters = @()
-    $scope = ''
     $one = $null
-    # One spec, or one change with every document of its workflow, in its order.
     if ($ItemName) {
         $one = @($specs | Where-Object { $_.Name -eq $ItemName }) + @(Load-Changes | Where-Object { $_.Name -eq $ItemName }) | Select-Object -First 1
         if (-not $one) { throw "No spec or change named '$ItemName' in openspec/." }
+    }
+    Load-ExportTexts
+    $script:exportLang = Get-ExportLanguage $one
+    $script:clientFriendly = $Friendly
+    $title = Get-ExportSetting 'title' $projectName
+    $subtitle = Get-ExportSetting 'subtitle' (Get-ExportText 'specification')
+    $client = Get-ExportSetting 'client' ''
+    $author = Get-ExportSetting 'author' 'Netmedia'
+    $date = Get-Date -Format (Get-ExportText 'dateFormat' 'yyyy-MM-dd')
+    $reqs = 0
+    $chapters = @()
+    $scope = ''
+    # One spec, or one change with every document of its workflow, in its order.
+    if ($one) {
         $specs = @(); $changes = @()
         $subtitle = Get-ItemTitle $one
         if ($one.Type -eq 'spec') {
             $specs = @($one)
-            $subtitle = "Specification: $subtitle"
+            $subtitle = "$(Get-ExportText 'specification'): $subtitle"
         }
         else {
             $n = 0
@@ -1133,7 +1220,7 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName) 
                 if ($d.IsSpecs) {
                     if (-not $one.Caps.Count) { continue }
                     foreach ($cap in $one.Caps) {
-                        [void]$sb.Append("<h2>Capability: $(Html $cap.Name)</h2>`n")
+                        [void]$sb.Append("<h2>$(Html (Get-ExportText 'capability')): $(Html $cap.Name)</h2>`n")
                         [void]$sb.Append((ConvertTo-HtmlBody (Remove-DocTitle (Read-Text $cap.Path)) 1))
                     }
                 }
@@ -1145,13 +1232,12 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName) 
                     }
                 }
                 $n++
-                $dt = $d.Title
-                if ($d.IsSpecs) { $dt = 'Specifications' }
+                $dt = Get-ExportText $d.Id $d.Title
+                if ($d.IsSpecs) { $dt = Get-ExportText 'specs' }
                 $chapters += [pscustomobject]@{ Id = "doc-$($d.Id)"; Title = "$n. $dt"; Part = 'specs'; Body = $sb.ToString() }
             }
             foreach ($cap in $one.Caps) { $reqs += $cap.Added + $cap.Modified }
-            $scope = "$($chapters.Count) documents, $($one.Caps.Count) capabilities, $($one.Total) tasks"
-            if ($one.Workflow.Name -ne 'spec-driven') { $scope += " (workflow $($one.Workflow.Name))" }
+            $scope = "$($chapters.Count) $(Get-ExportText 'nDocuments'), $($one.Caps.Count) $(Get-ExportText 'nCapabilities'), $($one.Total) $(Get-ExportText 'nTasks')"
         }
     }
     foreach ($s in $specs) { $reqs += $s.Reqs }
@@ -1168,7 +1254,7 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName) 
         $proposal = Join-Path $c.Dir 'proposal.md'
         if (Test-Path -LiteralPath $proposal) { [void]$sb.Append((ConvertTo-HtmlBody (Remove-DocTitle (Read-Text $proposal)))) }
         foreach ($cap in $c.Caps) {
-            [void]$sb.Append("<h2>Capability: $(Html $cap.Name)</h2>`n")
+            [void]$sb.Append("<h2>$(Html (Get-ExportText 'capability')): $(Html $cap.Name)</h2>`n")
             [void]$sb.Append((ConvertTo-HtmlBody (Remove-DocTitle (Read-Text $cap.Path)) 1))
         }
         $chapters += [pscustomobject]@{ Id = "change-$($c.Name)"; Title = (Get-ItemTitle $c); Part = 'changes'; Body = $sb.ToString() }
@@ -1188,7 +1274,7 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName) 
     $h = New-Object Text.StringBuilder
     [void]$h.Append(@"
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8">
+<html lang="$($script:exportLang)"><head><meta charset="utf-8">
 <title>$(Html "$title - $subtitle")</title>
 <style>
 $pageCssbody { font-family: 'Segoe UI', Calibri, Arial, sans-serif; font-size: 10.5pt; line-height: 1.45; color: #1f2933; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -1204,7 +1290,9 @@ h2, h3, h4, h5, h6 { page-break-after: avoid; break-after: avoid; page-break-ins
 .scn { color: #5b3f9e; }
 .tag { display: block; font-size: 7.5pt; font-weight: 600; letter-spacing: 0.6pt; text-transform: uppercase; color: #8a96a3; }
 li.step { list-style: none; margin-left: -12pt; }
-li.task { list-style: none; margin-left: -12pt; }
+li.task-done { color: #52606d; }
+li.task-done .done { color: #2e8b57; font-weight: 600; }
+p.steps { margin: 3pt 0 8pt; }
 table { border-collapse: collapse; width: 100%; margin: 6pt 0 12pt; font-size: 9pt; }
 th, td { border: 1px solid #c9d3dc; padding: 3pt 6pt; margin: 0; text-align: left; vertical-align: top; }
 th { background: #eaf1f7; font-weight: 600; }
@@ -1229,29 +1317,29 @@ hr { border: none; border-top: 1px solid #c9d3dc; margin: 12pt 0; }
 <p class="subtitle">$(Html $subtitle)</p>
 
 "@)
-    if ($client) { [void]$h.Append("<p class=`"meta`">Client: <strong>$(Html $client)</strong></p>`n") }
-    [void]$h.Append("<p class=`"meta`">Date: $date</p>`n")
-    if ($author) { [void]$h.Append("<p class=`"meta`">Prepared by: $(Html $author)</p>`n") }
+    if ($client) { [void]$h.Append("<p class=`"meta`">$(Html (Get-ExportText 'client')): <strong>$(Html $client)</strong></p>`n") }
+    [void]$h.Append("<p class=`"meta`">$(Html (Get-ExportText 'date')): $date</p>`n")
+    if ($author) { [void]$h.Append("<p class=`"meta`">$(Html (Get-ExportText 'preparedBy')): $(Html $author)</p>`n") }
     if (-not $scope) {
-        $scope = "$($specs.Count) chapters, $reqs requirements"
-        if ($changes.Count) { $scope += ", $($changes.Count) planned changes" }
+        $scope = "$($specs.Count) $(Get-ExportText 'nChapters'), $reqs $(Get-ExportText 'nRequirements')"
+        if ($changes.Count) { $scope += ", $($changes.Count) $(Get-ExportText 'nChanges')" }
     }
-    [void]$h.Append("<p class=`"meta`">Scope: $scope</p>`n</div>`n")
+    [void]$h.Append("<p class=`"meta`">$(Html (Get-ExportText 'scope')): $(Html $scope)</p>`n</div>`n")
 
-    [void]$h.Append("<p class=`"toc-title`">Contents</p>`n")
+    [void]$h.Append("<p class=`"toc-title`">$(Html (Get-ExportText 'contents'))</p>`n")
     if ($Format -eq 'Word') { [void]$h.Append("<p>[[TOC]]</p>`n") }
     else {
         [void]$h.Append("<div class=`"toc`">`n")
         $part = 'specs'
         foreach ($ch in $chapters) {
-            if ($ch.Part -ne $part) { $part = $ch.Part; [void]$h.Append("<p class=`"part`">Planned changes</p>`n") }
+            if ($ch.Part -ne $part) { $part = $ch.Part; [void]$h.Append("<p class=`"part`">$(Html (Get-ExportText 'plannedChanges'))</p>`n") }
             [void]$h.Append("<p><a href=`"#$($ch.Id)`">$(Html $ch.Title)</a></p>`n")
         }
         [void]$h.Append("</div>`n")
     }
     $part = 'specs'
     foreach ($ch in $chapters) {
-        if ($ch.Part -ne $part) { $part = $ch.Part; [void]$h.Append("<h1 class=`"part`">Planned changes</h1>`n") }
+        if ($ch.Part -ne $part) { $part = $ch.Part; [void]$h.Append("<h1 class=`"part`">$(Html (Get-ExportText 'plannedChanges'))</h1>`n") }
         [void]$h.Append("<h1 id=`"$($ch.Id)`">$(Html $ch.Title)</h1>`n")
         [void]$h.Append($ch.Body)
     }
@@ -1340,10 +1428,10 @@ function Export-Word([string]$HtmlPath, [string]$Target) {
     if ($LASTEXITCODE) { throw "pandoc ended with exit code $LASTEXITCODE." }
 }
 
-function Invoke-Export([string]$Format, [string]$Target, [bool]$WithChanges, [bool]$OpenIt, [string]$ItemName) {
+function Invoke-Export([string]$Format, [string]$Target, [bool]$WithChanges, [bool]$OpenIt, [string]$ItemName, [bool]$Friendly) {
     if (-not $hasRoot) { throw "No openspec folder in $((Get-Location).Path) or above it: nothing to export." }
     $ext = @{ Pdf = 'pdf'; Word = 'docx'; Html = 'html' }[$Format]
-    $doc = Get-ExportHtml $Format $WithChanges $ItemName
+    $doc = Get-ExportHtml $Format $WithChanges $ItemName $Friendly
     if ($doc.Item) {
         if (-not $doc.Chapters) { throw "$($doc.Item.Name) has none of its documents yet: nothing to export." }
         $what = "$($doc.Item.Type) $($doc.Item.Name): $($doc.Scope)"
@@ -1364,6 +1452,9 @@ function Invoke-Export([string]$Format, [string]$Target, [bool]$WithChanges, [bo
     $Target = [IO.Path]::GetFullPath($Target)
     [void](New-Item -ItemType Directory -Force -Path (Split-Path $Target -Parent))
     Write-Host "  $($g.caret) $projectName`: $what"
+    $how = "language $($script:exportLang)"
+    if ($Friendly) { $how += ', client-friendly (scenarios as sentences)' }
+    Write-Host "  $($g.caret) $how"
     $utf8 = New-Object Text.UTF8Encoding $false
     if ($Format -eq 'Html') { [IO.File]::WriteAllText($Target, $doc.Html, $utf8) }
     else {
@@ -1384,7 +1475,7 @@ function Invoke-Export([string]$Format, [string]$Target, [bool]$WithChanges, [bo
 if ($Export) {
     # Shown in LazySpec's run screen too (it reads this as UTF-8).
     try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
-    try { Invoke-Export $Export $Out $IncludeChanges.IsPresent $Open.IsPresent $Item; exit 0 }
+    try { Invoke-Export $Export $Out $IncludeChanges.IsPresent $Open.IsPresent $Item $ClientFriendly.IsPresent; exit 0 }
     catch { Write-Host "$($g.cross) Export failed: $($_.Exception.Message)" -ForegroundColor Red; exit 1 }
 }
 
@@ -1864,14 +1955,16 @@ function Start-Cli([string]$Label, [string[]]$CliArgs) {
     } else { Start-RunProcess $tool $argLine }
 }
 # Export in the run screen: this script again, in a PowerShell of its own (-Export), its output shown here.
-function Start-Export([string]$Format, [bool]$WithChanges, [string]$ItemName) {
+function Start-Export([string]$Format, [bool]$WithChanges, [string]$ItemName, [bool]$Friendly) {
     $cliArgs = @('-Root', $Root, '-Export', $Format)
     if ($ItemName) { $cliArgs += @('-Item', $ItemName) }
     if ($WithChanges) { $cliArgs += '-IncludeChanges' }
+    if ($Friendly) { $cliArgs += '-ClientFriendly' }
     if (-not $harness) { $cliArgs += '-Open' }
     $label = "Export $Format"
     if ($ItemName) { $label += " ($ItemName)" }
     if ($WithChanges) { $label += ' (with the plan)' }
+    if ($Friendly) { $label += ', client-friendly' }
     New-Run $label "lazyspec $(($cliArgs | Where-Object { $_ -ne $Root -and $_ -ne '-Root' }) -join ' ')"
     $ps = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
     Start-RunProcess $ps ("-NoProfile -ExecutionPolicy Bypass -File $(Quote-Arg $PSCommandPath) " + ((@($cliArgs) | ForEach-Object { Quote-Arg $_ }) -join ' '))
@@ -2170,10 +2263,10 @@ function Start-ExportMenu {
             param($i)
             $format = @('Pdf', 'Word', 'Html')[$i]
             $active = @($script:changes | Where-Object { -not $_.Archived }).Count
-            if (-not $active) { Start-Export $format $false; return }
+            if (-not $active) { Start-ExportAudience $format $false ''; return }
             $script:choose = [pscustomobject]@{ Text = "$($format.ToUpper()):"; Options = @('Specs only', "Specs + the plan ($active changes)"); Keys = @('s', 'p'); Choice = 0; Do = {
                     param($j)
-                    Start-Export $format ($j -eq 1)
+                    Start-ExportAudience $format ($j -eq 1) ''
                 }.GetNewClosure() }
         } }
 }
@@ -2184,7 +2277,14 @@ function Start-ItemExportMenu($Item) {
     $name = $Item.Name
     $script:choose = [pscustomobject]@{ Text = "Export $what $name as"; Options = @('PDF', 'Word', 'HTML'); Keys = @('p', 'w', 'h'); Choice = 0; Do = {
             param($i)
-            Start-Export @('Pdf', 'Word', 'Html')[$i] $false $name
+            Start-ExportAudience @('Pdf', 'Word', 'Html')[$i] $false $name
+        }.GetNewClosure() }
+}
+# The export's last question: for the client (scenarios as sentences) or as written.
+function Start-ExportAudience([string]$Format, [bool]$WithChanges, [string]$ItemName) {
+    $script:choose = [pscustomobject]@{ Text = "$($Format.ToUpper()) for:"; Options = @('The client (scenarios as sentences)', 'Technical (as written)'); Keys = @('c', 't'); Choice = 0; Do = {
+            param($k)
+            Start-Export $Format $WithChanges $ItemName ($k -eq 0)
         }.GetNewClosure() }
 }
 function On-Key($K) {
