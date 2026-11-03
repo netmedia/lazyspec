@@ -1643,7 +1643,7 @@ li.task-done { color: #52606d; }
 li.task-done .done { color: #2e8b57; font-weight: 600; }
 p.steps { margin: 3pt 0 8pt; }
 .diagram { margin: 6pt 0 16pt; text-align: center; page-break-inside: avoid; break-inside: avoid; }
-.diagram img { max-width: 100%; max-height: 230mm; height: auto; border: 1px solid #e1e4e8; }
+.diagram img { max-width: 100%; max-height: 230mm; height: auto; }
 .diagram .caption { font-size: 8.5pt; color: #8a96a3; margin: 3pt 0 0; }
 ul.toc-list { margin: 4pt 0 14pt; padding-left: 16pt; }
 ul.toc-list li { font-size: 10pt; margin: 1.5pt 0; }
