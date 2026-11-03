@@ -1069,19 +1069,36 @@ function ConvertTo-HtmlInline([string]$T) {
     $codes = New-Object Collections.Generic.List[string]
     $t = [regex]::Replace($T, '`([^`]+)`', { param($m) $codes.Add($m.Groups[1].Value); "$([char]1)$($codes.Count - 1)$([char]1)" })
     $t = Html $t
-    $t = [regex]::Replace($t, '\[([^\]]+)\]\(([^)\s]+)\)', '<a href="$2">$1</a>')
+    # A link to another document of the same export ("open-questions.md"): to its chapter.
+    $t = [regex]::Replace($t, '\[([^\]]+)\]\(([^)\s]+)\)', { param($m)
+            $href = $m.Groups[2].Value
+            $leaf = ($href -replace '#.*$', '' -replace '^\./', '')
+            if ($script:docAnchors.ContainsKey($leaf)) { $href = '#' + $script:docAnchors[$leaf] }
+            "<a href=`"$href`">$($m.Groups[1].Value)</a>" })
     $t = [regex]::Replace($t, '\*\*(.+?)\*\*', '<strong>$1</strong>')
     $t = [regex]::Replace($t, '(?<![\w*])\*(?![\s*])(.+?)(?<![\s*])\*(?![\w*])', '<em>$1</em>')
     $t = [regex]::Replace($t, "$([char]1)(\d+)$([char]1)", { param($m) '<code>' + (Html $codes[[int]$m.Groups[1].Value]) + '</code>' })
     return $t
 }
-# A code block, never wrapped (diagrams keep their shape): long lines get a smaller font to fit the page.
+$script:docAnchors = @{}
+# A code block. A drawing (box lines, ASCII arrows) is never wrapped, so it keeps its shape: long lines get
+# a smaller font to fit the page. Anything else (commands, JSON) wraps at the page's width, readable.
 function ConvertTo-HtmlPre($Lines) {
+    $text = @($Lines) -join "`n"
+    if ($text -notmatch "[$([char]0x2500)-$([char]0x259F)]|[+|]-{2,}|-{2,}[+>|]|(?m)^\s*[|+]\s") {
+        return "<pre class=`"wrap`"><code>" + (Html $text) + "</code></pre>`n"
+    }
     $max = 0
     foreach ($l in @($Lines)) { if ($l.Length -gt $max) { $max = $l.Length } }
     $style = ''
     if ($max -gt 95) { $style = " style=`"font-size: $([Math]::Max(5, [Math]::Round(800 / $max, 1)).ToString([Globalization.CultureInfo]::InvariantCulture))pt`"" }
-    return "<pre$style><code$style>" + (Html (@($Lines) -join "`n")) + "</code></pre>`n"
+    return "<pre$style><code$style>" + (Html $text) + "</code></pre>`n"
+}
+# A paragraph that is a proposal ("**Prijedlog:** ..."): set apart, its label underlined.
+$proposalLabels = @('Prijedlog', 'Proposal', 'Vorschlag', 'Trenutna pretpostavka', 'Current assumption', 'Preporuka', 'Recommendation', 'Empfehlung')
+function Test-Proposal([string]$Text) {
+    $m = [regex]::Match($Text.Trim(), '^\*\*([^*:]+?)\s*:\s*\*\*')
+    return ($m.Success -and $proposalLabels -contains $m.Groups[1].Value.Trim())
 }
 # The steps of a scenario (en, hr, de) and the ones that join without a comma ("when x and y, then z").
 $stepWords = @('GIVEN', 'WHEN', 'THEN', 'AND', 'BUT', 'OR', 'AKO', 'ZADANO', 'KADA', 'TADA', 'I', 'TE', 'ALI', 'ILI', 'GEGEBEN', 'WENN', 'DANN', 'UND', 'ABER', 'ODER')
@@ -1134,7 +1151,12 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
         [void]$out.Append('<p class="steps">' + (ConvertTo-HtmlInline "$sentence.") + "</p>`n")
         $steps.Clear()
     }
-    $flushPara = { if ($para.Count) { [void]$out.Append('<p>' + (ConvertTo-HtmlInline ($para -join ' ')) + "</p>`n"); $para.Clear() } }
+    $flushPara = {
+        if (-not $para.Count) { return }
+        $pc = ''
+        if (Test-Proposal $para[0]) { $pc = ' class="proposal"' }
+        [void]$out.Append("<p$pc>" + (ConvertTo-HtmlInline ($para -join ' ')) + "</p>`n"); $para.Clear()
+    }
     $flushQuote = { if ($quote.Count) { [void]$out.Append('<blockquote><p>' + (ConvertTo-HtmlInline ($quote -join ' ')) + "</p></blockquote>`n"); $quote.Clear() } }
     $closeLists = { param([int]$Indent)
         while ($lists.Count -and $lists[$lists.Count - 1].Indent -gt $Indent) { [void]$out.Append("</li></$($lists[$lists.Count - 1].Tag)>`n"); $lists.RemoveAt($lists.Count - 1) }
@@ -1173,8 +1195,12 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
         if ($table.Count -and -not $t.Trim().StartsWith('|')) { & $flushTable }
         if (-not $t.Trim()) { & $flushPara; & $flushQuote; $gap = $true; continue }
         $item = [regex]::Match($t, '^(\s*)([-*+]|\d+[.)])\s+(.*)$')
-        # A blank line, then anything but a list item (or its indented text): the lists end.
-        if ($lists.Count -and -not $item.Success -and ($gap -or -not $raw.StartsWith(' '))) { & $closeLists -1 }
+        # Text indented under a list item, after a blank line too, is more of that item (a paragraph of its own);
+        # anything else after a blank line, or not indented, ends the lists.
+        $lead = $raw.Length - $raw.TrimStart().Length
+        $inItem = $lists.Count -and -not $item.Success -and $lead -gt $lists[0].Indent -and -not $t.Trim().StartsWith('#')
+        if ($lists.Count -and -not $item.Success -and -not $inItem -and ($gap -or -not $raw.StartsWith(' '))) { & $closeLists -1 }
+        $wasGap = $gap
         $gap = $false
         if ($t.Trim().StartsWith('```')) { & $flushPara; & $flushQuote; $code = @(); continue }
         if ($t.Trim().StartsWith('|')) { & $flushPara; & $flushQuote; $table.Add($t); continue }
@@ -1231,15 +1257,37 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
             & $closeLists $indent
             $top = $null
             if ($lists.Count) { $top = $lists[$lists.Count - 1] }
-            if ($top -and $top.Indent -eq $indent) {
-                if ($top.Tag -ne $tag) { [void]$out.Append("</li></$($top.Tag)>`n<$tag>"); $top.Tag = $tag } else { [void]$out.Append("</li>`n") }
+            # A numbered list keeps the document's numbers (start=), a top-level one starts at the margin, and a
+            # bulleted list right under a top-level numbered item (a question's answers) is lettered: a, b, c.
+            $open = $tag
+            if ($tag -eq 'ol') {
+                $num = [int]($item.Groups[2].Value -replace '\D', '')
+                $open = 'ol'
+                if (-not $lists.Count) { $open += ' class="top"' }
+                if ($num -ne 1) { $open += " start=`"$num`"" }
             }
-            else { [void]$out.Append("<$tag>"); [void]$lists.Add([pscustomobject]@{ Indent = $indent; Tag = $tag }) }
+            $html = $tag
+            if ($tag -eq 'ul' -and $lists.Count -eq 1 -and $lists[0].Md -eq 'ol' -and $indent -gt $lists[0].Indent) { $html = 'ol'; $open = 'ol type="a" class="options"' }
+            if ($top -and $top.Indent -eq $indent) {
+                if ($top.Md -ne $tag) { [void]$out.Append("</li></$($top.Tag)>`n<$open>"); $top.Tag = $html; $top.Md = $tag } else { [void]$out.Append("</li>`n") }
+            }
+            else { [void]$out.Append("<$open>"); [void]$lists.Add([pscustomobject]@{ Indent = $indent; Tag = $html; Md = $tag }) }
             [void]$out.Append("<li$cls>$body")
             continue
         }
-        # Indented text under a list item: more of that item.
-        if ($lists.Count) { [void]$out.Append(' ' + (ConvertTo-HtmlInline $t.Trim())); continue }
+        # Indented text under a list item: more of that item (of the item it is indented under). After a blank
+        # line, or a proposal ("**Prijedlog:** ..."), a paragraph of its own.
+        if ($lists.Count) {
+            & $closeLists ($lead - 1)
+            $text = $t.Trim()
+            if ($wasGap -or (Test-Proposal $text)) {
+                $pc = ''
+                if (Test-Proposal $text) { $pc = ' class="proposal"' }
+                [void]$out.Append("<p$pc>" + (ConvertTo-HtmlInline $text) + '</p>')
+            }
+            else { [void]$out.Append(' ' + (ConvertTo-HtmlInline $text)) }
+            continue
+        }
         & $flushQuote
         $para.Add($t.Trim())
     }
@@ -1557,6 +1605,9 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
             $subtitle = "$(Get-ExportText 'specification'): $subtitle"
         }
         else {
+            # A link to one of its documents ("open-questions.md") goes to that document's chapter.
+            $script:docAnchors = @{}
+            foreach ($d in $one.Docs) { foreach ($f in $d.Files) { $script:docAnchors[(Split-Path $f -Leaf)] = "doc-$($d.Id)" } }
             $n = 0
             foreach ($d in $one.Docs) {
                 $sb = New-Object Text.StringBuilder
@@ -1574,7 +1625,13 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
                     }
                 }
                 $n++
-                $dt = Get-ExportText $d.Id $d.Title
+                # The chapter's title: export-texts.json's for the workflow's usual documents, else the document's own "# Title".
+                $dt = Get-ExportText $d.Id "`0"
+                if ($dt -eq "`0") {
+                    $dt = $d.Title
+                    $h1 = [regex]::Match((Read-Text $d.Files[0]), '(?m)^#\s+(.+?)\s*$')
+                    if ($d.Files.Count -eq 1 -and $h1.Success) { $dt = $h1.Groups[1].Value }
+                }
                 if ($d.IsSpecs) { $dt = Get-ExportText 'specs' }
                 $chapters += [pscustomobject]@{ Id = "doc-$($d.Id)"; Title = "$n. $dt"; Part = 'specs'; Body = $sb.ToString() }
             }
@@ -1656,6 +1713,15 @@ tr { page-break-inside: avoid; }
 code { font-family: Consolas, 'Courier New', monospace; font-size: 9pt; background: #f1f3f5; padding: 0 2pt; }
 pre { font-family: Consolas, 'Courier New', monospace; font-size: 8.5pt; background: #f6f8fa; border: 1px solid #e1e4e8; padding: 6pt; white-space: pre; overflow: hidden; }
 pre code { background: none; padding: 0; }
+pre.wrap, pre.wrap code { font-size: 9pt; white-space: pre-wrap; overflow-wrap: anywhere; word-wrap: break-word; }
+/* Numbered questions at the margin, their answers lettered (a, b, c), a proposal at the answers' level. */
+ol.top { margin-left: 0; padding-left: 1.8em; }
+ol.top > li { margin: 10pt 0 4pt; }
+ol.options { margin: 4pt 0; padding-left: 1.8em; }
+ol.options > li { margin: 2pt 0; }
+li > p { margin: 6pt 0; }
+p.proposal { margin: 6pt 0 10pt; }
+p.proposal > strong:first-child { text-decoration: underline; }
 blockquote { border-left: 3pt solid #c9d3dc; margin: 6pt 0; padding: 0 0 0 9pt; color: #52606d; }
 hr { border: none; border-top: 1px solid #c9d3dc; margin: 12pt 0; }
 .cover { text-align: left; }
