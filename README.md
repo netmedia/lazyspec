@@ -60,7 +60,11 @@ the example [`examples/document-theme/document-theme.yaml`](examples/document-th
 Any Markdown file (meeting notes, a summary) as a document in that look: `lazyspec -Export Word -Markdown <file.md>`
 (or `Pdf`, `Html`; its front matter: title, subtitle, toc ...); see
 [Markdown documents](tools/lazyspec/LAZYSPEC.md#markdown-documents).
-Tests: `.\tests\Test-WordTemplate.ps1`, `.\tests\Test-DocumentTheme.ps1`, `.\tests\Test-MarkdownDocument.ps1`.
+In another language: `lazyspec -Export Pdf -Language en` translates the documents with DeepL (`translation:` in
+`openspec/config.yaml`, the key in `DEEPL_AUTH_KEY`; `-Beta` for DeepL beta languages such as Croatian; an export into
+Croatian is checked by Hasek/ispravi.me); `lazyspec -AddLanguage it` adds LazySpec's texts for a new language. See
+[Export in another language](tools/lazyspec/LAZYSPEC.md#export-in-another-language-deepl).
+Tests: `.\tests\Test-WordTemplate.ps1`, `.\tests\Test-DocumentTheme.ps1`, `.\tests\Test-MarkdownDocument.ps1`, `.\tests\Test-Translation.ps1`.
 
 ### 1. Installed on the PC (not in the project)
 
