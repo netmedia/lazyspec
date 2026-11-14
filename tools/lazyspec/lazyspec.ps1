@@ -81,6 +81,26 @@ With a token that is what an export does anyway; when a download fails, the save
 .PARAMETER KeepDiagrams
 -Export: the saved diagrams only, even with a token: no Figma. A diagram without a saved image is left out.
 
+.PARAMETER Template
+-Export Word: the Word template (.docx) to build the document on, relative to the current folder; wins over
+"lazyspec: documentTemplate:" in openspec/config.yaml (relative to the project's root). The template's
+styles, page setup, headers and footers (with their logos) stay, its sample body goes; the content uses its
+Title, Subtitle, Heading1..6, Normal, ListParagraph, TableGrid and TOCHeading styles. Set but missing or not
+a .docx: an error, never the default look.
+
+.PARAMETER Theme
+-Export: the document theme (.yaml) for the look of PDF, Word and HTML, relative to the current folder; wins
+over "lazyspec: documentTheme:" in openspec/config.yaml (relative to the project's root). Its fonts: the
+files in fonts\ next to it (embedded in Word). Set but missing or broken: an error, never the default look.
+See examples\document-theme\document-theme.yaml in the LazySpec repository.
+
+.PARAMETER Markdown
+-Export: a Markdown file (meeting notes, a summary, a letter ...) as the document, instead of the
+specification: in the project's look (its theme or template), as PDF, Word or HTML; written next to it
+(-Out: elsewhere). Its front matter: title, subtitle, client, author, date, language, toc (true: a contents
+of its headings 1-2), cover (false: the title on the first page, no cover page). No title there: its first
+"# " heading, else the file's name.
+
 .PARAMETER Open
 -Export: opens the document when it's written.
 
@@ -111,6 +131,9 @@ Testing: the screen's height (default 36).
 .\lazyspec.exe -Export Pdf -IncludeChanges -Open
 
 .EXAMPLE
+lazyspec -Export Word -Markdown "openspec_meetings\2026-11-04 meeting.md"
+
+.EXAMPLE
 .\lazyspec.exe -Export Pdf -Item add-user-login -Open
 
 .NOTES
@@ -130,11 +153,15 @@ param(
     [ValidateSet('Pdf', 'Word', 'Html')]
     [string]$Export,
     [string]$Out,
-    [string]$Item,
+    [string[]]$Item,
+    [string]$Title,
     [switch]$IncludeChanges,
     [switch]$ClientFriendly,
     [switch]$RefreshDiagrams,
     [switch]$KeepDiagrams,
+    [string]$Template,
+    [string]$Theme,
+    [string]$Markdown,
     [switch]$Open,
     [string]$Keys,
     [string]$Frames,
@@ -206,6 +233,7 @@ function Show-Usage {
     & $d '    z zoom the details to the whole width (z again: the lists back)'
     & $d '    Enter read it, PgUp/PgDn/Home/End scroll the details'
     & $d '    v validate all   a archive the change   n new change   e edit   s sort changes'
+    & $d '    m changes as one (mark them with Space, Enter: a title, then read them; x there: export)'
     & $d '    h show/hide archived   / filter   r refresh   ? help   q quit'
     & $y '  Read'
     & $d '    Up/Down PgUp/PgDn Home/End scroll   Left/Right document   e edit   Esc back'
@@ -229,12 +257,25 @@ function Show-Usage {
     & $g '  .\lazyspec.exe -Export Pdf                     # or Word, Html'
     & $g '  .\lazyspec.exe -Export Word -IncludeChanges -Open'
     & $g '  .\lazyspec.exe -Export Pdf -Item add-user-login   # one spec or change (x in Read)'
+    & $g '  .\lazyspec.exe -Export Word -Item add-guest-account,add-online-booking -Title "Online booking"'
+    & $d '  Several changes as one whole (m, or x: chosen changes): a chapter per kind of document, each'
+    & $d '  change''s part under its title; -Title on the cover (else the changes'' titles). m saves it as a'
+    & $d '  named whole (lazyspec: bundles: in openspec\config.yaml): then -Item <its key>.'
     & $d '  One document: a cover, the contents, a chapter per spec (in the Scope order); with'
     & $d '  -IncludeChanges the active changes too. Written to export\ in the project (-Out: elsewhere).'
     & $d '  PDF: Edge or Chrome. Word: Microsoft Word, else pandoc. The cover: lazyspec.json "export".'
     & $d '  -ClientFriendly: scenarios as sentences (When x, then y.). In the workflow schema''s language:'
     & $d '  "language: hr" in schema.yaml translates the export''s texts and OpenSpec''s English headings.'
     & $d '  Diagrams: lazyspec: diagrams: in openspec\config.yaml (FigJam links; -RefreshDiagrams, FIGMA_TOKEN).'
+    & $d '  Word in the company layout: lazyspec: documentTemplate: <a .docx, from the project root> in'
+    & $d '  openspec\config.yaml, or -Template <path> (wins). Missing or broken: an error, not the default look.'
+    & $d '  One look in PDF, Word and HTML: lazyspec: documentTheme: <a .yaml>, or -Theme <path>; its fonts in'
+    & $d '  fonts\ next to it (embedded in Word). A template and a theme: Word uses the template.'
+    Write-Host ''
+    & $b 'ANY MARKDOWN AS A DOCUMENT (meeting notes, summaries ...)'
+    & $g '  lazyspec -Export Word -Markdown "openspec_meetings\2026-11-04 summary.md"   # or Pdf, Html'
+    & $d '  In the look of the project the file is in; written next to it. Front matter: title, subtitle,'
+    & $d '  client, author, date, language, toc: true (a contents), cover: false (no cover page).'
     Write-Host ''
     & $b 'PLAIN lazyspec (WITHOUT .\)'
     & $g '  .\lazyspec.exe -Install Profile    # a function in your profile: the project''s own copy'
@@ -490,7 +531,9 @@ function Find-Root([string]$Start) {
 }
 if ($Root) { $Root = [IO.Path]::GetFullPath($Root) }
 else {
-    $Root = Find-Root (Get-Location).Path
+    # -Markdown: the project the file is in (its theme, template, settings), else the current folder's.
+    if ($Markdown) { $md = $Markdown; if (-not [IO.Path]::IsPathRooted($md)) { $md = Join-Path (Get-Location).Path $md }; $Root = Find-Root (Split-Path ([IO.Path]::GetFullPath($md)) -Parent) }
+    if (-not $Root) { $Root = Find-Root (Get-Location).Path }
     if (-not $Root) { $Root = Find-Root $kitDir }
 }
 $hasRoot = [bool]($Root -and (Test-Path -LiteralPath (Join-Path $Root 'openspec') -PathType Container))
@@ -882,6 +925,9 @@ $script:readCache = @{}
 $script:confirm = $null
 $script:choose = $null
 $script:input = $null
+$script:pick = $null
+$script:lastPick = @()
+$script:lastPickTitle = ''
 $script:run = $null
 $script:quit = $false
 $script:tick = 0
@@ -932,12 +978,142 @@ function Get-VisibleChanges {
 # What the lists and headers show: a spec's title (else its name), a change's number and title (else its name).
 function Get-ItemTitle($Item) {
     if ($Item.Type -eq 'spec') { if ($Item.Title) { return $Item.Title }; return $Item.Short }
+    if ($Item.Type -eq 'bundle') { return $Item.Title }
     if ($Item.Title) {
         $m = [regex]::Match($Item.Name, '^(\d+)-')
         if ($m.Success) { return "$($m.Groups[1].Value) $($Item.Title)" }
         return $Item.Title
     }
     return $Item.Name
+}
+# Several changes as one whole (m on Home, x: chosen changes, -Item a,b,c): their documents by kind, in
+# their workflows' order (the documents no workflow names last); read and exported as one.
+function Get-ChangeGroup([string[]]$Names) {
+    $all = @(Load-Changes)
+    $list = @()
+    foreach ($n in $Names) {
+        $c = Find-Change $n $all
+        if (-not $c) { throw "No change named '$n' in openspec/changes (several -Item: changes only)." }
+        if (@($list | Where-Object { $_.Name -eq $c.Name }).Count) { continue }
+        $list += $c
+    }
+    return $list
+}
+# A change by its name: an active one, else an archived one (its folder: <date>-<name>).
+function Find-Change([string]$Name, $All) {
+    $c = @($All | Where-Object { $_.Name -eq $Name -and -not $_.Archived }) + @($All | Where-Object { $_.Archived -and ($_.Name -eq $Name -or $_.Name -match ('^\d{4}-\d{2}-\d{2}-' + [regex]::Escape($Name) + '$')) } | Sort-Object Name -Descending)
+    if ($c.Count) { return $c[0] }
+    return $null
+}
+# Named wholes: "lazyspec: bundles:" in openspec/config.yaml, an entry each (saved from the m screen):
+#   online-booking:
+#     title: "Online booking"
+#     changes: add-guest-account, add-online-booking
+function Get-Bundles {
+    $list = @()
+    $m = (Get-ProjectConfig).Maps['bundles']
+    foreach ($id in @($m.Groups.Keys)) {
+        $e = $m.Groups[$id]
+        $names = @(([string]$e['changes']).Trim().TrimStart('[').TrimEnd(']').Split(',') | ForEach-Object { Unquote $_ } | Where-Object { $_ })
+        if (-not $names.Count) { continue }
+        $list += [pscustomobject]@{ Id = $id; Title = [string]$e['title']; Changes = $names }
+    }
+    return $list
+}
+# A name for a file or a key: lowercase, without accents, words joined by hyphens.
+function Get-Slug([string]$Text) {
+    $t = ([regex]::Replace($Text.ToLower().Normalize([Text.NormalizationForm]::FormD), '\p{Mn}', '')).Replace([string][char]0x111, 'd')
+    return ($t -replace '[^a-z0-9]+', '-').Trim('-')
+}
+# Saves a named whole in openspec/config.yaml (its entry replaced when it's there); no changes: removes it.
+# The rest of the file stays as it is.
+function Set-ConfigBundle([string]$Id, [string]$Title, [string[]]$Names) {
+    $Names = @($Names | Where-Object { $_ })
+    $path = Join-Path $osDir 'config.yaml'
+    $bytes = [byte[]]@()
+    if (Test-Path -LiteralPath $path) { $bytes = [IO.File]::ReadAllBytes($path) }
+    $bom = $bytes.Count -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+    $raw = (New-Object Text.UTF8Encoding $false).GetString($bytes)
+    if ($bom) { $raw = $raw.Substring(1) }
+    $nl = "`n"
+    if ($raw.Contains("`r`n")) { $nl = "`r`n" }
+    $lines = New-Object Collections.Generic.List[string]
+    if ($raw) { $lines.AddRange([string[]]($raw.Replace("`r", '').Split("`n"))) }
+    $endsNl = $lines.Count -and $lines[$lines.Count - 1] -eq ''
+    if ($endsNl) { $lines.RemoveAt($lines.Count - 1) }
+    $indentOf = { param($l) $l.Length - $l.TrimStart().Length }
+    # The lazyspec: block (to the next key at the margin).
+    $start = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^lazyspec:\s*(#.*)?$') { $start = $i; break } }
+    if ($start -lt 0) {
+        if (-not $Names.Count) { return }
+        while ($lines.Count -and -not $lines[$lines.Count - 1].Trim()) { $lines.RemoveAt($lines.Count - 1) }
+        if ($lines.Count) { $lines.Add('') }
+        $lines.Add('lazyspec:'); $start = $lines.Count - 1
+    }
+    $end = $lines.Count
+    for ($i = $start + 1; $i -lt $lines.Count; $i++) { $l = $lines[$i]; if ($l.Trim() -and -not $l.TrimStart().StartsWith('#') -and (& $indentOf $l) -eq 0) { $end = $i; break } }
+    $ki = 2
+    for ($i = $start + 1; $i -lt $end; $i++) { if ($lines[$i].Trim() -and (& $indentOf $lines[$i]) -gt 0) { $ki = & $indentOf $lines[$i]; break } }
+    $last = $start
+    for ($i = $start + 1; $i -lt $end; $i++) { if ($lines[$i].Trim() -and (& $indentOf $lines[$i]) -gt 0) { $last = $i } }
+    # Its bundles: block.
+    $b = -1
+    for ($i = $start + 1; $i -le $last; $i++) { if ($lines[$i] -match ('^' + (' ' * $ki) + 'bundles:\s*(#.*)?$')) { $b = $i; break } }
+    if ($b -lt 0) {
+        if (-not $Names.Count) { return }
+        $lines.Insert($last + 1, (' ' * $ki) + 'bundles:'); $b = $last + 1; $bEnd = $b + 1
+    }
+    else {
+        $bEnd = $b + 1
+        for ($i = $b + 1; $i -lt $end; $i++) { $l = $lines[$i]; if (-not $l.Trim()) { continue }; if ((& $indentOf $l) -le $ki) { break }; $bEnd = $i + 1 }
+        # The entry, when it's there: out (it's written again below).
+        for ($i = $b + 1; $i -lt $bEnd; $i++) {
+            if ($lines[$i] -notmatch '^(\s+)("[^"]*"|''[^'']*''|[^:#]+?):\s*(#.*)?$' -or (Unquote $Matches[2]) -ne $Id) { continue }
+            $ei = $Matches[1].Length
+            $j = $i + 1
+            while ($j -lt $bEnd -and (-not $lines[$j].Trim() -or (& $indentOf $lines[$j]) -gt $ei)) { $j++ }
+            $lines.RemoveRange($i, $j - $i); $bEnd -= ($j - $i)
+            break
+        }
+    }
+    if ($Names.Count) {
+        $u = ' ' * $ki
+        $lines.InsertRange($bEnd, [string[]]@("$u$u${Id}:", "$u$u${u}title: `"$($Title.Replace('"', "'"))`"", "$u$u${u}changes: $($Names -join ', ')"))
+    }
+    else {
+        # No wholes left: no bundles: either.
+        $any = $false
+        for ($i = $b + 1; $i -lt $bEnd; $i++) { if ($lines[$i].Trim()) { $any = $true } }
+        if (-not $any) { $lines.RemoveAt($b) }
+    }
+    $text = ($lines -join $nl)
+    if ($endsNl) { $text += $nl }
+    $out = (New-Object Text.UTF8Encoding $false).GetBytes($text)
+    if ($bom) { $out = [byte[]](@(0xEF, 0xBB, 0xBF) + $out) }
+    [IO.File]::WriteAllBytes($path, $out)
+    $script:projectConfig = $null
+}
+function Get-ChangeBundle($Changes, [string]$Title, [string]$Id) {
+    $Changes = @($Changes)
+    if (-not $Title) { $Title = (@($Changes | ForEach-Object { if ($_.Title) { $_.Title } else { $_.Name } }) -join ', ') }
+    $docs = New-Object Collections.ArrayList
+    $seen = @{}
+    foreach ($extra in @($false, $true)) {
+        foreach ($c in $Changes) {
+            foreach ($d in $c.Docs) {
+                if ([bool]$d.PSObject.Properties['Extra'] -ne $extra -or $seen.ContainsKey($d.Id)) { continue }
+                $seen[$d.Id] = $true; [void]$docs.Add($d)
+            }
+        }
+    }
+    $done = 0; $total = 0; $modified = [datetime]::MinValue
+    foreach ($c in $Changes) { $done += $c.Done; $total += $c.Total; if ($c.Modified -gt $modified) { $modified = $c.Modified } }
+    return [pscustomobject]@{
+        Type = 'bundle'; Id = $Id; Name = (@($Changes | ForEach-Object { $_.Name }) -join ','); Title = $Title; Members = $Changes; Docs = @($docs)
+        Caps = @(foreach ($c in $Changes) { $c.Caps }); Done = $done; Total = $total; Modified = $modified
+        Workflow = $Changes[0].Workflow; Dir = $Changes[0].Dir; Path = $Changes[0].Path
+    }
 }
 function Get-Selected {
     if ($script:focus -eq 'specs') { $vs = @(Get-VisibleSpecs); if ($vs.Count) { return $vs[$script:specIndex] } }
@@ -1012,7 +1188,11 @@ function Render-Markdown([string]$Text, [int]$Width) {
     for ($n = 0; $n -le $src.Count; $n++) {
         $raw = ''
         if ($n -lt $src.Count) { $raw = $src[$n] }
-        if ($table.Count -and ($n -ge $src.Count -or -not $raw.Trim().StartsWith('|'))) { Render-Table $lines $table $Width; $table = @() }
+        if ($table.Count -and ($n -ge $src.Count -or -not $raw.Trim().StartsWith('|'))) {
+            Render-Table $lines $table $Width; $table = @()
+            # Room after a table (the next line isn't glued to its last row; a blank line after it adds no more).
+            if ($n -lt $src.Count) { [void]$lines.Add(@()); $blank = $true }
+        }
         if ($n -ge $src.Count) { break }
         if ($raw.Trim().StartsWith('```')) {
             $inCode = -not $inCode
@@ -1055,6 +1235,14 @@ function Render-Markdown([string]$Text, [int]$Width) {
         }
         if ($t -match '^>\s?(.*)$') { Add-Wrapped $lines "  $($g.v) " $st.faint (Plain-Inline $Matches[1]) $st.muted $Width; continue }
         if ($t -match '^(-{3,}|\*{3,})$') { [void]$lines.Add(@(S ($g.h * [Math]::Min(60, $Width)) $st.faint)); continue }
+        # Relations, transitions ... (several, ;-separated): the label, then one item a line.
+        $ll = Get-LabelledList $t
+        if ($ll) {
+            Add-Wrapped $lines '' '' "$($ll.Label):" $st.bold $Width
+            foreach ($it in $ll.Items) { Add-Wrapped $lines "  $($g.bullet) " $st.accent (Plain-Inline $it) $st.text $Width }
+            [void]$lines.Add(@()); $blank = $true
+            continue
+        }
         Add-Wrapped $lines '' '' (Plain-Inline $t.Trim()) $st.text $Width
     }
     while ($lines.Count -and @($lines[$lines.Count - 1]).Count -eq 0) { $lines.RemoveAt($lines.Count - 1) }
@@ -1103,9 +1291,100 @@ function Test-Proposal([string]$Text) {
 # The steps of a scenario (en, hr, de) and the ones that join without a comma ("when x and y, then z").
 $stepWords = @('GIVEN', 'WHEN', 'THEN', 'AND', 'BUT', 'OR', 'AKO', 'ZADANO', 'KADA', 'TADA', 'I', 'TE', 'ALI', 'ILI', 'GEGEBEN', 'WENN', 'DANN', 'UND', 'ABER', 'ODER')
 $stepJoin = @('and', 'or', 'i', 'te', 'ili', 'und', 'oder')
+# "**Veze:** a; b; c" (a models.md's relations, transitions ...): the label and its items, or $null.
+function Get-LabelledList([string]$Line) {
+    $m = [regex]::Match($Line.Trim(), '^\*\*([^*]{2,40}?)(:\*\*|\*\*:)\s*(.+)$')
+    if (-not $m.Success -or $m.Groups[1].Value -notmatch '^(?i)(veze|relations|beziehungen|prijelazi|transitions|.berg.nge|jedinstvenost i indeksi|unique and indexes|eindeutigkeit und indizes)$') { return $null }
+    $items = @($m.Groups[3].Value -split ';\s+' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if ($items.Count -lt 2) { return $null }
+    return [pscustomobject]@{ Label = $m.Groups[1].Value; Items = $items }
+}
+
+# A chapter's number before its title ("3. "), unless the theme says numbering: false.
+function Get-ChapterNumber([int]$N) {
+    if ($script:docTheme -and -not $script:docTheme.Numbering) { return '' }
+    return "$N. "
+}
+
 # A markdown document as HTML. $Shift: added to every heading's level (a document inside a chapter).
 $script:docSeq = 0
+# A table's column widths (percent), for PDF, HTML and Word alike: each column at least its longest word or
+# identifier (up to a limit: longer ones break), the rest of the width to the columns with more text
+# ("Description"), as far as they need it. Estimated in ems of the table's font: a letter about 0.56 (a
+# header's, bold, 0.66), code's 0.56 and its box 0.3, a cell's padding 1.3; a page's text about 45 ems wide.
+function Get-TableWidths($Head, $Rows) {
+    $all = @()
+    if ($Head) { $all += , @($Head) }
+    foreach ($r in $Rows) { $all += , @($r) }
+    $first = 0
+    if ($Head) { $first = 1 }
+    $cols = 0
+    foreach ($r in $all) { if (@($r).Count -gt $cols) { $cols = @($r).Count } }
+    if ($cols -lt 2) { return $null }
+    $need = New-Object double[] $cols
+    $want = New-Object double[] $cols
+    for ($ri = 0; $ri -lt $all.Count; $ri++) {
+        $r = $all[$ri]
+        for ($i = 0; $i -lt @($r).Count; $i++) {
+            $cell = [string]@($r)[$i]
+            $longest = 0.0; $total = 0.0
+            foreach ($m in [regex]::Matches($cell, '`([^`]*)`|\[([^\]]*)\]\([^)]*\)|([^`\[]+)')) {
+                $code = $m.Groups[1].Success
+                $txt = $m.Value
+                if ($code) { $txt = $m.Groups[1].Value } elseif ($m.Groups[2].Success) { $txt = $m.Groups[2].Value }
+                $txt = $txt.Replace('**', '').Replace('__', '')
+                $per = 0.56
+                if ($ri -lt $first) { $per = 0.66 }
+                if ($code) { $per = 0.56 }
+                foreach ($w in ($txt -split '\s+')) { if ($w) { $longest = [Math]::Max($longest, $w.Length * $per + $(if ($code) { 0.3 } else { 0 })) } }
+                $total += $txt.Length * $per
+            }
+            $need[$i] = [Math]::Max($need[$i], [Math]::Min(14.0, $longest + 1.3))
+            $want[$i] = [Math]::Max($want[$i], [Math]::Min(60.0, $total + 1.3))
+        }
+    }
+    $page = 45.0
+    $w = New-Object double[] $cols
+    $sumNeed = 0.0; $sumGrow = 0.0; $sumWant = 0.0
+    for ($i = 0; $i -lt $cols; $i++) { $want[$i] = [Math]::Max($want[$i], $need[$i]); $sumNeed += $need[$i]; $sumGrow += $want[$i] - $need[$i]; $sumWant += $want[$i] }
+    for ($i = 0; $i -lt $cols; $i++) {
+        if ($sumNeed -ge $page) { $w[$i] = $need[$i] }
+        elseif ($page - $sumNeed -le $sumGrow) { $w[$i] = $need[$i] + ($page - $sumNeed) * ($want[$i] - $need[$i]) / [Math]::Max(0.001, $sumGrow) }
+        else { $w[$i] = $want[$i] + ($page - $sumWant) * $want[$i] / $sumWant }
+    }
+    $sum = 0.0
+    foreach ($x in $w) { $sum += $x }
+    return @($w | ForEach-Object { [Math]::Round(100 * $_ / $sum, 1) })
+}
+# A heading with nothing under it (a template's section left with "<!-- none -->") isn't shown: up to the
+# next heading of its level or above there's no text, nor a deeper heading that has some.
+function Remove-EmptySections([string]$Text) {
+    $lines = $Text.Replace("`r", '').Split("`n")
+    $level = New-Object int[] $lines.Count
+    $fence = $false
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i].Trim().StartsWith('```')) { $fence = -not $fence; continue }
+        if (-not $fence -and $lines[$i] -match '^(#{1,6})\s+\S') { $level[$i] = $Matches[1].Length }
+    }
+    # From the end: a deeper heading dropped first makes its parent empty too.
+    $drop = New-Object bool[] $lines.Count
+    for ($i = $lines.Count - 1; $i -ge 0; $i--) {
+        if (-not $level[$i]) { continue }
+        $empty = $true
+        for ($j = $i + 1; $j -lt $lines.Count; $j++) {
+            if ($drop[$j]) { continue }
+            if ($level[$j]) { $empty = $level[$j] -le $level[$i]; break }
+            if ($lines[$j].Trim()) { $empty = $false; break }
+        }
+        $drop[$i] = $empty
+    }
+    if ($drop -notcontains $true) { return $Text }
+    return (@(for ($i = 0; $i -lt $lines.Count; $i++) { if (-not $drop[$i]) { $lines[$i] } }) -join "`n")
+}
 function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
+    # HTML comments (a template's guidance, <!-- ... -->) aren't shown; nor headings left with nothing under them.
+    $Text = [regex]::Replace($Text, '(?s)<!--.*?-->[ \t]*(\r?\n)?', '')
+    $Text = Remove-EmptySections $Text
     $out = New-Object Text.StringBuilder
     $src = $Text.Replace("`r", '').Split("`n")
     $para = New-Object Collections.Generic.List[string]
@@ -1115,6 +1394,7 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
     $code = $null
     $gap = $false
     $inScenario = $false
+    $liBreak = $false
     # The headings first (outside code), for their ids and the small contents: a section's requirements
     # (## ADDED Requirements: a list of links), a requirement's scenarios (one line, comma-separated).
     $script:docSeq++
@@ -1155,7 +1435,7 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
         if (-not $para.Count) { return }
         $pc = ''
         if (Test-Proposal $para[0]) { $pc = ' class="proposal"' }
-        [void]$out.Append("<p$pc>" + (ConvertTo-HtmlInline ($para -join ' ')) + "</p>`n"); $para.Clear()
+        [void]$out.Append("<p$pc>" + ((ConvertTo-HtmlInline ($para -join ' ')) -replace '(\x1F|&#31;)\s*$', '' -replace "(\x1F|&#31;) ?", '<br>') + "</p>`n"); $para.Clear()
     }
     $flushQuote = { if ($quote.Count) { [void]$out.Append('<blockquote><p>' + (ConvertTo-HtmlInline ($quote -join ' ')) + "</p></blockquote>`n"); $quote.Clear() } }
     $closeLists = { param([int]$Indent)
@@ -1168,10 +1448,24 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
             if ($r.Trim() -match '^\|?\s*:?-{2,}') { if ($rows.Count -eq 1 -and $null -eq $head) { $head = $rows[0]; $rows = @() }; continue }
             $rows += , @($r.Trim().Trim('|').Split('|') | ForEach-Object { $_.Trim() })
         }
-        [void]$out.Append("<table>`n")
-        if ($head -and @($head | Where-Object { $_ }).Count) { [void]$out.Append('<thead><tr>' + (-join @($head | ForEach-Object { '<th>' + (ConvertTo-HtmlInline $_) + '</th>' })) + "</tr></thead>`n") }
+        $widths = Get-TableWidths $head $rows
+        if ($widths) { [void]$out.Append("<table class=`"sized`">`n") } else { [void]$out.Append("<table>`n") }
+        if ($widths) { [void]$out.Append('<colgroup>' + (-join @($widths | ForEach-Object { "<col style=`"width: $($_.ToString([Globalization.CultureInfo]::InvariantCulture))%`">" })) + "</colgroup>`n") }
+        $cellHtml = { param([string]$T) ConvertTo-HtmlInline $T }
+        if ($head -and @($head | Where-Object { $_ }).Count) { [void]$out.Append('<thead><tr>' + (-join @($head | ForEach-Object { '<th>' + (& $cellHtml $_) + '</th>' })) + "</tr></thead>`n") }
         [void]$out.Append('<tbody>')
-        foreach ($r in $rows) { [void]$out.Append('<tr>' + (-join @($r | ForEach-Object { '<td>' + (ConvertTo-HtmlInline $_) + '</td>' })) + "</tr>`n") }
+        # A table of changes (its first column "Change" / "Promjena" / "Aenderung": models.md): a row's + added,
+        # ~ changed, - removed, coloured (the colour on the cells too: Word takes it from there).
+        $changes = $head -and @($head).Count -and (@($head)[0] -replace '[*`]', '').Trim() -match '^(?i)(change|promjena|.nderung)$'
+        foreach ($r in $rows) {
+            $tr = '<tr>'; $td = '<td>'
+            if ($changes) {
+                $mark = (@($r)[0] -replace '[*`]', '').Trim()
+                $look = @{ '+' = @('chg-add', '#E6F4EA'); '~' = @('chg-mod', '#FFF4D6'); '-' = @('chg-del', '#FCE8E6'); ([string][char]0x2212) = @('chg-del', '#FCE8E6') }[$mark]
+                if ($look) { $tr = "<tr class=`"$($look[0])`">"; $td = "<td style=`"background: $($look[1])`">" }
+            }
+            [void]$out.Append($tr + (-join @($r | ForEach-Object { $td + (& $cellHtml $_) + '</td>' })) + "</tr>`n")
+        }
         [void]$out.Append("</tbody></table>`n")
         $table.Clear()
     }
@@ -1232,6 +1526,8 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
             else {
                 $cls = 'sub'
                 if ($mdLevel -le 2) { $cls = 'sec' }
+                # The theme's numbering: false - a document's own headings 1-2 without their numbers ("1. Kostur").
+                if ($mdLevel -le 2 -and $script:docTheme -and -not $script:docTheme.Numbering) { $h = $h -replace '^\d+(\.\d+)*\.?\s+', '' }
                 [void]$out.Append("<h$level class=`"$cls`"$id>$mark$(ConvertTo-HtmlInline (Get-ExportHeading $h))</h$level>`n")
                 if ($hd -and $hd.Children.Count) { [void]$out.Append((Get-TocHtml $hd.Children)) }
             }
@@ -1245,6 +1541,9 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
             $tag = 'ul'
             if ($item.Groups[2].Value -match '^\d') { $tag = 'ol' }
             $body = $item.Groups[3].Value
+            # A hard line break at the item's end ("\" or two spaces): its next line on a line of its own.
+            $liBreak = $raw -match '(\\|\S {2,})$'
+            $body = $body -replace '\\$', ''
             $cls = ''
             # A task: a bullet like any other (done ones with a check mark).
             if ($body -match '^\[([ xX])\]\s+(.*)$') {
@@ -1285,11 +1584,24 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
                 if (Test-Proposal $text) { $pc = ' class="proposal"' }
                 [void]$out.Append("<p$pc>" + (ConvertTo-HtmlInline $text) + '</p>')
             }
-            else { [void]$out.Append(' ' + (ConvertTo-HtmlInline $text)) }
+            else {
+                $sep = ' '
+                if ($liBreak) { $sep = '<br>' }
+                [void]$out.Append($sep + (ConvertTo-HtmlInline ($text -replace '\\$', '')))
+            }
+            $liBreak = $raw -match '(\\|\S {2,})$'
             continue
         }
         & $flushQuote
-        $para.Add($t.Trim())
+        # Relations, transitions ... (several, ;-separated): the label, then a list.
+        $ll = Get-LabelledList $t
+        if ($ll) {
+            & $flushPara
+            [void]$out.Append("<p class=`"labelled`"><strong>$(Html $ll.Label):</strong></p>`n<ul class=`"labelled`">" + (-join @($ll.Items | ForEach-Object { '<li>' + (ConvertTo-HtmlInline $_) + '</li>' })) + "</ul>`n")
+            continue
+        }
+        # A hard line break ("\" or two spaces at the line's end): kept as one.
+        if ($raw -match '(\\|\S {2,})$') { $para.Add(($t.Trim() -replace '\\$', '') + [char]0x1F) } else { $para.Add($t.Trim()) }
     }
     if ($null -ne $code) { [void]$out.Append((ConvertTo-HtmlPre $code)) }
     & $flushSteps
@@ -1307,7 +1619,7 @@ $script:projectConfig = $null
 function Get-ProjectConfig {
     if ($null -ne $script:projectConfig) { return $script:projectConfig }
     # Maps: titles and diagrams, each with the entries for every change (All) and a group per change (Groups).
-    $cfg = @{ Values = @{}; Maps = @{ titles = @{ All = @{}; Groups = @{} }; diagrams = @{ All = @{}; Groups = @{} } } }
+    $cfg = @{ Values = @{}; Maps = @{ titles = @{ All = @{}; Groups = @{} }; diagrams = @{ All = @{}; Groups = @{} }; bundles = @{ All = @{}; Groups = [ordered]@{} } } }
     $script:projectConfig = $cfg
     if (-not $hasRoot) { return $cfg }
     $in = $false; $keyIndent = -1; $sub = ''; $titleIndent = -1; $group = ''
@@ -1362,7 +1674,8 @@ function Get-FriendlyTitle([string]$Name, [string]$Default, [string]$Change) {
 # --- diagrams: a FigJam (or Figma) section, or an image file, at the top of a chapter or a capability ------
 # "lazyspec: diagrams:" in config.yaml, as titles: a group per change ("change" there: the whole change's
 # diagram), entries straight under diagrams for every change and for specs. A Figma link is saved as PNG in
-# the change's diagrams\ folder (openspec\diagrams\ for specs), its white margins cut: commit it, and the
+# the change's diagrams\ folder (openspec\diagrams\ for specs), its white margins cut (a FigJam section's
+# background and frame; shown at the scale of the change's whole diagram, Get-FigmaScale): commit it, and the
 # export works without Figma. Downloaded (again with -RefreshDiagrams) through the Figma REST API with a
 # personal access token in FIGMA_TOKEN.
 $script:diagramsRefresh = $false
@@ -1469,6 +1782,10 @@ function Save-FigmaImage($Node, [string]$Target) {
     }
     finally { if (Test-Path -LiteralPath $part) { Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue } }
 }
+# The pictures from Figma (downloaded at scale 2, their margins cut): a path's change and Figma file
+# (Get-FigmaScale); the ones downloaded in this export (each once).
+$script:figmaFiles = @{}
+$script:figmaFetched = @{}
 # A diagram's image file, or '' (with a note in the output why not).
 function Get-Diagram([string]$Key, [string]$Change, [string]$BaseDir) {
     $v = Get-ConfigEntry 'diagrams' $Key $Change
@@ -1481,13 +1798,15 @@ function Get-Diagram([string]$Key, [string]$Change, [string]$BaseDir) {
         return ''
     }
     $file = Join-Path (Join-Path $BaseDir 'diagrams') "$Key.$($node.Slug).png"
-    if ((Test-Path -LiteralPath $file) -and -not $script:diagramsRefresh) { return $file }
+    $script:figmaFiles[$file] = [pscustomobject]@{ Key = $Key; Change = $Change; BaseDir = $BaseDir; File = $node.File }
+    if ((Test-Path -LiteralPath $file) -and (-not $script:diagramsRefresh -or $script:figmaFetched.ContainsKey($file))) { return $file }
     # The saved ones only (-KeepDiagrams): no Figma; none saved, no diagram.
     if ($script:diagramsOffline) {
         if (Test-Path -LiteralPath $file) { return $file }
         Write-Host "  ! diagram $($Key): none saved yet"
         return ''
     }
+    $script:figmaFetched[$file] = $true
     try { Save-FigmaImage $node $file; Write-Host "  $($g.caret) diagram $($Key): downloaded from Figma ($($node.Node))"; return $file }
     catch {
         if (Test-Path -LiteralPath $file) {
@@ -1499,14 +1818,31 @@ function Get-Diagram([string]$Key, [string]$Change, [string]$BaseDir) {
         return ''
     }
 }
-# A diagram in the document, the page's width at most: Word gets the file (and embeds it), the others the image itself.
-function Get-DiagramHtml([string]$Path, [string]$Caption) {
+# A Figma picture's scale on the page (page pixels per its pixels): the one at which its change's whole
+# diagram (diagrams: change, from the same Figma file) fits the page, so that every part of the process has
+# its boxes as large as there; without one, two thirds of its size on the board (scale 2 / 3).
+function Get-FigmaScale([string]$Path) {
+    $info = $script:figmaFiles[$Path]
+    $k = 1.0 / 3
+    if (-not $info -or -not $info.Change) { return $k }
+    $main = $Path
+    if ($info.Key -ne 'change') { $main = Get-Diagram 'change' $info.Change $info.BaseDir }
+    if (-not $main -or -not $script:figmaFiles.ContainsKey($main) -or $script:figmaFiles[$main].File -ne $info.File) { return $k }
+    try { Initialize-ImageTool; $size = [LazySpecImage]::Size($main) } catch { return $k }
+    return [Math]::Min(640.0 / $size[0], 737.0 / $size[1])
+}
+# A diagram in the document, the page's width and 195 mm high at most (room for its chapter's heading above it
+# on the same page): Word gets the file (and embeds it), the others the image itself.
+# $Density: the picture's pixels per pixel of the page (the models' diagram: drawn at 3x, shown at 1.5x
+# its design size: sharp, and its text about as large as the document's).
+function Get-DiagramHtml([string]$Path, [string]$Caption, [double]$Density = 1) {
     if (-not $Path) { return '' }
+    if ($script:figmaFiles.ContainsKey($Path)) { $Density = 1.0 / (Get-FigmaScale $Path) }
     $attr = ''
     try {
         Initialize-ImageTool
         $size = [LazySpecImage]::Size($Path)
-        $k = [Math]::Min(1.0, [Math]::Min(640.0 / $size[0], 860.0 / $size[1]))
+        $k = [Math]::Min(1.0 / $Density, [Math]::Min(640.0 / $size[0], 737.0 / $size[1]))
         $attr = " width=`"$([int]($size[0] * $k))`" height=`"$([int]($size[1] * $k))`""
     } catch { }
     if ($script:exportFormat -eq 'Word') { $src = ([Uri]$Path).AbsoluteUri }
@@ -1523,14 +1859,18 @@ function Get-TocHtml($Entries) {
     return '<ul class="toc-list">' + (-join @($Entries | ForEach-Object { "<li><a href=`"#$($_.Id)`">$(ConvertTo-HtmlInline $_.Text)</a></li>" })) + "</ul>`n"
 }
 # A change's capabilities: a small contents, then each one: its title, its diagram, its delta spec.
-function Get-CapabilitiesHtml($Change) {
+# Several changes as one: one contents of all their capabilities.
+function Get-CapabilitiesHtml($Changes) {
+    $Changes = @($Changes)
     $sb = New-Object Text.StringBuilder
-    $caps = @($Change.Caps | ForEach-Object {
-            [pscustomobject]@{ Cap = $_; Id = "cap-$($Change.Name)-$($_.Name)"; Text = (Get-FriendlyTitle $_.Name $_.Name $Change.Name) } })
+    $caps = @(foreach ($ch in $Changes) { foreach ($cap in $ch.Caps) {
+                [pscustomobject]@{ Cap = $cap; Change = $ch; Id = "cap-$($ch.Name)-$($cap.Name)"; Text = (Get-FriendlyTitle $cap.Name $cap.Name $ch.Name) } } })
+    # Their contents, under a heading ("Capabilities"), after the change's diagram.
+    if ($caps.Count) { [void]$sb.Append("<h3>$(Html (Get-ExportHeading 'Capabilities'))</h3>`n") }
     [void]$sb.Append((Get-TocHtml $caps))
     foreach ($c in $caps) {
         [void]$sb.Append("<h2 class=`"cap`" id=`"$($c.Id)`"><a name=`"$($c.Id)`"></a>$(Html (Get-ExportText 'capability')): $(Html $c.Text)</h2>`n")
-        [void]$sb.Append((Get-DiagramHtml (Get-Diagram $c.Cap.Name $Change.Name $Change.Dir) $c.Text))
+        [void]$sb.Append((Get-DiagramHtml (Get-Diagram $c.Cap.Name $c.Change.Name $c.Change.Dir) $c.Text))
         [void]$sb.Append((ConvertTo-HtmlBody (Remove-DocTitle (Read-Text $c.Cap.Path)) 1))
     }
     return $sb.ToString()
@@ -1549,12 +1889,25 @@ function Load-ExportTexts {
 }
 function Get-ExportLanguage($Item) {
     $wf = $null
-    if ($Item -and $Item.Type -eq 'change') { $wf = $Item.Workflow } elseif ($hasRoot) { $wf = Get-Workflow (Join-Path $osDir 'changes\-') }
+    if ($Item -and $Item.Type -ne 'spec') { $wf = $Item.Workflow } elseif ($hasRoot) { $wf = Get-Workflow (Join-Path $osDir 'changes\-') }
     $l = ''
     if ($wf -and $wf.Language) { $l = $wf.Language } else { $l = Get-ExportSetting 'language' '' }
     $l = ($l.ToLower() -split '[-_]')[0]
     if (-not $l) { $l = 'en' }
     return $l
+}
+# A count with its word, in the language's form: "1 task", "2 zadatka", "5 zadataka". export-texts.json:
+# "<key>" (many), "<key>.one", "<key>.few" (hr: 2-4, not 12-14); a missing form: "<key>".
+function Get-CountText([int]$N, [string]$Key) {
+    $form = 'many'
+    if ($script:exportLang -eq 'hr') {
+        if ($N % 10 -eq 1 -and $N % 100 -ne 11) { $form = 'one' }
+        elseif ($N % 10 -ge 2 -and $N % 10 -le 4 -and ($N % 100 -lt 12 -or $N % 100 -gt 14)) { $form = 'few' }
+    }
+    elseif ($N -eq 1) { $form = 'one' }
+    $word = Get-ExportText $Key
+    if ($form -ne 'many') { $word = Get-ExportText "$Key.$form" $word }
+    return "$N $word"
 }
 # A text of the export in its language (else English, else $Default).
 function Get-ExportText([string]$Key, [string]$Default) {
@@ -1574,18 +1927,387 @@ function Get-ExportHeading([string]$Heading) {
     return $Heading
 }
 
+# --- the models' diagram: drawn from models.md (its sections, field tables and relations lines) ---------
+# Boxes: new models (green), changed models (yellow; only their changed fields), lookup lists (grey; their
+# values); lines: the relations ("**Veze:**" / "**Relations:**" / "**Beziehungen:**" lines, and fields whose
+# type is another model or list), their cardinality at the ends, new ones green, removed ones red.
+$script:modelTool = $false
+function Initialize-ModelDiagramTool {
+    if ($script:modelTool) { return }
+    Add-Type -AssemblyName System.Drawing
+    $refs = @('System.Drawing')
+    if ($PSVersionTable.PSEdition -eq 'Core') { $refs = @('System.Drawing.Common', 'System.Drawing.Primitives', 'System.Collections') }
+    Add-Type -ReferencedAssemblies $refs -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+public static class LazySpecModelDiagram {
+    class Node { public string Name, Kind, Status; public List<string[]> Lines = new List<string[]>(); public RectangleF Box; }
+    class Edge { public string From, To, Card, Mark; }
+    // Lines: "M|name|model|new" (or lookup / modified), "F|mark|text" (a field or value of the last M),
+    // "R|from|to|1:N|mark". Draws a PNG at 2x.
+    public static void Draw(string path, string[] lines) {
+        var nodes = new List<Node>(); var byName = new Dictionary<string, Node>(); var edges = new List<Edge>();
+        Node cur = null;
+        foreach (string l in lines) {
+            string[] p = l.Split('|');
+            if (p[0] == "M") { cur = new Node { Name = p[1], Kind = p[2], Status = p[3] }; if (!byName.ContainsKey(p[1])) { nodes.Add(cur); byName[p[1]] = cur; } else { cur = byName[p[1]]; } }
+            else if (p[0] == "F" && cur != null) { cur.Lines.Add(new string[] { p[1], p[2] }); }
+            else if (p[0] == "R") { edges.Add(new Edge { From = p[1], To = p[2], Card = p[3], Mark = p[4] }); }
+        }
+        // Relations to models the document only names: small boxes of their own (existing models).
+        foreach (Edge e in edges) foreach (string n in new string[] { e.From, e.To })
+            if (!byName.ContainsKey(n)) { Node x = new Node { Name = n, Kind = "model", Status = "existing" }; nodes.Add(x); byName[n] = x; }
+        if (nodes.Count == 0) { return; }
+        float s = 3f;
+        Font fHead = new Font("Segoe UI", 10f * s, FontStyle.Bold, GraphicsUnit.Pixel);
+        Font fText = new Font("Consolas", 8.5f * s, FontStyle.Regular, GraphicsUnit.Pixel);
+        Font fCard = new Font("Segoe UI", 8f * s, FontStyle.Bold, GraphicsUnit.Pixel);
+        Font fStrike = new Font("Consolas", 8.5f * s, FontStyle.Strikeout, GraphicsUnit.Pixel);
+        float pad = 6 * s, lineH = 13 * s, headH = 20 * s, gapX = 46 * s, gapY = 40 * s;
+        using (Bitmap probe = new Bitmap(10, 10)) using (Graphics g = Graphics.FromImage(probe)) {
+            foreach (Node n in nodes) {
+                float w = g.MeasureString(n.Name, fHead).Width + 2 * pad;
+                foreach (string[] ln in n.Lines) w = Math.Max(w, g.MeasureString(ln[0] + " " + ln[1], fText).Width + 2 * pad);
+                w = Math.Max(w, 110 * s);
+                float h = headH + n.Lines.Count * lineH + pad;
+                if (n.Lines.Count == 0) h = headH;
+                n.Box = new RectangleF(0, 0, w, h);
+            }
+        }
+        // The order: the most connected first, then its neighbours (related boxes next to each other).
+        var degree = new Dictionary<string, int>();
+        foreach (Node n in nodes) degree[n.Name] = 0;
+        foreach (Edge e in edges) { degree[e.From]++; degree[e.To]++; }
+        var order = new List<Node>(); var seen = new HashSet<string>();
+        var rest = new List<Node>(nodes);
+        rest.Sort((a, b) => degree[b.Name].CompareTo(degree[a.Name]));
+        foreach (Node start in rest) {
+            if (seen.Contains(start.Name)) continue;
+            var queue = new Queue<Node>(); queue.Enqueue(start); seen.Add(start.Name);
+            while (queue.Count > 0) {
+                Node n = queue.Dequeue(); order.Add(n);
+                var next = new List<Node>();
+                foreach (Edge e in edges) {
+                    string o = e.From == n.Name ? e.To : (e.To == n.Name ? e.From : null);
+                    if (o != null && !seen.Contains(o)) { seen.Add(o); next.Add(byName[o]); }
+                }
+                next.Sort((a, b) => degree[b.Name].CompareTo(degree[a.Name]));
+                foreach (Node x in next) queue.Enqueue(x);
+            }
+        }
+        // A grid: columns by count, each column as wide as its widest box, rows as high as their highest.
+        int cols = order.Count <= 2 ? order.Count : (order.Count <= 6 ? 3 : 4);
+        int rows = (order.Count + cols - 1) / cols;
+        // The cells: the order's, then swapped (empty cells too) while that makes the lines shorter and keeps
+        // them off the other boxes.
+        int slots = cols * rows;
+        Node[] cell = new Node[slots];
+        for (int i = 0; i < order.Count; i++) cell[i] = order[i];
+        Func<double> cost = () => {
+            var at = new Dictionary<string, int>();
+            for (int i = 0; i < slots; i++) if (cell[i] != null) at[cell[i].Name] = i;
+            double total = 0;
+            foreach (Edge e in edges) {
+                if (e.From == e.To) continue;
+                int a = at[e.From], b = at[e.To];
+                double ax = a % cols, ay = a / cols, bx = b % cols, by = b / cols;
+                total += Math.Sqrt((ax - bx) * (ax - bx) + (ay - by) * (ay - by) * 1.4);
+                for (int k = 0; k < slots; k++) {
+                    if (cell[k] == null || k == a || k == b) continue;
+                    if (Crosses(ax, ay, bx, by, k % cols, k / cols)) total += 6;
+                }
+            }
+            return total;
+        };
+        Node[] bestCells = null; double bestAll = double.MaxValue;
+        var rnd = new Random(7);
+        for (int start = 0; start < 8; start++) {
+            if (start > 0) for (int i = slots - 1; i > 0; i--) { int j = rnd.Next(i + 1); Node t0 = cell[i]; cell[i] = cell[j]; cell[j] = t0; }
+            double best = cost();
+            for (int round = 0; round < 12; round++) {
+                bool better = false;
+                for (int i = 0; i < slots; i++) for (int j = i + 1; j < slots; j++) {
+                    if (cell[i] == null && cell[j] == null) continue;
+                    Node t = cell[i]; cell[i] = cell[j]; cell[j] = t;
+                    double c = cost();
+                    if (c < best - 1e-9) { best = c; better = true; } else { t = cell[i]; cell[i] = cell[j]; cell[j] = t; }
+                }
+                if (!better) break;
+            }
+            if (best < bestAll - 1e-9) { bestAll = best; bestCells = (Node[])cell.Clone(); }
+        }
+        cell = bestCells;
+        // Empty rows and columns out.
+        var usedCols = new List<int>(); var usedRows = new List<int>();
+        for (int i = 0; i < slots; i++) if (cell[i] != null) { if (!usedCols.Contains(i % cols)) usedCols.Add(i % cols); if (!usedRows.Contains(i / cols)) usedRows.Add(i / cols); }
+        usedCols.Sort(); usedRows.Sort();
+        order = new List<Node>();
+        var colOf = new Dictionary<string, int>(); var rowOf = new Dictionary<string, int>();
+        for (int i = 0; i < slots; i++) if (cell[i] != null) { order.Add(cell[i]); colOf[cell[i].Name] = usedCols.IndexOf(i % cols); rowOf[cell[i].Name] = usedRows.IndexOf(i / cols); }
+        cols = usedCols.Count; rows = usedRows.Count;
+        float[] colW = new float[cols]; float[] rowH = new float[rows];
+        foreach (Node n in order) { colW[colOf[n.Name]] = Math.Max(colW[colOf[n.Name]], n.Box.Width); rowH[rowOf[n.Name]] = Math.Max(rowH[rowOf[n.Name]], n.Box.Height); }
+        float margin = 20 * s;
+        foreach (Node n in order) {
+            float x = margin, y = margin;
+            for (int c = 0; c < colOf[n.Name]; c++) x += colW[c] + gapX;
+            for (int r = 0; r < rowOf[n.Name]; r++) y += rowH[r] + gapY;
+            n.Box = new RectangleF(x + (colW[colOf[n.Name]] - n.Box.Width) / 2, y, n.Box.Width, n.Box.Height);
+        }
+        float W = margin * 2 - gapX, H = margin * 2 - gapY;
+        foreach (float c in colW) W += c + gapX;
+        foreach (float r in rowH) H += r + gapY;
+        using (Bitmap bmp = new Bitmap((int)Math.Ceiling(W), (int)Math.Ceiling(H)))
+        using (Graphics g = Graphics.FromImage(bmp)) {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+            g.Clear(Color.White);
+            // The relations first: the boxes over their ends.
+            foreach (Edge e in edges) {
+                RectangleF a = byName[e.From].Box, b = byName[e.To].Box;
+                if (e.From == e.To) continue;
+                PointF pa = BoxEdge(a, Center(b)), pb = BoxEdge(b, Center(a));
+                Color c = e.Mark == "+" ? Color.FromArgb(46, 125, 50) : (e.Mark == "-" ? Color.FromArgb(198, 40, 40) : Color.FromArgb(120, 130, 140));
+                using (Pen pen = new Pen(c, 1.4f * s)) {
+                    if (e.Mark == "-") pen.DashStyle = DashStyle.Dash;
+                    if (e.Mark == "~") pen.DashStyle = DashStyle.Dot;
+                    g.DrawLine(pen, pa, pb);
+                }
+                string[] card = e.Card.Split(':');
+                if (card.Length == 2) {
+                    using (Brush br = new SolidBrush(c)) {
+                        DrawCard(g, card[0], pa, pb, fCard, br, s);
+                        DrawCard(g, card[1], pb, pa, fCard, br, s);
+                    }
+                }
+            }
+            foreach (Node n in nodes) {
+                Color border, head;
+                if (n.Kind == "lookup") { border = Color.FromArgb(91, 107, 127); head = n.Status == "new" ? Color.FromArgb(230, 244, 234) : Color.FromArgb(238, 242, 247); }
+                else if (n.Status == "new") { border = Color.FromArgb(46, 125, 50); head = Color.FromArgb(230, 244, 234); }
+                else if (n.Status == "modified") { border = Color.FromArgb(183, 121, 31); head = Color.FromArgb(255, 244, 214); }
+                else { border = Color.FromArgb(150, 158, 168); head = Color.FromArgb(245, 246, 248); }
+                RectangleF r = n.Box;
+                using (Brush white = new SolidBrush(Color.White)) g.FillRectangle(white, r);
+                using (Brush hb = new SolidBrush(head)) g.FillRectangle(hb, r.X, r.Y, r.Width, headH);
+                using (Pen bp = new Pen(border, 1.5f * s)) { if (n.Kind == "lookup") bp.DashStyle = DashStyle.Dash; g.DrawRectangle(bp, r.X, r.Y, r.Width, r.Height); if (n.Lines.Count > 0) g.DrawLine(bp, r.X, r.Y + headH, r.Right, r.Y + headH); }
+                using (Brush tb = new SolidBrush(Color.FromArgb(31, 41, 51))) g.DrawString(n.Name, fHead, tb, r.X + pad, r.Y + 3 * s);
+                float y = r.Y + headH + 2 * s;
+                foreach (string[] ln in n.Lines) {
+                    Color tc = ln[0] == "+" ? Color.FromArgb(46, 125, 50) : (ln[0] == "~" ? Color.FromArgb(160, 100, 10) : (ln[0] == "-" ? Color.FromArgb(198, 40, 40) : Color.FromArgb(62, 76, 89)));
+                    using (Brush b2 = new SolidBrush(tc)) g.DrawString((ln[0] == "" ? "  " : ln[0] + " ") + ln[1], ln[0] == "-" ? fStrike : fText, b2, r.X + pad, y);
+                    y += lineH;
+                }
+            }
+            bmp.Save(path, ImageFormat.Png);
+        }
+    }
+    static PointF Center(RectangleF r) { return new PointF(r.X + r.Width / 2, r.Y + r.Height / 2); }
+    // Does the line between two cells' centres pass through another cell (its middle 80 %)?
+    static bool Crosses(double ax, double ay, double bx, double by, double cx, double cy) {
+        double x0 = cx - 0.4, x1 = cx + 0.4, y0 = cy - 0.4, y1 = cy + 0.4, t0 = 0, t1 = 1, dx = bx - ax, dy = by - ay;
+        double[] p = { -dx, dx, -dy, dy }, q = { ax - x0, x1 - ax, ay - y0, y1 - ay };
+        for (int i = 0; i < 4; i++) {
+            if (p[i] == 0) { if (q[i] < 0) return false; continue; }
+            double t = q[i] / p[i];
+            if (p[i] < 0) { if (t > t1) return false; if (t > t0) t0 = t; } else { if (t < t0) return false; if (t < t1) t1 = t; }
+        }
+        return true;
+    }
+    // Where the line from the box's centre towards p leaves the box.
+    static PointF BoxEdge(RectangleF r, PointF p) {
+        PointF c = Center(r);
+        float dx = p.X - c.X, dy = p.Y - c.Y;
+        if (dx == 0 && dy == 0) return c;
+        float tx = dx == 0 ? float.MaxValue : (r.Width / 2) / Math.Abs(dx);
+        float ty = dy == 0 ? float.MaxValue : (r.Height / 2) / Math.Abs(dy);
+        float t = Math.Min(tx, ty);
+        return new PointF(c.X + dx * t, c.Y + dy * t);
+    }
+    static void DrawCard(Graphics g, string text, PointF at, PointF towards, Font f, Brush b, float s) {
+        float dx = towards.X - at.X, dy = towards.Y - at.Y, len = (float)Math.Sqrt(dx * dx + dy * dy);
+        if (len < 1) return;
+        float ux = dx / len, uy = dy / len;
+        SizeF sz = g.MeasureString(text, f);
+        float x = at.X + ux * 12 * s - uy * 8 * s - sz.Width / 2, y = at.Y + uy * 12 * s + ux * 8 * s - sz.Height / 2;
+        using (Brush bg = new SolidBrush(Color.White)) g.FillRectangle(bg, x, y, sz.Width, sz.Height);
+        g.DrawString(text, f, b, x, y);
+    }
+}
+'@
+    $script:modelTool = $true
+}
+
+# models.md -> the diagram's lines (M / F / R) for LazySpecModelDiagram; none when it has no models.
+function Get-ModelDiagramData([string]$Text) {
+    $out = New-Object Collections.Generic.List[string]
+    $section = ''
+    $model = $null
+    $names = @{}
+    $fieldTypes = New-Object Collections.ArrayList
+    $relations = @{}
+    $lines = $Text.Replace("`r", '').Split("`n")
+    # The models and lists first (their names: a field of that type is a relation).
+    foreach ($l in $lines) { if ($l -match '^###\s+`([A-Za-z_][\w.]*)`\s*$') { $names[$Matches[1]] = $true } }
+    $tableRows = 0; $hasMark = $false; $shown = 0
+    # What a box doesn't show: a changed model's unchanged fields ("... 9 unchanged"), the rest past 10 ("... 26 more").
+    $hide = @{ Same = 0; More = 0 }
+    $flushHidden = {
+        if ($model -and $hide.Same) { $out.Add("F||$([char]0x2026) $($hide.Same) $(Get-ExportText 'unchanged' 'unchanged')") }
+        if ($model -and $hide.More) { $out.Add("F||$([char]0x2026) $((Get-ExportText 'moreFields' '{n} more').Replace('{n}', [string]$hide.More))") }
+        $hide.Same = 0; $hide.More = 0
+    }
+    $statusOf = @{}
+    foreach ($l in $lines) {
+        if ($l -match '^##\s+(.*)$' -and $l -notmatch '^###') {
+            & $flushHidden
+            $model = $null
+            $h = $Matches[1].ToLower()
+            $kind = 'model'; if ($h -match 'lookup') { $kind = 'lookup' }
+            $status = ''
+            if ($h -match '^(nov|new|neu)') { $status = 'new' } elseif ($h -match '^(izmijenjen|modified|changed|ge.ndert)') { $status = 'modified' }
+            $section = if ($status) { "$kind|$status" } else { '' }
+            continue
+        }
+        if ($l -match '^###\s+`([A-Za-z_][\w.]*)`\s*$') {
+            & $flushHidden
+            $model = $null
+            if (-not $section) { continue }
+            $model = $Matches[1]
+            $statusOf[$model] = $section
+            $out.Add("M|$model|$section")
+            $tableRows = 0; $hasMark = $false; $shown = 0
+            continue
+        }
+        if (-not $model) { continue }
+        # A table row: the field (or value) and its type; changed models: only the changed rows.
+        if ($l -match '^\s*\|') {
+            $cells = @($l.Trim().Trim('|').Split('|') | ForEach-Object { $_.Trim() })
+            $tableRows++
+            if ($tableRows -eq 1) { $hasMark = ($cells[0] -replace '[*`]', '') -match '^(?i)(change|promjena|.nderung)$'; continue }
+            if ($cells[0] -match '^:?-{2,}') { continue }
+            $mark = ''
+            if ($hasMark) { $mark = ($cells[0] -replace '[*`]', '').Trim(); if ($mark -eq [string][char]0x2212) { $mark = '-' }; $cells = @($cells | Select-Object -Skip 1) }
+            $name = ($cells[0] -replace '[`*]', '').Trim()
+            if (-not $name) { continue }
+            $type = ''
+            $isLookup = $section -like 'lookup*'
+            if (-not $isLookup -and $cells.Count -gt 1) { $type = ($cells[1] -replace '[`*]', '').Trim() }
+            # A field whose type is a model or list of the document: a relation (unless a Veze line names it).
+            $bare = ($type -replace '[?\[\]]|<.*>', '').Trim()
+            if ($bare -and $names.ContainsKey($bare) -and $bare -ne $model) { [void]$fieldTypes.Add(@($model, $bare, $mark)) }
+            $isChanged = $section -like '*|modified'
+            if ($isChanged -and -not $mark) { $hide.Same++; continue }
+            if ($shown -ge 10) { $hide.More++; continue }
+            $text = $name
+            if ($type) { $text += ": $type" }
+            $out.Add("F|$mark|$($text.Replace('|', '/'))")
+            $shown++
+            continue
+        }
+        # The relations line: `A` N:1 `B` (`BId`); + `C` 1:N `A` ...
+        if ($l -match '^\s*\*\*(Veze|Relations|Beziehungen)(:\*\*|\*\*:)\s*(.*)$') {
+            foreach ($item in ($Matches[3] -split ';')) {
+                $m = [regex]::Match($item.Trim(), '^([+~\u2212-])?\s*`([^`]+)`\s+(1|N|0\.\.1|\*)\s*:\s*(1|N|0\.\.1|\*)\s+`([^`]+)`')
+                if (-not $m.Success) { continue }
+                $mk = $m.Groups[1].Value; if ($mk -eq [string][char]0x2212) { $mk = '-' }
+                $key = (@($m.Groups[2].Value, $m.Groups[5].Value) | Sort-Object) -join '|'
+                # Simple: a relation that changes, any of a new model, or one between models of this document;
+                # a changed model's unchanged relations to other models stay in its table, not in the picture.
+                $a = $m.Groups[2].Value; $b = $m.Groups[5].Value
+                $keep = $mk -or ($statusOf[$a] -like '*|new') -or ($statusOf[$b] -like '*|new') -or ($names.ContainsKey($a) -and $names.ContainsKey($b))
+                if ($keep -and -not $relations.ContainsKey($key)) { $relations[$key] = "R|$a|$b|$($m.Groups[3].Value):$($m.Groups[4].Value)|$mk" }
+            }
+        }
+    }
+    & $flushHidden
+    foreach ($ft in $fieldTypes) {
+        $key = (@($ft[0], $ft[1]) | Sort-Object) -join '|'
+        if (-not $relations.ContainsKey($key)) { $relations[$key] = "R|$($ft[0])|$($ft[1])|N:1|$($ft[2])" }
+    }
+    foreach ($r in $relations.Values) { $out.Add($r) }
+    if (-not @($out | Where-Object { $_.StartsWith('M|') }).Count) { return @() }
+    return , $out.ToArray()
+}
+# The diagram of a models.md as a picture file (for the export); '' when there is nothing to draw.
+$script:exportTempFiles = New-Object Collections.ArrayList
+function New-ModelDiagram([string]$Text) {
+    $data = Get-ModelDiagramData $Text
+    if (-not @($data).Count) { return '' }
+    try {
+        Initialize-ModelDiagramTool
+        $f = Join-Path ([IO.Path]::GetTempPath()) ('lazyspec-models-' + [guid]::NewGuid().ToString('N') + '.png')
+        [LazySpecModelDiagram]::Draw($f, [string[]]$data)
+        if (-not (Test-Path -LiteralPath $f)) { return '' }
+        [void]$script:exportTempFiles.Add($f)
+        return $f
+    } catch { Write-Host "  ! the models' diagram not drawn: $($_.Exception.Message)"; return '' }
+}
+
+# A Markdown file as a document (-Markdown): its front matter (title, subtitle, client, author, date, language,
+# toc, cover), its title (the front matter's, else its first "# " heading, else the file's name), its text.
+function Read-MarkdownDocument([string]$Path) {
+    $text = Read-Text $Path
+    $fm = [ordered]@{}
+    $m = [regex]::Match($text, '(?s)\A\uFEFF?---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\z)')
+    if ($m.Success) {
+        try { $fm = ConvertFrom-ThemeYaml $m.Groups[1].Value "$Path (front matter)" } catch { throw "The Markdown file's front matter can't be read: $($_.Exception.Message)" }
+        if ($fm -isnot [Collections.IDictionary]) { $fm = [ordered]@{} }
+        $text = $text.Substring($m.Length)
+    }
+    $value = { param([string]$K) if ($fm.Contains($K)) { return [string]$fm[$K] } return '' }
+    $flag = { param([string]$K, [bool]$Default) $v = & $value $K; if (-not $v) { return $Default }; return $v -match '^(?i)(true|yes|on|1)$' }
+    $title = & $value 'title'
+    # The first "# " heading: the title (when the front matter has none, or it is the same).
+    $h1 = [regex]::Match($text, '\A\s*#[ \t]+(.+?)[ \t]*#*[ \t]*(?:\r?\n|\z)')
+    if ($h1.Success -and (-not $title -or $h1.Groups[1].Value.Trim() -eq $title)) {
+        if (-not $title) { $title = $h1.Groups[1].Value.Trim() }
+        $text = $text.Substring($h1.Length)
+    }
+    if (-not $title) { $title = [IO.Path]::GetFileNameWithoutExtension($Path) }
+    return [pscustomobject]@{
+        Path = $Path; Title = $title; Subtitle = (& $value 'subtitle'); Client = (& $value 'client'); Author = (& $value 'author')
+        Date = (& $value 'date'); Language = (& $value 'language'); Toc = (& $flag 'toc' $false); Cover = (& $flag 'cover' $true); Text = $text
+    }
+}
+
 # The whole document as HTML. Word: a [[TOC]] mark where Word puts its own table of contents.
-function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, [bool]$Friendly) {
-    $specs = @(Load-Specs)
+# $Doc: a Markdown document (-Markdown) instead of the specification.
+# An entry of the contents. PDF: the title, dots and its page (0 until Export-Pdf knows it).
+function Get-TocEntryHtml([string]$Id, [string]$TitleHtml, [string]$Class, [string]$Format) {
+    $cls = ''
+    if ($Class) { $cls = " class=`"$Class`"" }
+    if ($Format -ne 'Pdf') { return "<p$cls><a href=`"#$Id`">$TitleHtml</a></p>`n" }
+    return "<p$cls><a class=`"paged`" href=`"#$Id`"><span class=`"t`">$TitleHtml</span><span class=`"dots`"></span><span class=`"pg`" data-page-for=`"$Id`">0</span></a></p>`n"
+}
+function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, [bool]$Friendly, $Doc, [string]$ItemTitle) {
+    $specs = @()
+    if (-not $Doc) { $specs = @(Load-Specs) }
     $changes = @()
     if ($WithChanges) { $changes = @(Load-Changes | Where-Object { -not $_.Archived } | Sort-Object Name) }
     $one = $null
-    if ($ItemName) {
+    $names = @(([string]$ItemName).Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if ($names.Count -gt 1) {
+        # Several changes (-Item a,b,c): one whole for the client, their documents together.
+        $one = Get-ChangeBundle (Get-ChangeGroup $names) $ItemTitle
+    }
+    elseif ($names.Count) {
+        $ItemName = $names[0]
         $one = @($specs | Where-Object { $_.Name -eq $ItemName }) + @(Load-Changes | Where-Object { $_.Name -eq $ItemName }) | Select-Object -First 1
-        if (-not $one) { throw "No spec or change named '$ItemName' in openspec/." }
+        # A saved whole (lazyspec: bundles:): its changes, its title.
+        $saved = @(Get-Bundles | Where-Object { $_.Id -eq $ItemName })
+        if (-not $one -and $saved.Count) {
+            if (-not $ItemTitle) { $ItemTitle = $saved[0].Title }
+            $one = Get-ChangeBundle (Get-ChangeGroup $saved[0].Changes) $ItemTitle $saved[0].Id
+        }
+        if (-not $one) { throw "No spec, change or saved whole (lazyspec: bundles:) named '$ItemName' in openspec/." }
     }
     Load-ExportTexts
     $script:exportLang = Get-ExportLanguage $one
+    if ($Doc -and $Doc.Language) { $script:exportLang = ($Doc.Language.ToLower() -split '[-_]')[0] }
     $script:exportFriendly = $Friendly
     $script:exportFormat = $Format
     $title = Get-ExportSetting 'title' $projectName
@@ -1593,6 +2315,14 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
     $client = Get-ExportSetting 'client' ''
     $author = Get-ExportSetting 'author' 'Netmedia'
     $date = Get-Date -Format (Get-ExportText 'dateFormat' 'yyyy-MM-dd')
+    $docBody = ''
+    if ($Doc) {
+        $title = $Doc.Title; $subtitle = $Doc.Subtitle
+        if ($Doc.Client) { $client = $Doc.Client }
+        if ($Doc.Author) { $author = $Doc.Author }
+        if ($Doc.Date) { $date = $Doc.Date }
+        $docBody = ConvertTo-HtmlBody $Doc.Text
+    }
     $reqs = 0
     $chapters = @()
     $scope = ''
@@ -1600,28 +2330,53 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
     if ($one) {
         $specs = @(); $changes = @()
         $subtitle = Get-ItemTitle $one
+        if ($ItemTitle) { $subtitle = $ItemTitle }
         if ($one.Type -eq 'spec') {
             $specs = @($one)
             $subtitle = "$(Get-ExportText 'specification'): $subtitle"
         }
         else {
+            # A change, or several as one (a chapter per kind of document, each change's part under its title).
+            $members = @($one)
+            if ($one.Type -eq 'bundle') { $members = @($one.Members) }
+            $many = $members.Count -gt 1
             # A link to one of its documents ("open-questions.md") goes to that document's chapter.
             $script:docAnchors = @{}
-            foreach ($d in $one.Docs) { foreach ($f in $d.Files) { $script:docAnchors[(Split-Path $f -Leaf)] = "doc-$($d.Id)" } }
+            foreach ($m in $members) { foreach ($d in $m.Docs) { foreach ($f in $d.Files) { $script:docAnchors[(Split-Path $f -Leaf)] = "doc-$($d.Id)" } } }
             $n = 0
             foreach ($d in $one.Docs) {
                 $sb = New-Object Text.StringBuilder
                 if ($d.IsSpecs) {
                     if (-not $one.Caps.Count) { continue }
-                    # The whole change's diagram first, then its capabilities.
-                    [void]$sb.Append((Get-DiagramHtml (Get-Diagram 'change' $one.Name $one.Dir) (Get-ItemTitle $one)))
-                    [void]$sb.Append((Get-CapabilitiesHtml $one))
+                    # The whole change's diagram first (several: each change's, all of them before the capabilities,
+                    # not between another change's), a visual introduction; then its capabilities.
+                    foreach ($m in $members) { [void]$sb.Append((Get-DiagramHtml (Get-Diagram 'change' $m.Name $m.Dir) (Get-ItemTitle $m))) }
+                    [void]$sb.Append((Get-CapabilitiesHtml $members))
                 }
                 else {
-                    if (-not $d.Files.Count) { continue }
-                    foreach ($f in $d.Files) {
-                        if ($d.Files.Count -gt 1) { [void]$sb.Append("<h2>$(Html (Split-Path $f -Leaf))</h2>`n"); [void]$sb.Append((ConvertTo-HtmlBody (Remove-DocTitle (Read-Text $f)) 1)) }
-                        else { [void]$sb.Append((ConvertTo-HtmlBody (Remove-DocTitle (Read-Text $f)))) }
+                    $parts = @(foreach ($m in $members) { foreach ($md in @($m.Docs | Where-Object { $_.Id -eq $d.Id -and $_.Files.Count } | Select-Object -First 1)) { [pscustomobject]@{ Change = $m; Doc = $md } } })
+                    if (-not $parts.Count) { continue }
+                    foreach ($pt in $parts) {
+                        $shift = 0
+                        if ($many) { [void]$sb.Append("<h2>$(Html (Get-ItemTitle $pt.Change))</h2>`n"); $shift = 1 }
+                        $files = @($pt.Doc.Files)
+                        foreach ($f in $files) {
+                            if ($files.Count -gt 1) { [void]$sb.Append("<h$(2 + $shift)>$(Html (Split-Path $f -Leaf))</h$(2 + $shift)>`n"); [void]$sb.Append((ConvertTo-HtmlBody (Remove-DocTitle (Read-Text $f)) (1 + $shift))) }
+                            else {
+                                $docText = Read-Text $f
+                                $docHtml = ConvertTo-HtmlBody (Remove-DocTitle $docText) $shift
+                                # models.md: the models' diagram, after the overview (else at the top).
+                                if ((Split-Path $f -Leaf) -ieq 'models.md') {
+                                    $png = New-ModelDiagram $docText
+                                    if ($png) {
+                                        $dia = Get-DiagramHtml $png (Get-ExportText 'models') 2
+                                        $at = $docHtml.IndexOf('</table>')
+                                        if ($at -ge 0) { $docHtml = $docHtml.Insert($at + 8, "`n$dia") } else { $docHtml = $dia + $docHtml }
+                                    }
+                                }
+                                [void]$sb.Append($docHtml)
+                            }
+                        }
                     }
                 }
                 $n++
@@ -1629,14 +2384,20 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
                 $dt = Get-ExportText $d.Id "`0"
                 if ($dt -eq "`0") {
                     $dt = $d.Title
-                    $h1 = [regex]::Match((Read-Text $d.Files[0]), '(?m)^#\s+(.+?)\s*$')
-                    if ($d.Files.Count -eq 1 -and $h1.Success) { $dt = $h1.Groups[1].Value }
+                    # Several changes: the first one's.
+                    $own = @($d.Files)
+                    if ($many -and $parts.Count) { $own = @($parts[0].Doc.Files) }
+                    if ($own.Count -eq 1) {
+                        $h1 = [regex]::Match((Read-Text $own[0]), '(?m)^#\s+(.+?)\s*$')
+                        if ($h1.Success) { $dt = $h1.Groups[1].Value }
+                    }
                 }
                 if ($d.IsSpecs) { $dt = Get-ExportText 'specs' }
-                $chapters += [pscustomobject]@{ Id = "doc-$($d.Id)"; Title = "$n. $dt"; Part = 'specs'; Body = $sb.ToString() }
+                $chapters += [pscustomobject]@{ Id = "doc-$($d.Id)"; Title = "$(Get-ChapterNumber $n)$dt"; Part = 'specs'; Body = $sb.ToString() }
             }
             foreach ($cap in $one.Caps) { $reqs += $cap.Added + $cap.Modified }
-            $scope = "$($chapters.Count) $(Get-ExportText 'nDocuments'), $($one.Caps.Count) $(Get-ExportText 'nCapabilities'), $($one.Total) $(Get-ExportText 'nTasks')"
+            $scope = "$(Get-CountText $chapters.Count 'nDocuments'), $(Get-CountText $one.Caps.Count 'nCapabilities'), $(Get-CountText $one.Total 'nTasks')"
+            if ($many) { $scope = "$(Get-CountText $members.Count 'nChanges'), $scope" }
         }
     }
     foreach ($s in $specs) { $reqs += $s.Reqs }
@@ -1649,20 +2410,33 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
         $name = Get-FriendlyTitle $s.Name $name
         # A spec's diagram ("diagrams:" straight under it, by the spec's name; saved in openspec\diagrams\).
         $body = (Get-DiagramHtml (Get-Diagram $s.Name '' $osDir) $name) + (ConvertTo-HtmlBody (Remove-DocTitle $s.Text))
-        $chapters += [pscustomobject]@{ Id = "spec-$($s.Name)"; Title = "$n. $name"; Part = 'specs'; Body = $body }
+        $chapters += [pscustomobject]@{ Id = "spec-$($s.Name)"; Title = "$(Get-ChapterNumber $n)$name"; Part = 'specs'; Body = $body }
     }
     foreach ($c in $changes) {
         $sb = New-Object Text.StringBuilder
         [void]$sb.Append((Get-DiagramHtml (Get-Diagram 'change' $c.Name $c.Dir) (Get-ItemTitle $c)))
         $proposal = Join-Path $c.Dir 'proposal.md'
         if (Test-Path -LiteralPath $proposal) { [void]$sb.Append((ConvertTo-HtmlBody (Remove-DocTitle (Read-Text $proposal)))) }
-        [void]$sb.Append((Get-CapabilitiesHtml $c))
+        [void]$sb.Append((Get-CapabilitiesHtml @($c)))
         $chapters += [pscustomobject]@{ Id = "change-$($c.Name)"; Title = (Get-ItemTitle $c); Part = 'changes'; Body = $sb.ToString() }
     }
 
     # The page's footer (title, page / pages): Edge and Chrome. Word drops a stylesheet with these; it numbers the pages itself.
     $pageCss = ''
-    if ($Format -ne 'Word') {
+    $meta = [pscustomobject]@{ title = $title; subtitle = $subtitle; client = $client; date = $date; author = $author }
+    $themeCss = ''
+    $coverLogo = ''
+    if ($script:docTheme) {
+        # The theme: its page (PDF), fonts and styles over LazySpec's; its cover logo.
+        $themeCss = Get-ThemeCss $script:docTheme $meta ($Format -eq 'Pdf')
+        $cl = $script:docTheme.Cover
+        if ($cl.Logo) {
+            $src = ([Uri]$cl.Logo).AbsoluteUri
+            if ($Format -ne 'Word') { $src = "data:image/$([IO.Path]::GetExtension($cl.Logo).TrimStart('.').ToLower().Replace('jpg', 'jpeg'));base64," + [Convert]::ToBase64String([IO.File]::ReadAllBytes($cl.Logo)) }
+            $coverLogo = "<div class=`"cover-logo`"><img src=`"$src`" style=`"height: $(Format-Num $cl.LogoHeight)mm`" data-height-mm=`"$(Format-Num $cl.LogoHeight)`" alt=`"`"></div>`n"
+        }
+    }
+    elseif ($Format -ne 'Word') {
         $pageCss = @"
 @page { size: A4; margin: 20mm 18mm 22mm 18mm;
   @bottom-left { content: "$(("$title - $subtitle") -replace '["\\<>]', '')"; font: 8pt 'Segoe UI', Arial, sans-serif; color: #8a96a3; }
@@ -1670,6 +2444,14 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
 @page :first { @bottom-left { content: none; } @bottom-right { content: none; } }
 
 "@
+    }
+    $subtitleHtml = ''
+    if ($subtitle) { $subtitleHtml = "<p class=`"subtitle`">$(Html $subtitle)</p>" }
+    # A Markdown document: its headings don't start pages; without a cover, the title at the top of the first page.
+    $docCss = ''
+    if ($Doc) {
+        $docCss = "h1, h1.part { page-break-before: auto; }`n.page-break { page-break-before: always; margin: 0; height: 0; }`n.toc .l2 { margin-left: 14pt; font-size: 10pt; }`n"
+        if (-not $Doc.Cover) { $docCss += ".cover .bar { margin: 0 0 10pt; }`n.cover .subtitle { margin-bottom: 8pt; }`n.cover { margin-bottom: 18pt; }`n.toc-title { page-break-before: auto; }`n" }
     }
     $h = New-Object Text.StringBuilder
     [void]$h.Append(@"
@@ -1699,8 +2481,8 @@ li.step { list-style: none; margin-left: -12pt; }
 li.task-done { color: #52606d; }
 li.task-done .done { color: #2e8b57; font-weight: 600; }
 p.steps { margin: 3pt 0 8pt; }
-.diagram { margin: 6pt 0 16pt; text-align: center; page-break-inside: avoid; break-inside: avoid; }
-.diagram img { max-width: 100%; max-height: 230mm; height: auto; }
+.diagram { margin: 16pt 0 20pt; text-align: center; page-break-inside: avoid; break-inside: avoid; }
+.diagram img { max-width: 100%; max-height: 195mm; height: auto; }
 .diagram .caption { font-size: 8.5pt; color: #8a96a3; margin: 3pt 0 0; }
 ul.toc-list { margin: 4pt 0 14pt; padding-left: 16pt; }
 ul.toc-list li { font-size: 10pt; margin: 1.5pt 0; }
@@ -1710,17 +2492,40 @@ table { border-collapse: collapse; width: 100%; margin: 6pt 0 12pt; font-size: 9
 th, td { border: 1px solid #c9d3dc; padding: 3pt 6pt; margin: 0; text-align: left; vertical-align: top; }
 th { background: #eaf1f7; font-weight: 600; }
 tr { page-break-inside: avoid; }
+/* Nothing wider than the page (Chrome would shrink the whole document to fit it): long words, identifiers and
+   links break where they must. */
+body, p, li { overflow-wrap: anywhere; }
+li code, p code { overflow-wrap: anywhere; word-break: break-word; }
+/* A table with its columns' widths (table.sized, Get-TableWidths): exactly those, never wider than the page
+   (Chrome would shrink the whole document to fit a wider one); a word breaks only when it can't fit its
+   column ("anywhere" would let a column shrink to a letter). */
+table.sized { table-layout: fixed; }
+td, th, td code, th code { overflow-wrap: break-word; word-break: normal; }
+img { max-width: 100%; }
+tr.chg-add td:first-child, tr.chg-mod td:first-child, tr.chg-del td:first-child { font-weight: 700; text-align: center; }
+tr.chg-del td { color: #8A3B32; }
 code { font-family: Consolas, 'Courier New', monospace; font-size: 9pt; background: #f1f3f5; padding: 0 2pt; }
 pre { font-family: Consolas, 'Courier New', monospace; font-size: 8.5pt; background: #f6f8fa; border: 1px solid #e1e4e8; padding: 6pt; white-space: pre; overflow: hidden; }
 pre code { background: none; padding: 0; }
+h1 code { font-size: 22pt; } h2 code { font-size: 15pt; } h3 code { font-size: 12pt; } h4 code, h5 code, h6 code { font-size: 10.5pt; }
+h1 code, h2 code, h3 code, h4 code, h5 code, h6 code { font-size: inherit; background: none; padding: 0; }
 pre.wrap, pre.wrap code { font-size: 9pt; white-space: pre-wrap; overflow-wrap: anywhere; word-wrap: break-word; }
-/* Numbered questions at the margin, their answers lettered (a, b, c), a proposal at the answers' level. */
+/* Numbered questions at the margin, their answers lettered (a, b, c), a proposal at the answers' level; a plain
+   numbered list (a scenario's steps) as tight as any list. */
 ol.top { margin-left: 0; padding-left: 1.8em; }
-ol.top > li { margin: 10pt 0 4pt; }
+ol.top > li { margin: 2pt 0; }
+ol.top > li:has(> ol, > ul, > p) { margin: 10pt 0 22pt; }
 ol.options { margin: 4pt 0; padding-left: 1.8em; }
 ol.options > li { margin: 2pt 0; }
 li > p { margin: 6pt 0; }
-p.proposal { margin: 6pt 0 10pt; }
+.scenario li > p { margin: 0; }
+/* PDF: the contents as Word's: the title, dots, its page number. */
+.toc a.paged { display: flex; align-items: baseline; }
+.toc a.paged .dots { flex: 1; border-bottom: 1px dotted currentColor; margin: 0 3pt; min-width: 12pt; }
+.toc a.paged .pg { min-width: 14pt; text-align: right; }
+p.proposal { margin: 6pt 0 16pt; }
+p.labelled { margin: 10pt 0 2pt; }
+ul.labelled { margin: 0 0 10pt; }
 p.proposal > strong:first-child { text-decoration: underline; }
 blockquote { border-left: 3pt solid #c9d3dc; margin: 6pt 0; padding: 0 0 0 9pt; color: #52606d; }
 hr { border: none; border-top: 1px solid #c9d3dc; margin: 12pt 0; }
@@ -1732,19 +2537,38 @@ hr { border: none; border-top: 1px solid #c9d3dc; margin: 12pt 0; }
 .toc-title { page-break-before: always; font-size: 22pt; font-weight: 600; color: #0b3c5d; border-bottom: 2pt solid #f07b4f; padding-bottom: 4pt; margin: 0 0 14pt; }
 .toc p { margin: 3pt 0; font-size: 11pt; }
 .toc .part { margin-top: 12pt; font-weight: 600; color: #52606d; }
-</style></head><body>
+$docCss$themeCss</style></head><body>
 <div class="cover">
-<div class="bar"></div>
+$coverLogo<div class="bar"></div>
 <p class="title">$(Html $title)</p>
-<p class="subtitle">$(Html $subtitle)</p>
+$subtitleHtml
 
 "@)
     if ($client) { [void]$h.Append("<p class=`"meta`">$(Html (Get-ExportText 'client')): <strong>$(Html $client)</strong></p>`n") }
     [void]$h.Append("<p class=`"meta`">$(Html (Get-ExportText 'date')): $date</p>`n")
     if ($author) { [void]$h.Append("<p class=`"meta`">$(Html (Get-ExportText 'preparedBy')): $(Html $author)</p>`n") }
+    if ($Doc) {
+        # A document: its contents (toc: true; headings 1-2), then its text on a page of its own after a cover.
+        [void]$h.Append("</div>`n")
+        if ($Doc.Toc) {
+            [void]$h.Append("<p class=`"toc-title`">$(Html (Get-ExportText 'contents'))</p>`n")
+            if ($Format -eq 'Word') { [void]$h.Append("<p>[[TOC]]</p>`n") }
+            else {
+                [void]$h.Append("<div class=`"toc`">`n")
+                foreach ($hm in [regex]::Matches($docBody, '(?s)<h([12])\b[^>]*\bid="([^"]+)"[^>]*>(.*?)</h\1>')) {
+                    [void]$h.Append((Get-TocEntryHtml $hm.Groups[2].Value ([regex]::Replace($hm.Groups[3].Value, '<[^>]+>', '')) "l$($hm.Groups[1].Value)" $Format))
+                }
+                [void]$h.Append("</div>`n")
+            }
+        }
+        if ($Doc.Cover -or $Doc.Toc) { [void]$h.Append("<p class=`"page-break`"></p>`n") }
+        [void]$h.Append($docBody)
+        [void]$h.Append("</body></html>`n")
+        return [pscustomobject]@{ Html = $h.ToString(); Specs = 0; Changes = 0; Reqs = 0; Item = $null; Chapters = 0; Scope = ''; Meta = $meta; Doc = $Doc }
+    }
     if (-not $scope) {
-        $scope = "$($specs.Count) $(Get-ExportText 'nChapters'), $reqs $(Get-ExportText 'nRequirements')"
-        if ($changes.Count) { $scope += ", $($changes.Count) $(Get-ExportText 'nChanges')" }
+        $scope = "$(Get-CountText $specs.Count 'nChapters'), $(Get-CountText $reqs 'nRequirements')"
+        if ($changes.Count) { $scope += ", $(Get-CountText $changes.Count 'nChanges')" }
     }
     [void]$h.Append("<p class=`"meta`">$(Html (Get-ExportText 'scope')): $(Html $scope)</p>`n</div>`n")
 
@@ -1755,7 +2579,7 @@ hr { border: none; border-top: 1px solid #c9d3dc; margin: 12pt 0; }
         $part = 'specs'
         foreach ($ch in $chapters) {
             if ($ch.Part -ne $part) { $part = $ch.Part; [void]$h.Append("<p class=`"part`">$(Html (Get-ExportText 'plannedChanges'))</p>`n") }
-            [void]$h.Append("<p><a href=`"#$($ch.Id)`">$(Html $ch.Title)</a></p>`n")
+            [void]$h.Append((Get-TocEntryHtml $ch.Id (Html $ch.Title) '' $Format))
         }
         [void]$h.Append("</div>`n")
     }
@@ -1766,7 +2590,7 @@ hr { border: none; border-top: 1px solid #c9d3dc; margin: 12pt 0; }
         [void]$h.Append($ch.Body)
     }
     [void]$h.Append("</body></html>`n")
-    return [pscustomobject]@{ Html = $h.ToString(); Specs = $specs.Count; Changes = $changes.Count; Reqs = $reqs; Item = $one; Chapters = $chapters.Count; Scope = $scope }
+    return [pscustomobject]@{ Html = $h.ToString(); Specs = $specs.Count; Changes = $changes.Count; Reqs = $reqs; Item = $one; Chapters = $chapters.Count; Scope = $scope; Meta = $meta }
 }
 
 function Find-Browser {
@@ -1786,7 +2610,73 @@ function Wait-File([string]$Path, [int]$Seconds) {
     return $false
 }
 # HTML -> PDF: Edge (or Chrome) prints it, headless, with its own empty profile.
+# Ends a process and the ones it started. One that ended by itself meanwhile is fine: taskkill's "not found"
+# (on stderr, an error under ErrorActionPreference Stop in Windows PowerShell) isn't a failure.
+function Stop-ProcessTree($Proc) {
+    if (-not $Proc) { return }
+    try { if ($Proc.HasExited) { return } } catch { return }
+    if ($env:OS -eq 'Windows_NT') { try { & taskkill.exe /T /F /PID $Proc.Id 2>&1 | Out-Null } catch { } }
+    else { try { $Proc.Kill() } catch { } }
+}
+# The PDF's named destinations (a heading's id) and their pages (1 = the first). Edge and Chrome write the
+# PDF's objects plainly (only the page contents and fonts are compressed): the catalog's /Dests and /Pages.
+function Get-PdfDestPages([string]$Path) {
+    $t = [Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes($Path))
+    $obj = {
+        param([string]$N)
+        $at = [regex]::Match($t, "(?m)^$N 0 obj\b")
+        if (-not $at.Success) { return '' }
+        $end = $t.IndexOf('endobj', $at.Index)
+        $st = $t.IndexOf('stream', $at.Index)
+        if ($st -ge 0 -and $st -lt $end) { $end = $st }
+        return $t.Substring($at.Index, $end - $at.Index)
+    }
+    $cat = [regex]::Match($t, '/Type\s*/Catalog\b[^>]*')
+    $pages = [regex]::Match($cat.Value, '/Pages\s+(\d+)\s+0\s+R')
+    $dests = [regex]::Match($cat.Value, '/Dests\s+(\d+)\s+0\s+R')
+    $map = @{}
+    if (-not $pages.Success -or -not $dests.Success) { return $map }
+    # The pages in order: the page tree, depth first.
+    $order = @{}
+    $stack = New-Object Collections.Stack
+    $stack.Push($pages.Groups[1].Value)
+    $n = 0
+    while ($stack.Count) {
+        $id = $stack.Pop()
+        $o = & $obj $id
+        $kids = [regex]::Match($o, '/Kids\s*\[([^\]]*)\]')
+        if ($o -match '/Type\s*/Pages\b' -and $kids.Success) {
+            $refs = @([regex]::Matches($kids.Groups[1].Value, '(\d+)\s+0\s+R') | ForEach-Object { $_.Groups[1].Value })
+            for ($i = $refs.Count - 1; $i -ge 0; $i--) { $stack.Push($refs[$i]) }
+        }
+        else { $n++; $order[$id] = $n }
+    }
+    foreach ($m in [regex]::Matches((& $obj $dests.Groups[1].Value), '/([^\s/\[\]<>()]+)\s*\[\s*(\d+)\s+0\s+R')) {
+        if ($order.ContainsKey($m.Groups[2].Value)) { $map[$m.Groups[1].Value] = $order[$m.Groups[2].Value] }
+    }
+    return $map
+}
 function Export-Pdf([string]$HtmlPath, [string]$Target) {
+    Invoke-PdfPrint $HtmlPath $Target
+    # The contents' page numbers: where the first print put each chapter; then printed again with them
+    # (a number on its entry's line: the pages stay as they were).
+    $html = [IO.File]::ReadAllText($HtmlPath)
+    if ($html -notmatch 'data-page-for="') { return }
+    $pages = @{}
+    try { $pages = Get-PdfDestPages $Target } catch { }
+    if (-not $pages.Count) { Write-Host "  ! the contents without page numbers (the PDF's links weren't readable)"; return }
+    $html = [regex]::Replace($html, '<span class="pg" data-page-for="([^"]+)">0</span>', {
+            param($m)
+            $p = $pages[$m.Groups[1].Value]
+            if ($p) { return "<span class=`"pg`">$p</span>" }
+            return '<span class="pg"></span>'
+        })
+    [IO.File]::WriteAllText($HtmlPath, $html, (New-Object Text.UTF8Encoding $false))
+    Write-Host "  $($g.caret) the contents' page numbers: printing again"
+    Remove-Item -LiteralPath $Target -Force
+    Invoke-PdfPrint $HtmlPath $Target
+}
+function Invoke-PdfPrint([string]$HtmlPath, [string]$Target) {
     $browser = Find-Browser
     if (-not $browser) { throw 'PDF needs Microsoft Edge or Google Chrome (neither was found).' }
     Write-Host "  $($g.caret) printing with $(Split-Path $browser -Leaf)"
@@ -1807,7 +2697,7 @@ function Export-Pdf([string]$HtmlPath, [string]$Target) {
         if ($stable -ge 4) { break }
         if ($p.HasExited -and $watch.Elapsed.TotalSeconds -gt 5 -and $now -le 0) { break }
     }
-    if (-not $p.HasExited) { & taskkill.exe /T /F /PID $p.Id 2>&1 | Out-Null }
+    Stop-ProcessTree $p
     if (-not (Wait-File $Target 2)) { throw "$(Split-Path $browser -Leaf) wrote no PDF." }
 }
 # HTML -> Word: Word itself (its own table of contents, page numbers), else pandoc.
@@ -1830,7 +2720,7 @@ function Export-Word([string]$HtmlPath, [string]$Target) {
             $range = $doc.Content
             if ($range.Find.Execute('[[TOC]]')) {
                 $range.Text = ''
-                [void]$doc.TablesOfContents.Add($range, $true, 1, 1)
+                [void]$doc.TablesOfContents.Add($range, $true, 1, $script:wordMode.TocLevels)
                 $doc.TablesOfContents.Item(1).Update()
             }
             [void]$doc.Sections.Item(1).Footers.Item(1).PageNumbers.Add(2, $false)  # right, not on the cover
@@ -1848,37 +2738,1470 @@ function Export-Word([string]$HtmlPath, [string]$Target) {
     Write-Host "  $($g.caret) converting with pandoc"
     $html = (Read-Text $HtmlPath).Replace('<p>[[TOC]]</p>', '')
     [IO.File]::WriteAllText($HtmlPath, $html, (New-Object Text.UTF8Encoding $false))
-    & $pandoc.Source $HtmlPath -f html -t docx --toc --toc-depth=1 -o $Target
+    & $pandoc.Source $HtmlPath -f html -t docx --toc "--toc-depth=$($script:wordMode.TocLevels)" -o $Target
     if ($LASTEXITCODE) { throw "pandoc ended with exit code $LASTEXITCODE." }
 }
 
-function Invoke-Export([string]$Format, [string]$Target, [bool]$WithChanges, [bool]$OpenIt, [string]$ItemName, [bool]$Friendly) {
-    if (-not $hasRoot) { throw "No openspec folder in $((Get-Location).Path) or above it: nothing to export." }
+# --- the document theme ("lazyspec: documentTheme:" in config.yaml, or -Theme): one look, three formats -----
+# A YAML file: the page, colours, the styles of the cover, headings, text, tables, links and code, the
+# header and footer (a logo, texts, the page number), the cover's logo. Fonts: the .ttf / .otf files in
+# fonts\ next to it (PDF and HTML use them without installing them; Word gets them embedded). Pictures:
+# relative to the theme. HTML and PDF are styled with it; Word gets a base document made from it (unless a
+# documentTemplate is set: Word documents then use that).
+
+# A font file's names and style, from its name and OS/2 tables.
+$script:fontTool = $false
+function Initialize-FontTool {
+    if ($script:fontTool) { return }
+    Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Text;
+public static class LazySpecFont {
+    static int U16(byte[] b, int o) { return (b[o] << 8) | b[o + 1]; }
+    static long U32(byte[] b, int o) { return ((long)b[o] << 24) | ((long)b[o + 1] << 16) | ((long)b[o + 2] << 8) | b[o + 3]; }
+    // [family (name 1), style (name 2), typographic family (16, else 1), weight, italic 0/1, cff 0/1]
+    public static string[] Info(string path) {
+        byte[] b = File.ReadAllBytes(path);
+        long version = U32(b, 0);
+        if (version == 0x74746366) { throw new Exception("a font collection (.ttc): use the single .ttf / .otf files"); }
+        int n = U16(b, 4);
+        int nameAt = -1, os2At = -1;
+        for (int i = 0; i < n; i++) {
+            int r = 12 + i * 16;
+            string tag = Encoding.ASCII.GetString(b, r, 4);
+            int off = (int)U32(b, r + 8);
+            if (tag == "name") { nameAt = off; }
+            if (tag == "OS/2") { os2At = off; }
+        }
+        if (nameAt < 0) { throw new Exception("no name table: not a font"); }
+        string[] names = new string[18];
+        int[] rank = new int[18];
+        int count = U16(b, nameAt + 2), strings = nameAt + U16(b, nameAt + 4);
+        for (int i = 0; i < count; i++) {
+            int r = nameAt + 6 + i * 12;
+            int platform = U16(b, r), encoding = U16(b, r + 2), language = U16(b, r + 4), id = U16(b, r + 6), len = U16(b, r + 8), off = U16(b, r + 10);
+            if (id >= names.Length) { continue; }
+            int score = 0; string s = null;
+            if (platform == 3 && (encoding == 1 || encoding == 0)) { s = Encoding.BigEndianUnicode.GetString(b, strings + off, len); score = language == 0x409 ? 3 : 2; }
+            else if (platform == 1 && encoding == 0) { s = Encoding.ASCII.GetString(b, strings + off, len); score = 1; }
+            if (s != null && score > rank[id]) { names[id] = s; rank[id] = score; }
+        }
+        int weight = 400, italic = 0;
+        if (os2At >= 0) {
+            weight = U16(b, os2At + 4);
+            int sel = U16(b, os2At + 62);
+            if ((sel & 1) != 0) { italic = 1; }
+        }
+        string style = names[2] ?? "Regular";
+        if (style.ToLower().Contains("italic") || style.ToLower().Contains("oblique")) { italic = 1; }
+        return new string[] { names[1] ?? "", style, names[16] ?? names[1] ?? "", weight.ToString(), italic.ToString(), version == 0x4F54544F ? "1" : "0" };
+    }
+    // Word's embedded font: the first 32 bytes XORed with the key (the GUID's 16 bytes, last to first).
+    public static byte[] Obfuscate(byte[] font, Guid key) {
+        byte[] k = new byte[16];
+        string hex = key.ToString("N");
+        for (int i = 0; i < 16; i++) { k[i] = Convert.ToByte(hex.Substring(30 - i * 2, 2), 16); }
+        byte[] o = (byte[])font.Clone();
+        for (int i = 0; i < 32 && i < o.Length; i++) { o[i] ^= k[i % 16]; }
+        return o;
+    }
+}
+'@
+    $script:fontTool = $true
+}
+
+# A small YAML: block mappings by indentation, flow mappings { a: b } and lists [a, b], quoted and plain
+# scalars, # comments (a # right after a letter or digit, as in a colour #333333, is a value). Errors name the line.
+function ConvertFrom-ThemeYaml([string]$Text, [string]$Path) {
+    $lines = New-Object Collections.ArrayList
+    $no = 0
+    $acc = ''; $accNo = 0; $depth = 0
+    foreach ($raw in $Text.Replace("`r", '').Split("`n")) {
+        $no++
+        # The comment off (outside quotes; " #" or a line starting with #).
+        $sb = New-Object Text.StringBuilder
+        $q = ''
+        for ($i = 0; $i -lt $raw.Length; $i++) {
+            $c = $raw[$i]
+            if ($q) { if ($c -eq $q) { $q = '' } }
+            elseif ($c -eq '"' -or $c -eq "'") { $q = [string]$c }
+            elseif ($c -eq '#' -and ($i -eq 0 -or $raw[$i - 1] -eq ' ' -or $raw[$i - 1] -eq "`t") -and ($i + 1 -ge $raw.Length -or $raw[$i + 1] -eq ' ' -or $raw.Substring(0, $i).Trim() -eq '')) { break }
+            [void]$sb.Append($c)
+        }
+        $l = $sb.ToString().TrimEnd()
+        if (-not $l.Trim() -and -not $acc) { continue }
+        # A flow mapping over several lines: one line.
+        if ($acc) { $acc += ' ' + $l.Trim() } else { $acc = $l; $accNo = $no }
+        $depth = ([regex]::Matches($acc, '[\{\[]')).Count - ([regex]::Matches($acc, '[\}\]]')).Count
+        if ($depth -gt 0) { continue }
+        [void]$lines.Add([pscustomobject]@{ No = $accNo; Indent = ($acc.Length - $acc.TrimStart().Length); Text = $acc.Trim() })
+        $acc = ''
+    }
+    if ($acc) { throw "$Path, line $accNo`: a { or [ that isn't closed" }
+    $pos = @{ I = 0 }
+    $parseFlow = {
+        param([string]$S, $P, [int]$LineNo)
+        $skip = { while ($P.I -lt $S.Length -and $S[$P.I] -eq ' ') { $P.I++ } }
+        & $skip
+        if ($P.I -ge $S.Length) { return '' }
+        $c = $S[$P.I]
+        if ($c -eq '{') {
+            $P.I++
+            $map = [ordered]@{}
+            while ($true) {
+                & $skip
+                if ($P.I -ge $S.Length) { throw "$Path, line $LineNo`: a { that isn't closed" }
+                if ($S[$P.I] -eq '}') { $P.I++; return $map }
+                $m = [regex]::Match($S.Substring($P.I), '^("[^"]*"|''[^'']*''|[^:,{}\[\]]+?)\s*:\s*')
+                if (-not $m.Success) { throw "$Path, line $LineNo`: 'key: value' expected at '$($S.Substring($P.I))'" }
+                $k = $m.Groups[1].Value.Trim('"', "'")
+                $P.I += $m.Length
+                $map[$k] = & $parseFlow $S $P $LineNo
+                & $skip
+                if ($P.I -lt $S.Length -and $S[$P.I] -eq ',') { $P.I++ }
+            }
+        }
+        if ($c -eq '[') {
+            $P.I++
+            $list = New-Object Collections.ArrayList
+            while ($true) {
+                & $skip
+                if ($P.I -ge $S.Length) { throw "$Path, line $LineNo`: a [ that isn't closed" }
+                if ($S[$P.I] -eq ']') { $P.I++; return , $list.ToArray() }
+                [void]$list.Add((& $parseFlow $S $P $LineNo))
+                & $skip
+                if ($P.I -lt $S.Length -and $S[$P.I] -eq ',') { $P.I++ }
+            }
+        }
+        if ($c -eq '"' -or $c -eq "'") {
+            $end = $S.IndexOf($c, $P.I + 1)
+            if ($end -lt 0) { throw "$Path, line $LineNo`: a quote that isn't closed" }
+            $v = $S.Substring($P.I + 1, $end - $P.I - 1)
+            $P.I = $end + 1
+            return $v
+        }
+        $m = [regex]::Match($S.Substring($P.I), '^[^,{}\[\]]*')
+        $P.I += $m.Length
+        return $m.Value.Trim()
+    }
+    $parseBlock = {
+        param([int]$Indent)
+        $map = [ordered]@{}
+        $list = $null
+        while ($pos.I -lt $lines.Count) {
+            $ln = $lines[$pos.I]
+            if ($ln.Indent -lt $Indent) { break }
+            if ($ln.Indent -gt $Indent) { throw "$Path, line $($ln.No): indented more than the lines before it" }
+            if ($ln.Text.StartsWith('- ') -or $ln.Text -eq '-') {
+                if ($null -eq $list) { $list = New-Object Collections.ArrayList }
+                $pos.I++
+                [void]$list.Add((& $parseFlow $ln.Text.Substring(1).Trim() @{ I = 0 } $ln.No))
+                continue
+            }
+            $m = [regex]::Match($ln.Text, '^("[^"]*"|''[^'']*''|[^:]+?)\s*:(?:\s+(.*))?$')
+            if (-not $m.Success) { throw "$Path, line $($ln.No): 'key: value' expected, not '$($ln.Text)'" }
+            $k = $m.Groups[1].Value.Trim('"', "'")
+            $pos.I++
+            if ($m.Groups[2].Success -and $m.Groups[2].Value.Trim() -and $m.Groups[2].Value.Trim() -notmatch '^[\{\[''"]') {
+                # A plain value: the rest of the line (commas and all, as YAML reads it).
+                $map[$k] = $m.Groups[2].Value.Trim()
+            }
+            elseif ($m.Groups[2].Success -and $m.Groups[2].Value.Trim()) {
+                $p = @{ I = 0 }
+                $v = & $parseFlow $m.Groups[2].Value $p $ln.No
+                if ($p.I -lt $m.Groups[2].Value.Length -and $m.Groups[2].Value.Substring($p.I).Trim()) { throw "$Path, line $($ln.No): something after the value: '$($m.Groups[2].Value.Substring($p.I).Trim())'" }
+                $map[$k] = $v
+            }
+            elseif ($pos.I -lt $lines.Count -and $lines[$pos.I].Indent -gt $Indent) { $map[$k] = & $parseBlock $lines[$pos.I].Indent }
+            else { $map[$k] = '' }
+        }
+        if ($null -ne $list) { return , $list.ToArray() }
+        return $map
+    }
+    if (-not $lines.Count) { return [ordered]@{} }
+    $result = & $parseBlock $lines[0].Indent
+    if ($pos.I -lt $lines.Count) { throw "$Path, line $($lines[$pos.I].No): indented less than the first line" }
+    return $result
+}
+
+# A length ("25mm", "1.5cm", "10pt", "0.5in", "40px") in millimetres; a bare number: $Unit.
+function ConvertTo-Mm([string]$V, [string]$Unit = 'mm', [string]$What = 'a length') {
+    $m = [regex]::Match("$V".Trim(), '^(-?\d+(?:\.\d+)?)\s*(mm|cm|pt|in|px)?$')
+    if (-not $m.Success) { throw "the theme: $What '$V' isn't a length (25mm, 1.5cm, 10pt, 0.5in)" }
+    $n = [double]::Parse($m.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
+    $u = $m.Groups[2].Value
+    if (-not $u) { $u = $Unit }
+    switch ($u) { 'mm' { return $n } 'cm' { return $n * 10 } 'pt' { return $n * 25.4 / 72 } 'in' { return $n * 25.4 } 'px' { return $n * 25.4 / 96 } }
+}
+function ConvertTo-Pt([string]$V, [string]$What) { return (ConvertTo-Mm $V 'pt' $What) * 72 / 25.4 }
+function Format-Num([double]$N) { return $N.ToString('0.##', [Globalization.CultureInfo]::InvariantCulture) }
+
+# The theme's defaults: LazySpec's own look; the theme's values over them.
+$themeDefaults = [ordered]@{
+    body = [ordered]@{ font = 'Segoe UI'; size = '10.5pt'; color = '#1f2933'; lineHeight = '1.3' }
+    title = [ordered]@{ size = '34pt'; bold = 'true'; color = '#0b3c5d' }
+    subtitle = [ordered]@{ size = '18pt'; color = '#4a90c2' }
+    heading1 = [ordered]@{ size = '22pt'; bold = 'true'; color = '#0b3c5d' }
+    heading2 = [ordered]@{ size = '15pt'; bold = 'true'; color = '#0b3c5d' }
+    heading3 = [ordered]@{ size = '12pt'; bold = 'true' }
+    heading4 = [ordered]@{ size = '11pt'; bold = 'true' }
+    heading5 = [ordered]@{ size = '10.5pt'; bold = 'true' }
+    heading6 = [ordered]@{ size = '10.5pt'; bold = 'true' }
+    tocHeading = [ordered]@{ size = '22pt'; bold = 'true'; color = '#0b3c5d' }
+    table = [ordered]@{ size = '9pt'; borderColor = '#c9d3dc'; headerBackground = '#eaf1f7' }
+    link = [ordered]@{ color = '#1d6fa5' }
+    code = [ordered]@{ font = 'Consolas'; size = '9pt' }
+}
+$themeStyleKeys = 'font', 'size', 'bold', 'italic', 'underline', 'color', 'background', 'spaceBefore', 'spaceAfter', 'lineHeight', 'align', 'pageBreakBefore', 'borderColor', 'headerBackground'
+
+# The theme, read and checked: -Theme (relative to the current folder), else documentTheme (relative to the
+# project's root); $null when neither is set. Set but missing, broken, or a picture missing: an error.
+$script:docTheme = $null
+function Get-DocumentTheme {
+    $raw = ''
+    $base = $Root
+    $from = 'lazyspec: documentTheme: in openspec/config.yaml'
+    if ($Theme) { $raw = $Theme; $base = (Get-Location).ProviderPath; $from = '-Theme' }
+    elseif ($hasRoot) { $raw = [string](Get-ProjectConfig).Values['documentTheme'] }
+    $raw = $raw.Trim().Trim('"', "'")
+    if (-not $raw) { return $null }
+    $path = $raw.Replace('/', '\')
+    if (-not [IO.Path]::IsPathRooted($path)) { $path = Join-Path $base $path }
+    $path = [IO.Path]::GetFullPath($path)
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "The document theme isn't there: $path ($from). Client documents need the company layout: fix the path (or remove the setting)." }
+    $dir = Split-Path $path -Parent
+    try { $y = ConvertFrom-ThemeYaml ([IO.File]::ReadAllText($path, [Text.Encoding]::UTF8)) $path } catch { throw "The document theme can't be read: $($_.Exception.Message)" }
+    if ($y -isnot [Collections.IDictionary]) { throw "The document theme isn't a YAML mapping: $path" }
+    foreach ($k in $y.Keys) { if ($k -notin 'page', 'colors', 'styles', 'header', 'footer', 'cover', 'numbering') { Write-Host "  ! the theme: '$k' isn't a theme key (page, colors, styles, header, footer, cover, numbering): ignored" } }
+    $get = { param($Map, [string]$Key) if ($Map -is [Collections.IDictionary] -and $Map.Contains($Key)) { return $Map[$Key] } return $null }
+    $colors = @{}
+    $c = & $get $y 'colors'
+    if ($c -is [Collections.IDictionary]) { foreach ($k in $c.Keys) { $colors[$k] = [string]$c[$k] } }
+    $color = {
+        param([string]$V)
+        if (-not $V) { return '' }
+        if ($colors.ContainsKey($V)) { $V = $colors[$V] }
+        if ($V -notmatch '^#?[0-9A-Fa-f]{6}$') { throw "the theme: the colour '$V' isn't #RRGGBB (or a name under colors)" }
+        return '#' + $V.TrimStart('#').ToUpper()
+    }
+    # The styles: LazySpec's defaults, the theme's body under every style, then the style's own.
+    $styles = [ordered]@{}
+    $ts = & $get $y 'styles'
+    if ($ts -and $ts -isnot [Collections.IDictionary]) { throw "the theme: styles must be a mapping (body, title, heading1 ...)" }
+    if ($ts) { foreach ($k in $ts.Keys) { if (-not $themeDefaults.Contains($k)) { Write-Host "  ! the theme: the style '$k' isn't one LazySpec uses ($($themeDefaults.Keys -join ', ')): ignored" } } }
+    foreach ($name in $themeDefaults.Keys) {
+        $s = [ordered]@{}
+        foreach ($k in $themeDefaults[$name].Keys) { $s[$k] = $themeDefaults[$name][$k] }
+        $own = & $get $ts $name
+        if ($own -and $own -isnot [Collections.IDictionary]) { throw "the theme: styles.$name must be a mapping ({ font: ..., size: ... })" }
+        if ($own) {
+            foreach ($k in $own.Keys) {
+                if ($k -notin $themeStyleKeys) { Write-Host "  ! the theme: styles.$name.$k isn't a style property ($($themeStyleKeys -join ', ')): ignored"; continue }
+                $s[$k] = [string]$own[$k]
+            }
+        }
+        foreach ($k in 'color', 'background', 'borderColor', 'headerBackground') { if ($s.Contains($k) -and $s[$k]) { $s[$k] = & $color $s[$k] } }
+        foreach ($k in 'size', 'spaceBefore', 'spaceAfter') { if ($s.Contains($k) -and $s[$k]) { [void](ConvertTo-Pt $s[$k] "styles.$name.$k") } }
+        $styles[$name] = $s
+    }
+    # Every style's font: its own, else the body's (code keeps its own).
+    foreach ($name in $styles.Keys) { if (-not $styles[$name].Contains('font') -or -not $styles[$name]['font']) { $styles[$name]['font'] = $styles.body.font } }
+    # Every heading's colour: its own, else the body's (not LazySpec's blue: the company's look only).
+    foreach ($name in 'heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6', 'tocHeading') {
+        if ($styles.Contains($name) -and -not $styles[$name]['color'] -and $styles.body['color']) { $styles[$name]['color'] = $styles.body['color'] }
+    }
+    # The page.
+    $page = & $get $y 'page'
+    $size = [string](& $get $page 'size')
+    $pw = 210.0; $ph = 297.0
+    if ($size) {
+        switch -Regex ($size.Trim()) {
+            '^(?i)a4$' { $pw = 210; $ph = 297 }
+            '^(?i)a5$' { $pw = 148; $ph = 210 }
+            '^(?i)letter$' { $pw = 215.9; $ph = 279.4 }
+            '^(?i)legal$' { $pw = 215.9; $ph = 355.6 }
+            default { $parts = $size.Trim() -split '\s+'; if ($parts.Count -ne 2) { throw "the theme: page.size '$size' isn't A4, A5, Letter, Legal or '<width> <height>'" }; $pw = ConvertTo-Mm $parts[0] 'mm' 'page.size'; $ph = ConvertTo-Mm $parts[1] 'mm' 'page.size' }
+        }
+    }
+    $mg = @{ top = 25.0; right = 20.0; bottom = 22.0; left = 20.0 }
+    $m = & $get $page 'margins'
+    if ($m -is [Collections.IDictionary]) { foreach ($k in 'top', 'right', 'bottom', 'left') { if ($m.Contains($k)) { $mg[$k] = ConvertTo-Mm $m[$k] 'mm' "page.margins.$k" } } }
+    elseif ($m) {
+        $v = @("$m".Trim() -split '\s+' | ForEach-Object { ConvertTo-Mm $_ 'mm' 'page.margins' })
+        switch ($v.Count) { 1 { $mg = @{ top = $v[0]; right = $v[0]; bottom = $v[0]; left = $v[0] } } 2 { $mg = @{ top = $v[0]; right = $v[1]; bottom = $v[0]; left = $v[1] } } 4 { $mg = @{ top = $v[0]; right = $v[1]; bottom = $v[2]; left = $v[3] } } default { throw "the theme: page.margins '$m': 1, 2 or 4 lengths, or { top, right, bottom, left }" } }
+    }
+    # A picture of the theme (relative to it): checked here.
+    $picture = {
+        param([string]$P, [string]$What)
+        if (-not $P) { return '' }
+        $f = $P.Replace('/', '\')
+        if (-not [IO.Path]::IsPathRooted($f)) { $f = Join-Path $dir $f }
+        $f = [IO.Path]::GetFullPath($f)
+        if (-not (Test-Path -LiteralPath $f -PathType Leaf)) { throw "the theme's $What isn't there: $f" }
+        if ([IO.Path]::GetExtension($f).ToLower() -notin '.png', '.jpg', '.jpeg', '.gif') { throw "the theme's $What must be a .png, .jpg or .gif (Word takes those): $f" }
+        return $f
+    }
+    # Header and footer: left, center, right (a text with {title} {subtitle} {client} {date} {page} {pages},
+    # or "logo"), the logo and its height, their text's size and colour, on the first page (the cover) or not.
+    $band = {
+        param($B, [string]$Name, [string]$DefaultSize)
+        $r = [pscustomobject]@{ Left = ''; Center = ''; Right = ''; Logo = ''; LogoHeight = 10.0; Size = $DefaultSize; Color = '#8A96A3'; FirstPage = $false; Any = $false }
+        if (-not $B) { return $r }
+        if ($B -isnot [Collections.IDictionary]) { throw "the theme: $Name must be a mapping ({ left: ..., right: ... })" }
+        foreach ($k in $B.Keys) { if ($k -notin 'left', 'center', 'right', 'logo', 'logoHeight', 'size', 'color', 'firstPage') { Write-Host "  ! the theme: $Name.$k isn't a $Name key: ignored" } }
+        $r.Left = [string](& $get $B 'left'); $r.Center = [string](& $get $B 'center'); $r.Right = [string](& $get $B 'right')
+        $r.Logo = & $picture ([string](& $get $B 'logo')) "$Name logo"
+        if (& $get $B 'logoHeight') { $r.LogoHeight = ConvertTo-Mm (& $get $B 'logoHeight') 'mm' "$Name.logoHeight" }
+        if (& $get $B 'size') { $r.Size = [string](& $get $B 'size'); [void](ConvertTo-Pt $r.Size "$Name.size") }
+        if (& $get $B 'color') { $r.Color = & $color ([string](& $get $B 'color')) }
+        $r.FirstPage = [string](& $get $B 'firstPage') -eq 'true'
+        foreach ($slot in 'Left', 'Center', 'Right') { if ($r.$slot -eq 'logo' -and -not $r.Logo) { throw "the theme: $Name.$($slot.ToLower()) is 'logo', but $Name.logo names no picture" } }
+        $r.Any = [bool]($r.Left -or $r.Center -or $r.Right)
+        return $r
+    }
+    $header = & $band (& $get $y 'header') 'header' '8pt'
+    $footer = & $band (& $get $y 'footer') 'footer' '8pt'
+    $cv = & $get $y 'cover'
+    $cover = [pscustomobject]@{ Logo = ''; LogoHeight = 25.0 }
+    if ($cv -is [Collections.IDictionary]) {
+        $cover.Logo = & $picture ([string](& $get $cv 'logo')) 'cover logo'
+        if (& $get $cv 'logoHeight') { $cover.LogoHeight = ConvertTo-Mm (& $get $cv 'logoHeight') 'mm' 'cover.logoHeight' }
+    }
+    # The fonts in fonts\ next to the theme.
+    $fonts = @()
+    $fontDir = Join-Path $dir 'fonts'
+    if (Test-Path -LiteralPath $fontDir -PathType Container) {
+        Initialize-FontTool
+        # Its subfolders too (a family's own folder, as it comes from the font's maker).
+        foreach ($f in @(Get-ChildItem -LiteralPath $fontDir -File -Recurse | Where-Object { $_.Extension -match '^\.(ttf|otf)$' } | Sort-Object FullName)) {
+            try {
+                $i = [LazySpecFont]::Info($f.FullName)
+                $fonts += [pscustomobject]@{ Path = $f.FullName; Family = $i[0]; Style = $i[1]; Typographic = $i[2]; Weight = [int]$i[3]; Italic = $i[4] -eq '1'; Cff = $i[5] -eq '1' }
+            } catch { Write-Host "  ! the theme's font $($f.Name) not used: $($_.Exception.Message)" }
+        }
+    }
+    # numbering: false - no numbers before the chapters' titles, nor before a document's own headings 1-2 ("1. Kostur").
+    $numbering = [string](& $get $y 'numbering') -ne 'false'
+    $t = [pscustomobject]@{ Numbering = $numbering; Path = $path; Dir = $dir; From = $from; PageW = $pw; PageH = $ph; Margins = $mg; Styles = $styles; Colors = $colors; Header = $header; Footer = $footer; Cover = $cover; Fonts = $fonts }
+    return $t
+}
+
+# The fonts the theme's styles use: from fonts\ (their files), else installed, else missing (a warning).
+function Get-ThemeFontFamilies($T) {
+    $used = @{}
+    foreach ($s in $T.Styles.Values) { if ($s.font) { $used[$s.font] = $true } }
+    return @($used.Keys | Sort-Object)
+}
+# A family's files in fonts\, regular, bold, italic, bold italic (by the family Word knows them by, or the typographic one).
+function Get-ThemeFontFiles($T, [string]$Family) {
+    $files = @($T.Fonts | Where-Object { $_.Family -ieq $Family })
+    if (-not $files.Count) { $files = @($T.Fonts | Where-Object { $_.Typographic -ieq $Family -and ($_.Weight -eq 400 -or $_.Weight -eq 700) }) }
+    return $files
+}
+function Write-ThemeFontWarning($T, [bool]$ForWord) {
+    $installed = @{}
+    try { Add-Type -AssemblyName System.Drawing; foreach ($f in (New-Object Drawing.Text.InstalledFontCollection).Families) { $installed[$f.Name.ToLower()] = $true } } catch { }
+    $missing = @()
+    foreach ($fam in (Get-ThemeFontFamilies $T)) {
+        if (@(Get-ThemeFontFiles $T $fam).Count) { continue }
+        if (-not $installed.ContainsKey($fam.ToLower())) { $missing += $fam }
+    }
+    if ($missing.Count) { Write-Host "  ! the theme's fonts neither in $(Join-Path $T.Dir 'fonts') nor installed: $($missing -join ', ') (others are used in their place)" }
+    if ($ForWord) {
+        foreach ($fam in (Get-ThemeFontFamilies $T)) {
+            foreach ($f in (Get-ThemeFontFiles $T $fam)) { if ($f.Cff) { Write-Host "  ! $(Split-Path $f.Path -Leaf): an OpenType (CFF) font; Word embeds TrueType (.ttf) fonts best: use the .ttf if there is one" } }
+        }
+    }
+}
+
+
+# A header's or footer's text: {title} {subtitle} {client} {date}; {page} and {pages} stay for the formats.
+function Expand-ThemeText([string]$Text, $Meta) {
+    $t = $Text
+    foreach ($k in 'title', 'subtitle', 'client', 'date') { $t = $t.Replace("{$k}", [string]$Meta.$k) }
+    return $t
+}
+function Get-CssString([string]$T) { return '"' + $T.Replace('\', '\\').Replace('"', '\"').Replace("`n", ' ') + '"' }
+# A picture at a given height (mm) as a CSS image: the picture itself, its resolution set so that it is that
+# high (image-set ... Nx). Not inside an SVG: Chrome prints before it loads a picture inside one.
+function Get-CssPicture([string]$Path, [double]$HeightMm) {
+    Initialize-ImageTool
+    $size = [LazySpecImage]::Size($Path)
+    $x = $size[1] / ($HeightMm / 25.4 * 96)
+    $mime = @{ '.png' = 'image/png'; '.jpg' = 'image/jpeg'; '.jpeg' = 'image/jpeg'; '.gif' = 'image/gif' }[[IO.Path]::GetExtension($Path).ToLower()]
+    $img = "data:$mime;base64," + [Convert]::ToBase64String([IO.File]::ReadAllBytes($Path))
+    return "image-set(url($img) $($x.ToString('0.####', [Globalization.CultureInfo]::InvariantCulture))x)"
+}
+# A style's CSS declarations.
+function Get-ThemeCssDecl($S, [bool]$WithFont = $true) {
+    $d = @()
+    if ($WithFont -and $S.font) { $d += "font-family: '$($S.font.Replace("'", ''))', 'Segoe UI', Arial, sans-serif" }
+    if ($S.size) { $d += "font-size: $(Format-Num (ConvertTo-Pt $S.size 'size'))pt" }
+    if ($S.Contains('bold')) { $d += "font-weight: $(if ($S.bold -eq 'true') { '700' } else { '400' })" }
+    if ($S.Contains('italic')) { $d += "font-style: $(if ($S.italic -eq 'true') { 'italic' } else { 'normal' })" }
+    if ($S.Contains('underline')) { $d += "text-decoration: $(if ($S.underline -eq 'true') { 'underline' } else { 'none' })" }
+    if ($S.color) { $d += "color: $($S.color)" }
+    if ($S.background) { $d += "background: $($S.background)" }
+    if ($S.spaceBefore) { $d += "margin-top: $(Format-Num (ConvertTo-Pt $S.spaceBefore 'spaceBefore'))pt" }
+    if ($S.spaceAfter) { $d += "margin-bottom: $(Format-Num (ConvertTo-Pt $S.spaceAfter 'spaceAfter'))pt" }
+    if ($S.lineHeight) { $d += "line-height: $($S.lineHeight)" }
+    if ($S.align) { $d += "text-align: $(@{ left = 'left'; center = 'center'; right = 'right'; justify = 'justify'; both = 'justify' }[$S.align])" }
+    if ($S.Contains('pageBreakBefore')) { $d += "page-break-before: $(if ($S.pageBreakBefore -eq 'true') { 'always' } else { 'auto' })" }
+    return ($d -join '; ')
+}
+# A scenario's text size (pt): the body's less 1pt (8pt at least).
+function Get-ScenarioPt($T) {
+    $body = 11.0
+    if ($T.Styles.body.size) { $body = ConvertTo-Pt $T.Styles.body.size 'size' }
+    return [Math]::Max(8.0, $body - 1)
+}
+# The theme as CSS: its fonts (the files, inside the document), its styles over LazySpec's, and for PDF the
+# page: size, margins, the header and footer (a logo, texts, the page number), the cover without them.
+function Get-ThemeCss($T, $Meta, [bool]$Paged) {
+    $sb = New-Object Text.StringBuilder
+    foreach ($fam in (Get-ThemeFontFamilies $T)) {
+        foreach ($f in (Get-ThemeFontFiles $T $fam)) {
+            $weight = $f.Weight
+            if ($f.Family -ieq $fam) { $weight = if ($f.Style -match '(?i)bold') { 700 } else { 400 } }
+            $fmt = 'truetype'; $mime = 'font/ttf'
+            if ([IO.Path]::GetExtension($f.Path) -ieq '.otf') { $fmt = 'opentype'; $mime = 'font/otf' }
+            [void]$sb.Append("@font-face { font-family: '$($fam.Replace("'", ''))'; src: url(data:$mime;base64,$([Convert]::ToBase64String([IO.File]::ReadAllBytes($f.Path)))) format('$fmt'); font-weight: $weight; font-style: $(if ($f.Italic) { 'italic' } else { 'normal' }); }`n")
+        }
+    }
+    $s = $T.Styles
+    $rules = [ordered]@{
+        'body, p, li, td, th, div, blockquote, .scenario p, .scenario li' = (Get-ThemeCssDecl ([ordered]@{ font = $s.body.font; size = $s.body.size; color = $s.body.color; lineHeight = $s.body.lineHeight }))
+        # A scenario's text under its title's and its requirement's: 1pt smaller than the body's.
+        '.scenario, .scenario p, .scenario li' = "font-size: $(Format-Num (Get-ScenarioPt $T))pt"
+        'p' = (Get-ThemeCssDecl ([ordered]@{ spaceBefore = $s.body.spaceBefore; spaceAfter = $s.body.spaceAfter; align = $s.body.align }))
+        '.cover .title' = (Get-ThemeCssDecl $s.title)
+        '.cover .subtitle' = (Get-ThemeCssDecl $s.subtitle)
+        'h1, h1.part, h1.cap, h1.sec, h1.sub, h1.req, h1.scn' = (Get-ThemeCssDecl $s.heading1)
+        'h2, h2.part, h2.cap, h2.sec, h2.sub, h2.req, h2.scn' = (Get-ThemeCssDecl $s.heading2)
+        'h3, h3.part, h3.cap, h3.sec, h3.sub, h3.req, h3.scn' = (Get-ThemeCssDecl $s.heading3)
+        'h4, h4.part, h4.cap, h4.sec, h4.sub, h4.req, h4.scn' = (Get-ThemeCssDecl $s.heading4)
+        'h5, h5.part, h5.cap, h5.sec, h5.sub, h5.req, h5.scn' = (Get-ThemeCssDecl $s.heading5)
+        'h6, h6.part, h6.cap, h6.sec, h6.sub, h6.req, h6.scn' = (Get-ThemeCssDecl $s.heading6)
+        # Room before a capability, a requirement, a scenario: LazySpec's, over the theme's headings'.
+        'h2.cap, h3.cap, h4.cap' = 'margin-top: 30pt'
+        'h2.req, h3.req, h4.req, h5.req, h6.req' = 'margin-top: 24pt'
+        'h3.scn, h4.scn, h5.scn, h6.scn' = 'margin-top: 14pt'
+        '.toc-title' = (Get-ThemeCssDecl $s.tocHeading)
+        'table, th, td' = (Get-ThemeCssDecl ([ordered]@{ font = $s.table.font; size = $s.table.size; color = $s.table.color }))
+        'th, td' = "border-color: $($s.table.borderColor)"
+        'th' = "background: $($s.table.headerBackground)"
+        'a' = (Get-ThemeCssDecl $s.link $false)
+        'code, pre, pre code, pre.wrap, pre.wrap code' = (Get-ThemeCssDecl ([ordered]@{ font = $s.code.font; size = $s.code.size; color = $s.code.color }))
+        # The company's look, not LazySpec's: no lines under the headings (the cover's bar in the headings' colour).
+        'h1, h1.part, .toc-title, h2.cap, h2.sec, h3.sec, .sec, .sub' = 'border: none; padding-bottom: 0'
+        '.cover .bar' = "border-color: $(if ($s.heading1.color) { $s.heading1.color } else { '#f07b4f' })"
+        # The contents: plain text, as a Word contents (still links).
+        '.toc a, ul.toc-list a, p.toc-scn a' = 'color: inherit; text-decoration: none'
+        # The contents' entries as Word's (toc 1: 6pt above each).
+        '.toc p' = 'margin: 6pt 0 0'
+        # Room: between list items, as between paragraphs (half).
+        'li' = "margin: 0 0 $(Format-Num ([Math]::Max(2, (ConvertTo-Pt $(if ($s.body.spaceAfter) { $s.body.spaceAfter } else { '6pt' }) 'spaceAfter') / 2)))pt"
+        '.cover-logo' = 'margin: 0 0 30pt'
+    }
+    foreach ($k in $rules.Keys) { if ($rules[$k]) { [void]$sb.Append("$k { $($rules[$k]); }`n") } }
+    if ($Paged) {
+        $m = $T.Margins
+        [void]$sb.Append("@page { size: $(Format-Num $T.PageW)mm $(Format-Num $T.PageH)mm; margin: $(Format-Num $m.top)mm $(Format-Num $m.right)mm $(Format-Num $m.bottom)mm $(Format-Num $m.left)mm;`n")
+        $first = New-Object Text.StringBuilder
+        foreach ($band in @(@{ B = $T.Header; At = 'top' }, @{ B = $T.Footer; At = 'bottom' })) {
+            $b = $band.B
+            foreach ($slot in 'Left', 'Center', 'Right') {
+                $v = $b.$slot
+                if (-not $v) { continue }
+                $box = "@$($band.At)-$($slot.ToLower())"
+                if ($v -eq 'logo') { $content = Get-CssPicture $b.Logo $b.LogoHeight }
+                else {
+                    $parts = [regex]::Split((Expand-ThemeText $v $Meta), '(\{page\}|\{pages\})') | Where-Object { $_ -ne '' }
+                    $content = (@($parts | ForEach-Object { if ($_ -eq '{page}') { 'counter(page)' } elseif ($_ -eq '{pages}') { 'counter(pages)' } else { Get-CssString $_ } }) -join ' ')
+                }
+                # Towards the text, with room between them (as Word's header and footer distance).
+                $va = 'bottom'; $pad = 'padding-bottom: 6mm'
+                if ($band.At -eq 'bottom') { $va = 'top'; $pad = 'padding-top: 5mm' }
+                [void]$sb.Append("  $box { content: $content; font-family: '$($s.body.font.Replace("'", ''))', 'Segoe UI', sans-serif; font-size: $(Format-Num (ConvertTo-Pt $b.Size 'size'))pt; color: $($b.Color); vertical-align: $va; $pad; }`n")
+                if (-not $b.FirstPage) { [void]$first.Append("$box { content: none; } ") }
+            }
+        }
+        [void]$sb.Append("}`n")
+        if ($first.Length) { [void]$sb.Append("@page :first { $($first.ToString())}`n") }
+    }
+    return $sb.ToString()
+}
+
+# --- the theme as a Word base document ---
+function ConvertTo-Twips([double]$Mm) { return [int][Math]::Round($Mm * 1440 / 25.4) }
+function Get-ThemeRpr($S, [bool]$WithFont = $true) {
+    $r = ''
+    if ($WithFont -and $S.font) { $f = Xml $S.font; $r += "<w:rFonts w:ascii=`"$f`" w:hAnsi=`"$f`" w:eastAsia=`"$f`" w:cs=`"$f`"/>" }
+    if ($S.Contains('bold')) { if ($S.bold -eq 'true') { $r += '<w:b/><w:bCs/>' } else { $r += '<w:b w:val="0"/><w:bCs w:val="0"/>' } }
+    if ($S.Contains('italic')) { if ($S.italic -eq 'true') { $r += '<w:i/><w:iCs/>' } else { $r += '<w:i w:val="0"/><w:iCs w:val="0"/>' } }
+    if ($S.color) { $r += "<w:color w:val=`"$($S.color.TrimStart('#'))`"/>" }
+    if ($S.size) { $hp = [int][Math]::Round((ConvertTo-Pt $S.size 'size') * 2); $r += "<w:sz w:val=`"$hp`"/><w:szCs w:val=`"$hp`"/>" }
+    if ($S.Contains('underline')) { if ($S.underline -eq 'true') { $r += '<w:u w:val="single"/>' } else { $r += '<w:u w:val="none"/>' } }
+    if ($r) { return "<w:rPr>$r</w:rPr>" }
+    return ''
+}
+function Get-ThemePpr($S, [string]$Before, [string]$After, [bool]$Heading, [int]$Outline = -1) {
+    $p = ''
+    if ($Heading) { $p += '<w:keepNext/><w:keepLines/>' }
+    if ($S.Contains('pageBreakBefore') -and $S.pageBreakBefore -eq 'true') { $p += '<w:pageBreakBefore/>' }
+    $b = $Before; $a = $After
+    if ($S.spaceBefore) { $b = [string](ConvertTo-Twips ((ConvertTo-Pt $S.spaceBefore 'spaceBefore') * 25.4 / 72)) }
+    if ($S.spaceAfter) { $a = [string](ConvertTo-Twips ((ConvertTo-Pt $S.spaceAfter 'spaceAfter') * 25.4 / 72)) }
+    $sp = ''
+    if ($b) { $sp += " w:before=`"$b`"" }
+    if ($a) { $sp += " w:after=`"$a`"" }
+    if ($S.lineHeight) {
+        $lh = [double]::Parse($S.lineHeight, [Globalization.CultureInfo]::InvariantCulture)
+        # With a size: at least size x line height, as a browser sets it (Word's multiple multiplies the font's own
+        # line gap, large in some fonts); without one: Word's multiple.
+        if ($S.size) { $sp += " w:line=`"$([int][Math]::Round((ConvertTo-Pt $S.size 'size') * $lh * 20))`" w:lineRule=`"atLeast`"" }
+        else { $sp += " w:line=`"$([int][Math]::Round(240 * $lh))`" w:lineRule=`"auto`"" }
+    }
+    if ($sp) { $p += "<w:spacing$sp/>" }
+    if ($S.align) { $p += "<w:jc w:val=`"$(@{ left = 'left'; center = 'center'; right = 'right'; justify = 'both'; both = 'both' }[$S.align])`"/>" }
+    if ($Outline -ge 0) { $p += "<w:outlineLvl w:val=`"$Outline`"/>" }
+    if ($p) { return "<w:pPr>$p</w:pPr>" }
+    return ''
+}
+function Get-ThemeStylesXml($T) {
+    $s = $T.Styles
+    $w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    $body = $s.body
+    $x = New-Object Text.StringBuilder
+    [void]$x.Append("<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><w:styles $w><w:docDefaults><w:rPrDefault>$(Get-ThemeRpr ([ordered]@{ font = $body.font; size = $body.size; color = $body.color }))</w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after=`"120`" w:line=`"276`" w:lineRule=`"auto`"/></w:pPr></w:pPrDefault></w:docDefaults>")
+    $para = {
+        param([string]$Id, [string]$Name, [string]$Extra, [string]$Ppr, [string]$Rpr, [string]$Based = 'Normal')
+        $basedOn = ''
+        if ($Based) { $basedOn = "<w:basedOn w:val=`"$Based`"/><w:next w:val=`"Normal`"/>" }
+        [void]$x.Append("<w:style w:type=`"paragraph`" w:styleId=`"$Id`"><w:name w:val=`"$Name`"/>$basedOn$Extra<w:qFormat/>$Ppr$Rpr</w:style>")
+    }
+    [void]$x.Append("<w:style w:type=`"paragraph`" w:default=`"1`" w:styleId=`"Normal`"><w:name w:val=`"Normal`"/><w:qFormat/>$(Get-ThemePpr ([ordered]@{ size = $body.size; spaceBefore = $body.spaceBefore; spaceAfter = $body.spaceAfter; lineHeight = $body.lineHeight; align = $body.align }) '' '120' $false)$(Get-ThemeRpr $body)</w:style>")
+    [void]$x.Append('<w:style w:type="character" w:default="1" w:styleId="DefaultParagraphFont"><w:name w:val="Default Paragraph Font"/><w:uiPriority w:val="1"/><w:semiHidden/><w:unhideWhenUsed/></w:style>')
+    [void]$x.Append('<w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:uiPriority w:val="99"/><w:semiHidden/><w:unhideWhenUsed/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style>')
+    [void]$x.Append('<w:style w:type="numbering" w:default="1" w:styleId="NoList"><w:name w:val="No List"/><w:uiPriority w:val="99"/><w:semiHidden/><w:unhideWhenUsed/></w:style>')
+    & $para 'Title' 'Title' '' (Get-ThemePpr $s.title '0' '120' $true) (Get-ThemeRpr $s.title)
+    & $para 'Subtitle' 'Subtitle' '' (Get-ThemePpr $s.subtitle '0' '600' $true) (Get-ThemeRpr $s.subtitle)
+    $space = @{ 1 = @('0', '280'); 2 = @('360', '120'); 3 = @('280', '80'); 4 = @('200', '60'); 5 = @('200', '60'); 6 = @('200', '60') }
+    for ($i = 1; $i -le 6; $i++) { & $para "Heading$i" "heading $i" '' (Get-ThemePpr $s["heading$i"] $space[$i][0] $space[$i][1] $true ($i - 1)) (Get-ThemeRpr $s["heading$i"]) }
+    $la = [int][Math]::Max(40, [Math]::Round((ConvertTo-Pt $(if ($body.spaceAfter) { $body.spaceAfter } else { '6pt' }) 'spaceAfter') * 10))
+    & $para 'ListParagraph' 'List Paragraph' '<w:uiPriority w:val="34"/>' "<w:pPr><w:spacing w:after=`"$la`"/><w:ind w:left=`"720`"/></w:pPr>" ''
+    & $para 'TOCHeading' 'TOC Heading' '<w:uiPriority w:val="39"/><w:unhideWhenUsed/>' (Get-ThemePpr $s.tocHeading '0' '280' $true 9) (Get-ThemeRpr $s.tocHeading) 'Heading1'
+    $tw = ConvertTo-Twips ($T.PageW - $T.Margins.left - $T.Margins.right)
+    & $para 'TOC1' 'toc 1' '<w:uiPriority w:val="39"/><w:unhideWhenUsed/>' "<w:pPr><w:tabs><w:tab w:val=`"right`" w:leader=`"dot`" w:pos=`"$tw`"/></w:tabs><w:spacing w:before=`"120`" w:after=`"0`"/></w:pPr>" ''
+    & $para 'TOC2' 'toc 2' '<w:uiPriority w:val="39"/><w:unhideWhenUsed/>' "<w:pPr><w:tabs><w:tab w:val=`"right`" w:leader=`"dot`" w:pos=`"$tw`"/></w:tabs><w:spacing w:before=`"120`" w:after=`"0`"/><w:ind w:left=`"220`"/></w:pPr>" ''
+    $tb = $s.table
+    $bc = $tb.borderColor.TrimStart('#')
+    $edges = -join @('top', 'left', 'bottom', 'right', 'insideH', 'insideV' | ForEach-Object { "<w:$_ w:val=`"single`" w:sz=`"4`" w:space=`"0`" w:color=`"$bc`"/>" })
+    [void]$x.Append("<w:style w:type=`"table`" w:styleId=`"TableGrid`"><w:name w:val=`"Table Grid`"/><w:basedOn w:val=`"TableNormal`"/><w:uiPriority w:val=`"39`"/><w:pPr><w:spacing w:before=`"40`" w:after=`"40`" w:line=`"240`" w:lineRule=`"auto`"/></w:pPr>$(Get-ThemeRpr ([ordered]@{ font = $tb.font; size = $tb.size; color = $tb.color }))<w:tblPr><w:tblBorders>$edges</w:tblBorders><w:tblCellMar><w:left w:w=`"108`" w:type=`"dxa`"/><w:right w:w=`"108`" w:type=`"dxa`"/></w:tblCellMar></w:tblPr><w:tblStylePr w:type=`"firstRow`"><w:rPr><w:b/><w:bCs/></w:rPr><w:tcPr><w:shd w:val=`"clear`" w:color=`"auto`" w:fill=`"$($tb.headerBackground.TrimStart('#'))`"/></w:tcPr></w:tblStylePr></w:style>")
+    $link = [ordered]@{}
+    foreach ($k in $s.link.Keys) { if ($k -ne 'font') { $link[$k] = $s.link[$k] } }
+    if (-not $link.Contains('underline')) { $link['underline'] = 'true' }
+    [void]$x.Append("<w:style w:type=`"character`" w:styleId=`"Hyperlink`"><w:name w:val=`"Hyperlink`"/><w:basedOn w:val=`"DefaultParagraphFont`"/><w:uiPriority w:val=`"99`"/><w:unhideWhenUsed/>$(Get-ThemeRpr $link $false)</w:style>")
+    [void]$x.Append('</w:styles>')
+    return $x.ToString()
+}
+# A header's or footer's paragraph: left, a centre tab, centre, a right tab, right; a logo, texts, PAGE / NUMPAGES.
+function Get-ThemeBandXml($T, $B, $Meta, [string]$LogoRel, [int]$DocPr) {
+    $width = ConvertTo-Twips ($T.PageW - $T.Margins.left - $T.Margins.right)
+    $f = Xml $T.Styles.body.font
+    $hp = [int][Math]::Round((ConvertTo-Pt $B.Size 'size') * 2)
+    $rpr = "<w:rPr><w:rFonts w:ascii=`"$f`" w:hAnsi=`"$f`" w:cs=`"$f`"/><w:color w:val=`"$($B.Color.TrimStart('#'))`"/><w:sz w:val=`"$hp`"/><w:szCs w:val=`"$hp`"/></w:rPr>"
+    $field = { param([string]$Code) "<w:r>$rpr<w:fldChar w:fldCharType=`"begin`"/></w:r><w:r>$rpr<w:instrText xml:space=`"preserve`"> $Code </w:instrText></w:r><w:r>$rpr<w:fldChar w:fldCharType=`"separate`"/></w:r><w:r>$rpr<w:t>1</w:t></w:r><w:r>$rpr<w:fldChar w:fldCharType=`"end`"/></w:r>" }
+    $slotXml = {
+        param([string]$V)
+        if (-not $V) { return '' }
+        if ($V -eq 'logo') {
+            Initialize-ImageTool
+            $size = [LazySpecImage]::Size($B.Logo)
+            $cy = [long]($B.LogoHeight * 36000); $cx = [long]($cy * $size[0] / $size[1])
+            $name = Split-Path $B.Logo -Leaf
+            return "<w:r><w:drawing><wp:inline distT=`"0`" distB=`"0`" distL=`"0`" distR=`"0`"><wp:extent cx=`"$cx`" cy=`"$cy`"/><wp:docPr id=`"$DocPr`" name=`"Logo`"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a=`"http://schemas.openxmlformats.org/drawingml/2006/main`" noChangeAspect=`"1`"/></wp:cNvGraphicFramePr><a:graphic xmlns:a=`"http://schemas.openxmlformats.org/drawingml/2006/main`"><a:graphicData uri=`"http://schemas.openxmlformats.org/drawingml/2006/picture`"><pic:pic xmlns:pic=`"http://schemas.openxmlformats.org/drawingml/2006/picture`"><pic:nvPicPr><pic:cNvPr id=`"$DocPr`" name=`"$(Xml $name)`"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed=`"$LogoRel`"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x=`"0`" y=`"0`"/><a:ext cx=`"$cx`" cy=`"$cy`"/></a:xfrm><a:prstGeom prst=`"rect`"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>"
+        }
+        $o = ''
+        foreach ($part in ([regex]::Split((Expand-ThemeText $V $Meta), '(\{page\}|\{pages\})') | Where-Object { $_ -ne '' })) {
+            if ($part -eq '{page}') { $o += & $field 'PAGE' }
+            elseif ($part -eq '{pages}') { $o += & $field 'NUMPAGES' }
+            else { $o += "<w:r>$rpr<w:t xml:space=`"preserve`">$(Xml $part)</w:t></w:r>" }
+        }
+        return $o
+    }
+    $tab = "<w:r>$rpr<w:tab/></w:r>"
+    return "<w:p><w:pPr><w:tabs><w:tab w:val=`"center`" w:pos=`"$([int]($width / 2))`"/><w:tab w:val=`"right`" w:pos=`"$width`"/></w:tabs><w:spacing w:after=`"0`"/></w:pPr>$(& $slotXml $B.Left)$tab$(& $slotXml $B.Center)$tab$(& $slotXml $B.Right)</w:p>"
+}
+# Word's theme part: the theme's fonts as its heading and body fonts, its colours as the accents.
+function Get-ThemePartXml($T) {
+    $s = $T.Styles
+    $accent = '4472C4'
+    if ($s.heading1.color) { $accent = $s.heading1.color.TrimStart('#') }
+    $text = '000000'
+    if ($s.body.color) { $text = $s.body.color.TrimStart('#') }
+    $link = '0563C1'
+    if ($s.link.color) { $link = $s.link.color.TrimStart('#') }
+    $clr = { param([string]$N, [string]$V) "<a:$N><a:srgbClr val=`"$V`"/></a:$N>" }
+    $fill = '<a:solidFill><a:schemeClr val="phClr"/></a:solidFill>'
+    $ln = '<a:ln w="6350"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln>'
+    $eff = '<a:effectStyle><a:effectLst/></a:effectStyle>'
+    return "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><a:theme xmlns:a=`"http://schemas.openxmlformats.org/drawingml/2006/main`" name=`"LazySpec`"><a:themeElements>" +
+        "<a:clrScheme name=`"LazySpec`"><a:dk1><a:sysClr val=`"windowText`" lastClr=`"000000`"/></a:dk1><a:lt1><a:sysClr val=`"window`" lastClr=`"FFFFFF`"/></a:lt1>$(& $clr 'dk2' $text)$(& $clr 'lt2' 'E7E6E6')" +
+        "$(& $clr 'accent1' $accent)$(& $clr 'accent2' $accent)$(& $clr 'accent3' 'A5A5A5')$(& $clr 'accent4' 'FFC000')$(& $clr 'accent5' '5B9BD5')$(& $clr 'accent6' '70AD47')$(& $clr 'hlink' $link)$(& $clr 'folHlink' '954F72')</a:clrScheme>" +
+        "<a:fontScheme name=`"LazySpec`"><a:majorFont><a:latin typeface=`"$(Xml $s.heading1.font)`"/><a:ea typeface=`"`"/><a:cs typeface=`"`"/></a:majorFont><a:minorFont><a:latin typeface=`"$(Xml $s.body.font)`"/><a:ea typeface=`"`"/><a:cs typeface=`"`"/></a:minorFont></a:fontScheme>" +
+        "<a:fmtScheme name=`"LazySpec`"><a:fillStyleLst>$fill$fill$fill</a:fillStyleLst><a:lnStyleLst>$ln$ln$ln</a:lnStyleLst><a:effectStyleLst>$eff$eff$eff</a:effectStyleLst><a:bgFillStyleLst>$fill$fill$fill</a:bgFillStyleLst></a:fmtScheme>" +
+        '</a:themeElements><a:objectDefaults/><a:extraClrSchemeLst/></a:theme>'
+}
+# The base .docx of a theme: its styles, page, header and footer (none on the cover unless firstPage), and
+# its fonts embedded (obfuscated, as Word embeds them): Word shows them without installing them.
+function New-ThemeDocxBase($T, $Meta) {
+    $w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
+    $wp = 'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"'
+    $relT = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+    $parts = [ordered]@{}
+    $ct = New-Object Text.StringBuilder
+    [void]$ct.Append('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="jpg" ContentType="image/jpeg"/><Default Extension="gif" ContentType="image/gif"/><Default Extension="odttf" ContentType="application/vnd.openxmlformats-officedocument.obfuscatedFont"/>')
+    $override = { param([string]$Part, [string]$Type) [void]$ct.Append("<Override PartName=`"$Part`" ContentType=`"application/vnd.openxmlformats-officedocument.$Type`"/>") }
+    & $override '/word/document.xml' 'wordprocessingml.document.main+xml'
+    & $override '/word/styles.xml' 'wordprocessingml.styles+xml'
+    & $override '/word/settings.xml' 'wordprocessingml.settings+xml'
+    & $override '/word/fontTable.xml' 'wordprocessingml.fontTable+xml'
+    & $override '/word/numbering.xml' 'wordprocessingml.numbering+xml'
+    & $override '/docProps/app.xml' 'extended-properties+xml'
+    [void]$ct.Append('<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>')
+    $parts['_rels/.rels'] = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><Relationships xmlns=`"http://schemas.openxmlformats.org/package/2006/relationships`"><Relationship Id=`"rId1`" Type=`"$relT/officeDocument`" Target=`"word/document.xml`"/><Relationship Id=`"rId2`" Type=`"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties`" Target=`"docProps/core.xml`"/><Relationship Id=`"rId3`" Type=`"$relT/extended-properties`" Target=`"docProps/app.xml`"/></Relationships>"
+    $parts['docProps/core.xml'] = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><cp:coreProperties xmlns:cp=`"http://schemas.openxmlformats.org/package/2006/metadata/core-properties`" xmlns:dc=`"http://purl.org/dc/elements/1.1/`" xmlns:dcterms=`"http://purl.org/dc/terms/`" xmlns:xsi=`"http://www.w3.org/2001/XMLSchema-instance`"><dc:title>$(Xml $Meta.title)</dc:title><dc:creator>$(Xml $Meta.author)</dc:creator><dcterms:created xsi:type=`"dcterms:W3CDTF`">$((Get-Date).ToUniversalTime().ToString('s'))Z</dcterms:created></cp:coreProperties>"
+    $parts['docProps/app.xml'] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>LazySpec</Application></Properties>'
+    $parts['word/styles.xml'] = Get-ThemeStylesXml $T
+    $parts['word/settings.xml'] = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><w:settings $w><w:embedTrueTypeFonts/><w:defaultTabStop w:val=`"709`"/><w:characterSpacingControl w:val=`"doNotCompress`"/><w:compat><w:compatSetting w:name=`"compatibilityMode`" w:uri=`"http://schemas.microsoft.com/office/word`" w:val=`"15`"/></w:compat></w:settings>"
+    $parts['word/numbering.xml'] = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><w:numbering $w></w:numbering>"
+    $parts['word/theme/theme1.xml'] = Get-ThemePartXml $T
+    & $override '/word/theme/theme1.xml' 'theme+xml'
+    $docRels = New-Object Text.StringBuilder
+    [void]$docRels.Append("<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><Relationships xmlns=`"http://schemas.openxmlformats.org/package/2006/relationships`"><Relationship Id=`"rId1`" Type=`"$relT/styles`" Target=`"styles.xml`"/><Relationship Id=`"rId2`" Type=`"$relT/settings`" Target=`"settings.xml`"/><Relationship Id=`"rId3`" Type=`"$relT/fontTable`" Target=`"fontTable.xml`"/><Relationship Id=`"rId4`" Type=`"$relT/numbering`" Target=`"numbering.xml`"/><Relationship Id=`"rId5`" Type=`"$relT/theme`" Target=`"theme/theme1.xml`"/>")
+    # The fonts: the theme's families, each with its files (regular, bold, italic, bold italic) embedded.
+    $ft = New-Object Text.StringBuilder
+    $ftRels = New-Object Text.StringBuilder
+    [void]$ft.Append("<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><w:fonts $w>")
+    $n = 0
+    $embedded = @()
+    foreach ($fam in (Get-ThemeFontFamilies $T)) {
+        [void]$ft.Append("<w:font w:name=`"$(Xml $fam)`"><w:charset w:val=`"00`"/><w:family w:val=`"auto`"/><w:pitch w:val=`"variable`"/>")
+        $slots = [ordered]@{ Regular = $null; Bold = $null; Italic = $null; BoldItalic = $null }
+        foreach ($f in (Get-ThemeFontFiles $T $fam)) {
+            $bold = if ($f.Family -ieq $fam) { $f.Style -match '(?i)bold' } else { $f.Weight -ge 600 }
+            $slot = @('Regular', 'Bold', 'Italic', 'BoldItalic')[([int]$bold) + 2 * [int]$f.Italic]
+            if (-not $slots[$slot]) { $slots[$slot] = $f }
+        }
+        foreach ($slot in $slots.Keys) {
+            $f = $slots[$slot]
+            if (-not $f) { continue }
+            $n++
+            $key = [guid]::NewGuid()
+            $parts["word/fonts/font$n.odttf"] = [LazySpecFont]::Obfuscate([IO.File]::ReadAllBytes($f.Path), $key)
+            [void]$ftRels.Append("<Relationship Id=`"rIdFont$n`" Type=`"$relT/font`" Target=`"fonts/font$n.odttf`"/>")
+            [void]$ft.Append("<w:embed$slot r:id=`"rIdFont$n`" w:fontKey=`"{$($key.ToString().ToUpper())}`"/>")
+            $embedded += "$fam $slot"
+        }
+        [void]$ft.Append('</w:font>')
+    }
+    [void]$ft.Append('</w:fonts>')
+    $parts['word/fontTable.xml'] = $ft.ToString()
+    if ($ftRels.Length) { $parts['word/_rels/fontTable.xml.rels'] = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><Relationships xmlns=`"http://schemas.openxmlformats.org/package/2006/relationships`">$($ftRels.ToString())</Relationships>" }
+    # Header and footer; empty ones for the first page (the cover) unless firstPage.
+    $sect = ''
+    $titlePg = $false
+    $docPr = 1
+    foreach ($band in @(@{ B = $T.Header; Kind = 'header'; Tag = 'hdr' }, @{ B = $T.Footer; Kind = 'footer'; Tag = 'ftr' })) {
+        $b = $band.B
+        if (-not $b.Any) { continue }
+        $logoRel = ''
+        $rels = ''
+        if ($b.Logo -and ($b.Left -eq 'logo' -or $b.Center -eq 'logo' -or $b.Right -eq 'logo')) {
+            $ext = [IO.Path]::GetExtension($b.Logo).TrimStart('.').ToLower()
+            $parts["word/media/$($band.Kind)-logo.$ext"] = [IO.File]::ReadAllBytes($b.Logo)
+            $logoRel = 'rIdLogo'
+            $rels = "<Relationship Id=`"rIdLogo`" Type=`"$relT/image`" Target=`"media/$($band.Kind)-logo.$ext`"/>"
+        }
+        $parts["word/$($band.Kind)1.xml"] = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><w:$($band.Tag) $w $wp>$(Get-ThemeBandXml $T $b $Meta $logoRel $docPr)</w:$($band.Tag)>"
+        $docPr++
+        if ($rels) { $parts["word/_rels/$($band.Kind)1.xml.rels"] = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><Relationships xmlns=`"http://schemas.openxmlformats.org/package/2006/relationships`">$rels</Relationships>" }
+        & $override "/word/$($band.Kind)1.xml" "wordprocessingml.$($band.Kind)+xml"
+        [void]$docRels.Append("<Relationship Id=`"rId$($band.Kind)1`" Type=`"$relT/$($band.Kind)`" Target=`"$($band.Kind)1.xml`"/>")
+        $sect += "<w:$($band.Kind)Reference w:type=`"default`" r:id=`"rId$($band.Kind)1`"/>"
+        if (-not $b.FirstPage) {
+            $parts["word/$($band.Kind)0.xml"] = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><w:$($band.Tag) $w><w:p/></w:$($band.Tag)>"
+            & $override "/word/$($band.Kind)0.xml" "wordprocessingml.$($band.Kind)+xml"
+            [void]$docRels.Append("<Relationship Id=`"rId$($band.Kind)0`" Type=`"$relT/$($band.Kind)`" Target=`"$($band.Kind)0.xml`"/>")
+            $sect += "<w:$($band.Kind)Reference w:type=`"first`" r:id=`"rId$($band.Kind)0`"/>"
+            $titlePg = $true
+        }
+    }
+    # The schema's order: the header references before the footer ones.
+    $refs = @([regex]::Matches($sect, '<w:headerReference[^>]*/>') | ForEach-Object { $_.Value }) + @([regex]::Matches($sect, '<w:footerReference[^>]*/>') | ForEach-Object { $_.Value })
+    $m = $T.Margins
+    $hdrDist = ConvertTo-Twips ([Math]::Min(12.5, $m.top / 2))
+    $ftrDist = ConvertTo-Twips ([Math]::Min(12.5, $m.bottom / 2))
+    $sectPr = "<w:sectPr>$($refs -join '')<w:pgSz w:w=`"$(ConvertTo-Twips $T.PageW)`" w:h=`"$(ConvertTo-Twips $T.PageH)`"/><w:pgMar w:top=`"$(ConvertTo-Twips $m.top)`" w:right=`"$(ConvertTo-Twips $m.right)`" w:bottom=`"$(ConvertTo-Twips $m.bottom)`" w:left=`"$(ConvertTo-Twips $m.left)`" w:header=`"$hdrDist`" w:footer=`"$ftrDist`" w:gutter=`"0`"/><w:cols w:space=`"709`"/>$(if ($titlePg) { '<w:titlePg/>' })</w:sectPr>"
+    $parts['word/document.xml'] = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><w:document $w $wp><w:body>$sectPr</w:body></w:document>"
+    [void]$docRels.Append('</Relationships>')
+    $parts['word/_rels/document.xml.rels'] = $docRels.ToString()
+    [void]$ct.Append('</Types>')
+    $parts['[Content_Types].xml'] = $ct.ToString()
+    if ($embedded.Count) { Write-Host "  $($g.caret) fonts embedded in the Word document: $($embedded -join ', ')" }
+    # The package, as bytes.
+    Add-Type -AssemblyName System.IO.Compression
+    $ms = New-Object IO.MemoryStream
+    $zip = New-Object IO.Compression.ZipArchive($ms, [IO.Compression.ZipArchiveMode]::Create, $true)
+    try {
+        foreach ($k in $parts.Keys) {
+            $v = $parts[$k]
+            if ($v -is [string]) { $v = (New-Object Text.UTF8Encoding $false).GetBytes($v) }
+            $s = $zip.CreateEntry($k).Open()
+            $s.Write($v, 0, $v.Length)
+            $s.Dispose()
+        }
+    } finally { $zip.Dispose() }
+    return , $ms.ToArray()
+}
+
+# --- Word with the project's template ("lazyspec: documentTemplate:" in config.yaml, or -Template) -------
+# The template is the base document: its styles, page setup, section properties, headers and footers (and
+# their images) stay; its sample body goes, only its last w:sectPr is kept. The content is written with the
+# template's built-in styles: Title and Subtitle (the cover), Heading1..6, Normal, ListParagraph, TableGrid,
+# TOCHeading; no fonts of its own except for code. Built here, from the export's HTML: no Word or pandoc
+# needed. Word, when it's there, only fills in the contents' page numbers.
+
+function Open-ZipBytes([byte[]]$Bytes, [string]$Mode) {
+    Add-Type -AssemblyName System.IO.Compression
+    $ms = New-Object IO.MemoryStream
+    $ms.Write($Bytes, 0, $Bytes.Length)
+    $ms.Position = 0
+    return [pscustomobject]@{ Stream = $ms; Zip = (New-Object IO.Compression.ZipArchive($ms, [IO.Compression.ZipArchiveMode]::$Mode, $true)) }
+}
+# A file's bytes even while Word has it open (it lets others read).
+function Read-SharedBytes([string]$Path) {
+    $fs = New-Object IO.FileStream($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+    try { $ms = New-Object IO.MemoryStream; $fs.CopyTo($ms); return , $ms.ToArray() } finally { $fs.Dispose() }
+}
+function Read-ZipText($Zip, [string]$Name) {
+    $e = $Zip.GetEntry($Name)
+    if (-not $e) { return $null }
+    $r = New-Object IO.StreamReader($e.Open(), [Text.Encoding]::UTF8)
+    try { return $r.ReadToEnd() } finally { $r.Dispose() }
+}
+function Write-ZipBytes($Zip, [string]$Name, [byte[]]$Bytes) {
+    $e = $Zip.GetEntry($Name)
+    if ($e) { $e.Delete() }
+    $s = $Zip.CreateEntry($Name).Open()
+    try { $s.Write($Bytes, 0, $Bytes.Length) } finally { $s.Dispose() }
+}
+function Write-ZipText($Zip, [string]$Name, [string]$Text) { Write-ZipBytes $Zip $Name ((New-Object Text.UTF8Encoding $false).GetBytes($Text)) }
+
+# The template's path, checked: -Template (relative to the current folder), else documentTemplate (relative to
+# the project's root); '' when neither is set. Set but missing or broken: an error, never the default look.
+function Get-DocumentTemplate {
+    $raw = ''
+    $base = $Root
+    $from = 'lazyspec: documentTemplate: in openspec/config.yaml'
+    if ($Template) { $raw = $Template; $base = (Get-Location).ProviderPath; $from = '-Template' }
+    elseif ($hasRoot) { $raw = [string](Get-ProjectConfig).Values['documentTemplate'] }
+    $raw = $raw.Trim().Trim('"', "'")
+    if (-not $raw) { return '' }
+    $path = $raw.Replace('/', '\')
+    if (-not [IO.Path]::IsPathRooted($path)) { $path = Join-Path $base $path }
+    $path = [IO.Path]::GetFullPath($path)
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "The Word template isn't there: $path ($from). Client documents need the company layout: fix the path (or remove the setting)." }
+    $pkg = $null
+    try { $pkg = Open-ZipBytes (Read-SharedBytes $path) 'Read' } catch { throw "The Word template isn't a valid .docx (not a Word package): $path ($from)." }
+    try {
+        $docXml = Read-ZipText $pkg.Zip 'word/document.xml'
+        if (-not $docXml -or $docXml -notmatch '<w:body[ >]') { throw "The Word template isn't a valid .docx (no word/document.xml with a body): $path ($from)." }
+        try { [void]([xml]$docXml) } catch { throw "The Word template isn't a valid .docx (its word/document.xml is broken): $path ($from)." }
+    }
+    finally { $pkg.Zip.Dispose(); $pkg.Stream.Dispose() }
+    return $path
+}
+
+# The fonts the template sets (styles, theme, headers, footers) that this PC doesn't have: Word and PDF
+# printers put others in their place.
+function Get-MissingTemplateFonts([string]$Path) {
+    $pkg = Open-ZipBytes (Read-SharedBytes $Path) 'Read'
+    $fonts = @{}
+    try {
+        foreach ($e in @($pkg.Zip.Entries)) {
+            if ($e.FullName -notmatch '^word/(styles|fontTable|header\d*|footer\d*|theme/theme\d*)\.xml$') { continue }
+            $t = Read-ZipText $pkg.Zip $e.FullName
+            foreach ($m in [regex]::Matches($t, 'w:(?:ascii|hAnsi)="([^"]+)"')) { $fonts[$m.Groups[1].Value] = $true }
+            # The fonts the template declares (fontTable): its author's, even where no style uses them yet.
+            foreach ($m in [regex]::Matches($t, '<w:font w:name="([^"]+)"')) { $fonts[$m.Groups[1].Value] = $true }
+            foreach ($m in [regex]::Matches($t, '<a:(?:latin) typeface="([^"]+)"')) { $fonts[$m.Groups[1].Value] = $true }
+        }
+    }
+    finally { $pkg.Zip.Dispose(); $pkg.Stream.Dispose() }
+    $installed = @{}
+    try {
+        Add-Type -AssemblyName System.Drawing
+        foreach ($f in (New-Object Drawing.Text.InstalledFontCollection).Families) { $installed[$f.Name.ToLower()] = $true }
+    } catch { }
+    # Per-user fonts (Windows 10 and later) and the machine's, by their registered names ("Lato Bold (TrueType)").
+    $registered = @()
+    foreach ($key in 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts', 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts') {
+        try { $registered += @((Get-Item -LiteralPath $key -ErrorAction Stop).GetValueNames() | ForEach-Object { $_.ToLower() }) } catch { }
+    }
+    $missing = @()
+    foreach ($name in ($fonts.Keys | Sort-Object)) {
+        if (-not $name -or $name.StartsWith('+')) { continue }
+        $n = $name.ToLower()
+        if ($installed.ContainsKey($n)) { continue }
+        if (@($registered | Where-Object { $_ -eq $n -or $_.StartsWith("$n ") -or $_.StartsWith("$n(") }).Count) { continue }
+        $missing += $name
+    }
+    return , $missing
+}
+function Write-TemplateFontWarning([string]$Path) {
+    $missing = @()
+    try { $missing = Get-MissingTemplateFonts $Path } catch { Write-Host "  ! the template's fonts not checked: $($_.Exception.Message)"; return }
+    if ($missing.Count) { Write-Host "  ! fonts of the Word template not installed on this PC: $($missing -join ', ') (Word and PDF use others in their place)" }
+}
+
+function Xml([string]$T) { return [Security.SecurityElement]::Escape($T) }
+$script:wordCode = @{ Font = 'Consolas'; Size = 18 }
+# A scenario's text in Word (half-points; 0: the style's): with a theme, 1pt under its body's.
+$script:wordScenarioSize = 0
+# The specification: a chapter (heading 1) a page, the contents of headings 1; a Markdown document: neither, headings 1-2.
+$script:wordMode = @{ ChapterBreaks = $true; TocLevels = 1; TocBreak = $true }
+
+# The converter's state, for one document.
+function New-WordContext($Styles, [long]$WidthTwips, [int]$NumBase) {
+    return @{
+        Styles = $Styles; Width = $WidthTwips; NumBase = $NumBase; Rels = (New-Object Collections.ArrayList); Media = (New-Object Collections.ArrayList)
+        RelIds = @{}; Bookmarks = @{}; BookmarkId = 0; DocPr = 1000; Nums = (New-Object Collections.ArrayList); Toc = (New-Object Collections.ArrayList)
+    }
+}
+# A built-in style's ID in the template (found by its name: localized templates have other IDs); '' when it has none.
+function Get-TemplateStyles([string]$StylesXml) {
+    $byName = @{}
+    $ids = @{}
+    foreach ($m in [regex]::Matches($StylesXml, '<w:style\b[^>]*w:styleId="([^"]+)"[^>]*>\s*<w:name w:val="([^"]+)"')) {
+        $byName[$m.Groups[2].Value.ToLower()] = $m.Groups[1].Value
+        $ids[$m.Groups[1].Value] = $true
+    }
+    $want = [ordered]@{ Title = 'title'; Subtitle = 'subtitle'; Normal = 'normal'; ListParagraph = 'list paragraph'; TableGrid = 'table grid'; TOCHeading = 'toc heading'; TOC1 = 'toc 1'; TOC2 = 'toc 2'; Hyperlink = 'hyperlink' }
+    for ($i = 1; $i -le 6; $i++) { $want["Heading$i"] = "heading $i" }
+    $styles = @{}
+    foreach ($k in $want.Keys) {
+        $styles[$k] = ''
+        if ($byName.ContainsKey($want[$k])) { $styles[$k] = $byName[$want[$k]] } elseif ($ids.ContainsKey($k)) { $styles[$k] = $k }
+    }
+    return $styles
+}
+function Get-BookmarkName($Ctx, [string]$Id) {
+    if (-not $Ctx.Bookmarks.ContainsKey($Id)) {
+        $n = 'ls_' + ($Id -replace '[^A-Za-z0-9_]', '_')
+        if ($n.Length -gt 34) { $n = $n.Substring(0, 34) }
+        $n = "$n$($Ctx.Bookmarks.Count)"
+        $Ctx.Bookmarks[$Id] = $n
+    }
+    return $Ctx.Bookmarks[$Id]
+}
+function Add-WordRel($Ctx, [string]$Type, [string]$Target, [bool]$External) {
+    $key = "$Type|$Target"
+    if ($Ctx.RelIds.ContainsKey($key)) { return $Ctx.RelIds[$key] }
+    $id = "rIdLs$($Ctx.Rels.Count + 1)"
+    [void]$Ctx.Rels.Add([pscustomobject]@{ Id = $id; Type = $Type; Target = $Target; External = $External })
+    $Ctx.RelIds[$key] = $id
+    return $id
+}
+
+# --- inline content: runs ---
+function New-RunFormat { return @{ B = $false; I = $false; Code = $false; Link = ''; Size = 0 } }
+function Copy-RunFormat($F) { return @{ B = $F.B; I = $F.I; Code = $F.Code; Link = $F.Link; Size = $F.Size } }
+# The runs of an element's inline content, as a list of { T (text) | Br | Xml (a drawing) , Format }.
+function Add-InlineRuns($Ctx, $Node, $Fmt, $Runs) {
+    foreach ($c in $Node.ChildNodes) {
+        if ($c.NodeType -eq 'Text' -or $c.NodeType -eq 'SignificantWhitespace' -or $c.NodeType -eq 'Whitespace') { [void]$Runs.Add(@{ T = $c.Value; F = $Fmt }); continue }
+        if ($c.NodeType -ne 'Element') { continue }
+        $tag = $c.LocalName.ToLower()
+        $f = Copy-RunFormat $Fmt
+        switch ($tag) {
+            { $_ -in 'strong', 'b', 'th' } { $f.B = $true; Add-InlineRuns $Ctx $c $f $Runs }
+            { $_ -in 'em', 'i' } { $f.I = $true; Add-InlineRuns $Ctx $c $f $Runs }
+            'code' { $f.Code = $true; Add-InlineRuns $Ctx $c $f $Runs }
+            'br' { [void]$Runs.Add(@{ Br = $true; F = $Fmt }) }
+            'img' { $x = Get-WordImage $Ctx $c; if ($x) { [void]$Runs.Add(@{ Xml = $x; F = $Fmt }) } }
+            'a' {
+                $href = $c.GetAttribute('href')
+                if ($href) { $f.Link = $href }
+                if ($c.GetAttribute('name') -and -not $c.HasChildNodes) { continue }
+                Add-InlineRuns $Ctx $c $f $Runs
+            }
+            'span' {
+                # A requirement's or scenario's label ("Requirement"): before its title, with a colon.
+                if ($c.GetAttribute('class') -eq 'tag') { $f.B = $true; [void]$Runs.Add(@{ T = "$($c.InnerText.Trim()): "; F = $f }); continue }
+                Add-InlineRuns $Ctx $c $f $Runs
+            }
+            default { Add-InlineRuns $Ctx $c $f $Runs }
+        }
+    }
+}
+# Runs as WordprocessingML: white space as HTML shows it (not in code blocks), links as hyperlinks.
+function Format-Runs($Ctx, $Runs, [bool]$Pre) {
+    $sb = New-Object Text.StringBuilder
+    $space = $true
+    $items = New-Object Collections.ArrayList
+    foreach ($r in $Runs) {
+        if ($r.Br -or $r.Xml) { [void]$items.Add($r); $space = $true; continue }
+        $t = [string]$r.T
+        if (-not $Pre) {
+            $t = [regex]::Replace($t, '\s+', ' ')
+            if ($space -and $t.StartsWith(' ')) { $t = $t.Substring(1) }
+            if (-not $t) { continue }
+            $space = $t.EndsWith(' ')
+        }
+        [void]$items.Add(@{ T = $t; F = $r.F })
+    }
+    # No space at the paragraph's end.
+    for ($i = $items.Count - 1; $i -ge 0; $i--) {
+        if ($items[$i].Br -or $items[$i].Xml) { break }
+        $items[$i].T = $items[$i].T.TrimEnd()
+        if ($items[$i].T) { break }
+    }
+    $link = ''
+    foreach ($r in $items) {
+        $l = ''
+        if (-not $r.Br -and -not $r.Xml) { $l = $r.F.Link }
+        if ($l -ne $link) {
+            if ($link) { [void]$sb.Append('</w:hyperlink>') }
+            $link = $l
+            if ($link) {
+                if ($link.StartsWith('#')) { [void]$sb.Append("<w:hyperlink w:anchor=`"$(Get-BookmarkName $Ctx $link.Substring(1))`" w:history=`"1`">") }
+                else { [void]$sb.Append("<w:hyperlink r:id=`"$(Add-WordRel $Ctx 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink' $link $true)`" w:history=`"1`">") }
+            }
+        }
+        if ($r.Xml) { [void]$sb.Append($r.Xml); continue }
+        if ($r.Br) { [void]$sb.Append('<w:r><w:br/></w:r>'); continue }
+        if (-not $r.T) { continue }
+        $rpr = ''
+        if ($r.F.Link -and $Ctx.Styles.Hyperlink) { $rpr += "<w:rStyle w:val=`"$($Ctx.Styles.Hyperlink)`"/>" }
+        # Code: the only font LazySpec sets (monospace, the theme's code font); the template's fonts everywhere else.
+        $cf = Xml $script:wordCode.Font
+        if ($r.F.Code) { $rpr += "<w:rFonts w:ascii=`"$cf`" w:hAnsi=`"$cf`" w:cs=`"$cf`"/>" }
+        if ($r.F.B) { $rpr += '<w:b/><w:bCs/>' }
+        if ($r.F.I) { $rpr += '<w:i/><w:iCs/>' }
+        if ($r.F.Code -and $r.F.Size -ge 0) { $sz = $script:wordCode.Size; if ($r.F.Size) { $sz = $r.F.Size }; $rpr += "<w:sz w:val=`"$sz`"/><w:szCs w:val=`"$sz`"/>" }
+        elseif (-not $r.F.Code -and $r.F.Size -ge 0 -and $Ctx.TextSize) { $rpr += "<w:sz w:val=`"$($Ctx.TextSize)`"/><w:szCs w:val=`"$($Ctx.TextSize)`"/>" }
+        if ($rpr) { $rpr = "<w:rPr>$rpr</w:rPr>" }
+        $lines = $r.T.Split("`n")
+        for ($k = 0; $k -lt $lines.Count; $k++) {
+            if ($k) { [void]$sb.Append("<w:r>$rpr<w:br/></w:r>") }
+            if ($lines[$k]) { [void]$sb.Append("<w:r>$rpr<w:t xml:space=`"preserve`">$(Xml $lines[$k])</w:t></w:r>") }
+        }
+    }
+    if ($link) { [void]$sb.Append('</w:hyperlink>') }
+    return $sb.ToString()
+}
+# A paragraph: its properties in the schema's order.
+function Add-WordPara($Ctx, $Sb, [string]$Style, [string]$Runs, $Opt) {
+    if (-not $Opt) { $Opt = @{} }
+    $ppr = ''
+    $sid = ''
+    if ($Style) { $sid = $Ctx.Styles[$Style] }
+    if ($sid) { $ppr += "<w:pStyle w:val=`"$sid`"/>" }
+    if ($Opt.KeepNext) { $ppr += '<w:keepNext/>' }
+    if ($Opt.PageBreak) { $ppr += '<w:pageBreakBefore/>' }
+    if ($Opt.NumId) { $ppr += "<w:numPr><w:ilvl w:val=`"$($Opt.Level)`"/><w:numId w:val=`"$($Opt.NumId)`"/></w:numPr>" }
+    if ($Opt.Border) { $ppr += '<w:pBdr><w:bottom w:val="single" w:sz="4" w:space="1" w:color="auto"/></w:pBdr>' }
+    if ($Opt.Before -or $Opt.After) {
+        $sp = ''
+        if ($Opt.Before) { $sp += " w:before=`"$($Opt.Before)`"" }
+        if ($Opt.After) { $sp += " w:after=`"$($Opt.After)`"" }
+        $ppr += "<w:spacing$sp/>"
+    }
+    if ($Opt.Indent) { $ppr += "<w:ind w:left=`"$($Opt.Indent)`"/>" }
+    if ($Opt.Center) { $ppr += '<w:jc w:val="center"/>' }
+    if ($ppr) { $ppr = "<w:pPr>$ppr</w:pPr>" }
+    $bm = ''; $bmEnd = ''
+    if ($Opt.Bookmark) {
+        $Ctx.BookmarkId++
+        $bm = "<w:bookmarkStart w:id=`"$($Ctx.BookmarkId)`" w:name=`"$(Get-BookmarkName $Ctx $Opt.Bookmark)`"/>"
+        $bmEnd = "<w:bookmarkEnd w:id=`"$($Ctx.BookmarkId)`"/>"
+    }
+    [void]$Sb.Append("<w:p>$ppr$bm$Runs$bmEnd</w:p>")
+}
+function Get-InlineXml($Ctx, $Node, [bool]$Pre = $false, [bool]$Heading = $false) {
+    $runs = New-Object Collections.ArrayList
+    $f = New-RunFormat
+    # In a heading, code keeps the heading's size (only the font is code's).
+    if ($Heading) { $f.Size = -1 }
+    if ($Pre) {
+        $f.Code = $true
+        # A code block's own size (a diagram's long lines: smaller), in half-points.
+        $m = [regex]::Match($Node.GetAttribute('style'), 'font-size:\s*([\d.]+)pt')
+        if ($m.Success) { $f.Size = [int][Math]::Round([double]::Parse($m.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture) * 2) }
+    }
+    Add-InlineRuns $Ctx $Node $f $runs
+    return Format-Runs $Ctx $runs $Pre
+}
+
+# A picture (a diagram): into the package, at most the text's width (and a page's height).
+function Get-WordImage($Ctx, $Img) {
+    $src = $Img.GetAttribute('src')
+    $bytes = $null
+    $ext = 'png'
+    try {
+        if ($src -match '^data:image/([a-z+]+);base64,(.*)$') { $ext = $Matches[1]; $bytes = [Convert]::FromBase64String($Matches[2]) }
+        elseif ($src) { $p = $src; if ($src -match '^file:') { $p = ([Uri]$src).LocalPath }; $bytes = [IO.File]::ReadAllBytes($p); $ext = [IO.Path]::GetExtension($p).TrimStart('.').ToLower() }
+    } catch { Write-Host "  ! a picture not added: $($_.Exception.Message)"; return '' }
+    if (-not $bytes) { return '' }
+    if ($ext -eq 'jpg') { $ext = 'jpeg' }
+    if ($ext -notin 'png', 'jpeg', 'gif', 'bmp') { Write-Host "  ! a $ext picture not added (Word takes png, jpeg, gif, bmp)"; return '' }
+    $w = 0; $h = 0
+    try {
+        $ms = New-Object IO.MemoryStream(, $bytes)
+        Add-Type -AssemblyName System.Drawing
+        $im = [Drawing.Image]::FromStream($ms, $false, $false)
+        $w = $im.Width; $h = $im.Height; $im.Dispose(); $ms.Dispose()
+    } catch { }
+    if (-not $w) { $w = [int]$Img.GetAttribute('width'); $h = [int]$Img.GetAttribute('height') }
+    if (-not $w -or -not $h) { $w = 600; $h = 400 }
+    # 96 dpi; the text's width; at most 22 cm high. A height in mm (the cover's logo): that height.
+    $cx = [long]$w * 9525; $cy = [long]$h * 9525
+    $mm = $Img.GetAttribute('data-height-mm')
+    if ($mm) { $cy = [long]([double]::Parse($mm, [Globalization.CultureInfo]::InvariantCulture) * 36000); $cx = [long]($cy * $w / $h) }
+    $maxX = $Ctx.Width * 635; $maxY = [long](22 * 360000)
+    $k = [Math]::Min(1.0, [Math]::Min($maxX / $cx, $maxY / $cy))
+    $cx = [long]($cx * $k); $cy = [long]($cy * $k)
+    $n = $Ctx.Media.Count + 1
+    $name = "lazyspec-image$n.$ext"
+    [void]$Ctx.Media.Add([pscustomobject]@{ Name = $name; Bytes = $bytes; Ext = $ext })
+    $rid = Add-WordRel $Ctx 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image' "media/$name" $false
+    $Ctx.DocPr++
+    $id = $Ctx.DocPr
+    $alt = Xml $Img.GetAttribute('alt')
+    return "<w:r><w:drawing><wp:inline distT=`"0`" distB=`"0`" distL=`"0`" distR=`"0`"><wp:extent cx=`"$cx`" cy=`"$cy`"/><wp:docPr id=`"$id`" name=`"Picture $id`" descr=`"$alt`"/>" +
+        '<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>' +
+        '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+        "<pic:pic xmlns:pic=`"http://schemas.openxmlformats.org/drawingml/2006/picture`"><pic:nvPicPr><pic:cNvPr id=`"$id`" name=`"$name`"/><pic:cNvPicPr/></pic:nvPicPr>" +
+        "<pic:blipFill><a:blip r:embed=`"$rid`"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>" +
+        "<pic:spPr><a:xfrm><a:off x=`"0`" y=`"0`"/><a:ext cx=`"$cx`" cy=`"$cy`"/></a:xfrm><a:prstGeom prst=`"rect`"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>" +
+        '</a:graphicData></a:graphic></wp:inline></w:drawing></w:r>'
+}
+
+# A list (ul / ol): a numbering of its own (so ordered lists start at 1), its level by how deep it is.
+function New-WordList($Ctx, [string]$Kind) {
+    [void]$Ctx.Nums.Add($Kind)
+    return $Ctx.NumBase + $Ctx.Nums.Count
+}
+function Add-WordList($Ctx, $Sb, $List, [int]$Level) {
+    $kind = 'bullet'
+    if ($List.LocalName -eq 'ol') { $kind = 'decimal'; if ($List.GetAttribute('type') -eq 'a') { $kind = 'letter' } }
+    $num = New-WordList $Ctx $kind
+    foreach ($li in $List.ChildNodes) {
+        if ($li.NodeType -ne 'Element' -or $li.LocalName -ne 'li') { continue }
+        # A scenario's steps (WHEN / THEN ...) and task lists: no bullet, their own marks.
+        $plain = $li.GetAttribute('class') -match '\bstep\b'
+        $first = @{ NumId = $num; Level = [Math]::Min(8, $Level) }
+        if ($plain) { $first = $null }
+        Add-WordBlocks $Ctx $Sb $li $Level 'ListParagraph' $first (360 * ($Level + 1) + 360)
+    }
+}
+# A table: TableGrid, the text's width, the header row repeated on every page.
+function Add-WordTable($Ctx, $Sb, $Table) {
+    $rows = @($Table.SelectNodes('.//tr'))
+    if (-not $rows.Count) { return }
+    $cols = 0
+    foreach ($r in $rows) { $n = @($r.ChildNodes | Where-Object { $_.NodeType -eq 'Element' -and $_.LocalName -in 'td', 'th' }).Count; if ($n -gt $cols) { $cols = $n } }
+    if (-not $cols) { return }
+    $cw = [long][Math]::Floor($Ctx.Width / $cols)
+    # Its columns' widths: the HTML's (<col style="width: N%">, Get-TableWidths), else equal.
+    $pcts = @($Table.SelectNodes('.//col') | ForEach-Object { $m = [regex]::Match($_.GetAttribute('style'), 'width:\s*([\d.]+)%'); if ($m.Success) { [double]::Parse($m.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture) } })
+    $widths = @(for ($i = 0; $i -lt $cols; $i++) { if ($pcts.Count -eq $cols) { [long][Math]::Floor($Ctx.Width * $pcts[$i] / 100) } else { $cw } })
+    $tblStyle = ''
+    if ($Ctx.Styles.TableGrid) { $tblStyle = "<w:tblStyle w:val=`"$($Ctx.Styles.TableGrid)`"/>" }
+    # The style's header row (bold, shaded) only on a table that has one.
+    $hasHead = [bool]$Table.SelectSingleNode('.//thead') -or [bool](@($rows[0].ChildNodes | Where-Object { $_.NodeType -eq 'Element' }).Count -and -not @($rows[0].ChildNodes | Where-Object { $_.NodeType -eq 'Element' -and $_.LocalName -ne 'th' }).Count)
+    $look = if ($hasHead) { 'w:val="04A0" w:firstRow="1"' } else { 'w:val="0080" w:firstRow="0"' }
+    [void]$Sb.Append("<w:tbl><w:tblPr>$tblStyle<w:tblW w:w=`"5000`" w:type=`"pct`"/><w:tblLook $look w:lastRow=`"0`" w:firstColumn=`"0`" w:lastColumn=`"0`" w:noHBand=`"0`" w:noVBand=`"1`"/></w:tblPr><w:tblGrid>")
+    for ($i = 0; $i -lt $cols; $i++) { [void]$Sb.Append("<w:gridCol w:w=`"$($widths[$i])`"/>") }
+    [void]$Sb.Append('</w:tblGrid>')
+    foreach ($r in $rows) {
+        $cells = @($r.ChildNodes | Where-Object { $_.NodeType -eq 'Element' -and $_.LocalName -in 'td', 'th' })
+        $head = ($r.ParentNode.LocalName -eq 'thead') -or (@($cells | Where-Object { $_.LocalName -eq 'th' }).Count -eq $cells.Count -and $cells.Count)
+        [void]$Sb.Append('<w:tr>')
+        if ($head) { [void]$Sb.Append('<w:trPr><w:tblHeader/></w:trPr>') }
+        for ($i = 0; $i -lt $cols; $i++) {
+            # A cell's background (a changed row of models.md): its shading.
+            $shd = ''
+            if ($i -lt $cells.Count) {
+                $bg = [regex]::Match($cells[$i].GetAttribute('style'), 'background:\s*#([0-9A-Fa-f]{6})')
+                if ($bg.Success) { $shd = "<w:shd w:val=`"clear`" w:color=`"auto`" w:fill=`"$($bg.Groups[1].Value.ToUpper())`"/>" }
+            }
+            [void]$Sb.Append("<w:tc><w:tcPr><w:tcW w:w=`"$($widths[$i])`" w:type=`"dxa`"/>$shd</w:tcPr>")
+            $cell = New-Object Text.StringBuilder
+            if ($i -lt $cells.Count) {
+                $content = $cells[$i]
+                # A header cell's text bold (as the browser shows it).
+                if ($content.LocalName -eq 'th') {
+                    $content = $Ctx.Doc.CreateElement('td')
+                    $strong = $Ctx.Doc.CreateElement('strong')
+                    foreach ($n in @($cells[$i].ChildNodes)) { [void]$strong.AppendChild($n.CloneNode($true)) }
+                    [void]$content.AppendChild($strong)
+                }
+                Add-WordBlocks $Ctx $cell $content 0 'Normal' $null 0
+            }
+            # Every cell holds a paragraph at least.
+            if (-not $cell.Length) { [void]$cell.Append('<w:p/>') }
+            # Its paragraphs tight, as a table's (Normal's paragraph spacing would win over the table style's):
+            # a spacing in each paragraph's properties, in the schema's place (before ind / jc).
+            $tight = '<w:spacing w:before="20" w:after="20" w:line="240" w:lineRule="auto"/>'
+            $cx = [regex]::Replace($cell.ToString(), '<w:p><w:pPr>((?:(?!</w:pPr>).)*?)(<w:ind\b|<w:jc\b|</w:pPr>)', {
+                    param($m) if ($m.Groups[1].Value -match '<w:spacing\b') { $m.Value } else { "<w:p><w:pPr>$($m.Groups[1].Value)$tight$($m.Groups[2].Value)" } })
+            $cx = $cx.Replace('<w:p/>', "<w:p><w:pPr>$tight</w:pPr></w:p>").Replace('<w:p><w:r>', "<w:p><w:pPr>$tight</w:pPr><w:r>")
+            [void]$Sb.Append($cx)
+            [void]$Sb.Append('</w:tc>')
+        }
+        [void]$Sb.Append('</w:tr>')
+    }
+    [void]$Sb.Append('</w:tbl>')
+}
+# The contents: the template's TOCHeading, then a TOC field over Heading 1 (filled in here, without page
+# numbers; Word adds them when it's there, F9 in Word otherwise).
+function Add-WordToc($Ctx, $Sb) {
+    $p = ''
+    if ($Ctx.Styles.TOC1) { $p = "<w:pPr><w:pStyle w:val=`"$($Ctx.Styles.TOC1)`"/></w:pPr>" }
+    [void]$Sb.Append("<w:p>$p<w:r><w:fldChar w:fldCharType=`"begin`"/></w:r><w:r><w:instrText xml:space=`"preserve`"> TOC \o `"1-$($script:wordMode.TocLevels)`" \h \z \u </w:instrText></w:r><w:r><w:fldChar w:fldCharType=`"separate`"/></w:r></w:p>")
+    foreach ($e in $Ctx.Toc) {
+        # An entry in its level's style (toc 1, toc 2).
+        $ep = $p
+        $sid = $Ctx.Styles["TOC$($e.Level)"]
+        if ($sid) { $ep = "<w:pPr><w:pStyle w:val=`"$sid`"/></w:pPr>" }
+        [void]$Sb.Append("<w:p>$ep<w:hyperlink w:anchor=`"$(Get-BookmarkName $Ctx $e.Id)`" w:history=`"1`"><w:r><w:t xml:space=`"preserve`">$(Xml $e.Text)</w:t></w:r></w:hyperlink></w:p>")
+    }
+    [void]$Sb.Append("<w:p>$p<w:r><w:fldChar w:fldCharType=`"end`"/></w:r></w:p>")
+}
+
+# An element's content as blocks: inline content (text, links ...) gathers into paragraphs of $Style;
+# headings, lists, tables, code, pictures make their own. $First: the first paragraph's numbering (a list
+# item's), $Indent: every other paragraph's left indent (a list item's text, a scenario).
+function Add-WordBlocks($Ctx, $Sb, $Node, [int]$Level, [string]$Style, $First, [int]$Indent) {
+    $state = @{ First = $First }
+    # The next paragraph's properties: the number once, else the indent.
+    $nextOpt = {
+        $o = @{}
+        if ($state.First) { $o = @{ NumId = $state.First.NumId; Level = $state.First.Level } }
+        elseif ($Indent) { $o = @{ Indent = $Indent } }
+        $state.First = $null
+        return $o
+    }
+    $pending = New-Object Collections.ArrayList
+    $flush = {
+        if (-not $pending.Count) { return }
+        $runs = New-Object Collections.ArrayList
+        foreach ($n in $pending) {
+            if ($n.NodeType -eq 'Element') {
+                $wrap = $Ctx.Doc.CreateElement('span')
+                [void]$wrap.AppendChild($n.CloneNode($true))
+                Add-InlineRuns $Ctx $wrap (New-RunFormat) $runs
+            }
+            else { [void]$runs.Add(@{ T = $n.Value; F = (New-RunFormat) }) }
+        }
+        $pending.Clear()
+        $xml = Format-Runs $Ctx $runs $false
+        if (-not $xml) { return }
+        Add-WordPara $Ctx $Sb $Style $xml (& $nextOpt)
+    }
+    $blockTags = 'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'table', 'pre', 'blockquote', 'hr'
+    $inList = $Style -eq 'ListParagraph'
+    foreach ($c in @($Node.ChildNodes)) {
+        if ($c.NodeType -ne 'Element' -or $c.LocalName -notin $blockTags) { [void]$pending.Add($c); continue }
+        & $flush
+        $tag = $c.LocalName
+        $cls = $c.GetAttribute('class')
+        switch -Regex ($tag) {
+            '^h([1-6])$' {
+                $lv = [int]$Matches[1]
+                $id = $c.GetAttribute('id')
+                $opt = @{ KeepNext = $true }
+                # A chapter: a page of its own (the specification), in the contents (a part's title too).
+                if ($lv -eq 1 -and $script:wordMode.ChapterBreaks) { $opt.PageBreak = $true }
+                if ($lv -le $script:wordMode.TocLevels) {
+                    if (-not $id) { $id = "part$($Ctx.Toc.Count)" }
+                    [void]$Ctx.Toc.Add([pscustomobject]@{ Id = $id; Text = [regex]::Replace($c.InnerText.Trim(), '\s+', ' '); Level = $lv })
+                }
+                if ($id) { $opt.Bookmark = $id }
+                Add-WordPara $Ctx $Sb "Heading$lv" (Get-InlineXml $Ctx $c $false $true) $opt
+                $state.First = $null
+            }
+            '^(ul|ol)$' { $lv = 0; if ($inList) { $lv = $Level + 1 }; $state.First = $null; Add-WordList $Ctx $Sb $c $lv }
+            '^table$' { $state.First = $null; Add-WordTable $Ctx $Sb $c }
+            '^pre$' { Add-WordPara $Ctx $Sb 'Normal' (Get-InlineXml $Ctx $c $true) (& $nextOpt) }
+            '^hr$' { Add-WordPara $Ctx $Sb 'Normal' '' @{ Border = $true } }
+            '^blockquote$' { Add-WordBlocks $Ctx $Sb $c $Level 'Normal' $null ($Indent + 567) }
+            '^p$' {
+                # The contents' place: filled in when the chapters are known.
+                if ($c.InnerText.Trim() -eq '[[TOC]]') { [void]$Sb.Append('<!--lazyspec-toc-->'); break }
+                switch ($cls) {
+                    'title' { Add-WordPara $Ctx $Sb 'Title' (Get-InlineXml $Ctx $c) @{} }
+                    'subtitle' { Add-WordPara $Ctx $Sb 'Subtitle' (Get-InlineXml $Ctx $c) @{} }
+                    'toc-title' { Add-WordPara $Ctx $Sb 'TOCHeading' (Get-InlineXml $Ctx $c) @{ PageBreak = $script:wordMode.TocBreak } }
+                    'page-break' { Add-WordPara $Ctx $Sb 'Normal' '' @{ PageBreak = $true } }
+                    'caption' { Add-WordPara $Ctx $Sb 'Normal' (Get-InlineXml $Ctx $c) @{ Center = $true } }
+                    default { Add-WordPara $Ctx $Sb $Style (Get-InlineXml $Ctx $c) (& $nextOpt) }
+                }
+            }
+            default {
+                # A div: the cover, a scenario (indented), a diagram (its picture centred), what's inside.
+                if ($cls -eq 'bar') { break }
+                if ($cls -eq 'cover-logo') {
+                    foreach ($img in @($c.SelectNodes('.//img'))) { $x = Get-WordImage $Ctx $img; if ($x) { Add-WordPara $Ctx $Sb 'Normal' $x @{ After = 600 } } }
+                    break
+                }
+                if ($cls -eq 'diagram') {
+                    # Room above it and below its caption, as in PDF (16pt, 20pt).
+                    foreach ($img in @($c.SelectNodes('.//img'))) { $x = Get-WordImage $Ctx $img; if ($x) { Add-WordPara $Ctx $Sb 'Normal' $x @{ Center = $true; KeepNext = $true; Before = 320 } } }
+                    foreach ($cap in @($c.SelectNodes('./p'))) { Add-WordPara $Ctx $Sb 'Normal' (Get-InlineXml $Ctx $cap) @{ Center = $true; After = 400 } }
+                    break
+                }
+                $in = $Indent
+                $size = $Ctx.TextSize
+                if ($cls -eq 'scenario') { $in += 284; if ($script:wordScenarioSize) { $Ctx.TextSize = $script:wordScenarioSize } }
+                Add-WordBlocks $Ctx $Sb $c $Level $Style $state.First $in
+                $Ctx.TextSize = $size
+                $state.First = $null
+            }
+        }
+    }
+    & $flush
+}
+
+# The export's HTML -> a .docx on the template.
+function Export-WordTemplate([string]$Html, [string]$Target, [string]$TemplatePath) {
+    Write-Host "  $($g.caret) Word template: $TemplatePath"
+    Export-WordOnBase $Html $Target (Read-SharedBytes $TemplatePath) $TemplatePath
+}
+# The export's HTML -> a .docx on the theme's base document.
+function Export-WordTheme([string]$Html, [string]$Target, $T, $Meta) {
+    $script:wordCode = @{ Font = $T.Styles.code.font; Size = [int][Math]::Round((ConvertTo-Pt $T.Styles.code.size 'size') * 2) }
+    $script:wordScenarioSize = [int][Math]::Round((Get-ScenarioPt $T) * 2)
+    Export-WordOnBase $Html $Target (New-ThemeDocxBase $T $Meta) $T.Path
+}
+# The export's HTML -> a .docx on a base document (the template's, or the theme's).
+function Export-WordOnBase([string]$Html, [string]$Target, [byte[]]$Base, [string]$Source) {
+    $pkg = Open-ZipBytes $Base 'Update'
+    try {
+        $zip = $pkg.Zip
+        $docXml = Read-ZipText $zip 'word/document.xml'
+        # The body goes, its last section's properties stay (headers, footers, margins, the cover's own first page).
+        $bodyStart = [regex]::Match($docXml, '<w:body>')
+        $sect = [regex]::Match($docXml, '(?s)<w:sectPr\b(?:(?!<w:sectPr\b).)*?</w:sectPr>\s*</w:body>')
+        if (-not $bodyStart.Success) { throw "The Word template has no <w:body>: $Source" }
+        $sectPr = ''
+        if ($sect.Success) { $sectPr = [regex]::Replace($sect.Value, '\s*</w:body>$', '') }
+        $oldBody = $docXml.Substring($bodyStart.Index, $docXml.IndexOf('</w:body>') - $bodyStart.Index)
+        $head = $docXml.Substring(0, $bodyStart.Index)
+        # The namespaces the content needs, on the root as Word writes them.
+        $nsNeeded = @{
+            w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'; r = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+            wp = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing'
+        }
+        foreach ($k in $nsNeeded.Keys) { if ($head -notmatch "xmlns:$k=") { $head = [regex]::Replace($head, '<w:document\b', "<w:document xmlns:$k=`"$($nsNeeded[$k])`"", 1) } }
+        # The text's width: the page's, less the margins (twips).
+        $width = 9026
+        $pg = [regex]::Match($sectPr, '<w:pgSz\b[^>]*w:w="(\d+)"'); $ml = [regex]::Match($sectPr, '<w:pgMar\b[^>]*w:left="(\d+)"'); $mr = [regex]::Match($sectPr, '<w:pgMar\b[^>]*w:right="(\d+)"')
+        if ($pg.Success -and $ml.Success -and $mr.Success) { $width = [long]$pg.Groups[1].Value - [long]$ml.Groups[1].Value - [long]$mr.Groups[1].Value }
+
+        $numXml = Read-ZipText $zip 'word/numbering.xml'
+        $numMax = 0
+        if ($numXml) { foreach ($m in [regex]::Matches($numXml, '<w:num w:numId="(\d+)"')) { $numMax = [Math]::Max($numMax, [int]$m.Groups[1].Value) } }
+        $ctx = New-WordContext (Get-TemplateStyles (Read-ZipText $zip 'word/styles.xml')) $width $numMax
+        # The export's HTML as XML (it writes well-formed HTML; the void tags closed, the named entities as numbers).
+        $body = [regex]::Match($Html, '(?s)<body>(.*)</body>').Groups[1].Value
+        $body = [regex]::Replace($body, '<(br|hr|img|meta|col|input)\b([^>]*?)/?>', '<$1$2/>')
+        $body = $body.Replace('&nbsp;', '&#160;')
+        $x = New-Object Xml.XmlDocument
+        $x.PreserveWhitespace = $true
+        $x.LoadXml("<body>$body</body>")
+        $ctx.Doc = $x
+        $sb = New-Object Text.StringBuilder
+        Add-WordBlocks $ctx $sb $x.DocumentElement 0 'Normal' $null 0
+        # The contents, now that the chapters are known.
+        $toc = New-Object Text.StringBuilder
+        if ($ctx.Toc.Count) { Add-WordToc $ctx $toc }
+        $content = $sb.ToString().Replace('<!--lazyspec-toc-->', $toc.ToString())
+        $newDoc = "$head<w:body>$content<w:p/>$sectPr</w:body></w:document>"
+        try { [void]([xml]$newDoc) } catch { throw "LazySpec wrote a broken word/document.xml (a bug: please report it): $($_.Exception.Message)" }
+        Write-ZipText $zip 'word/document.xml' $newDoc
+
+        # Relationships: the content's; the sample body's pictures and links go (the headers' have their own).
+        $relsXml = Read-ZipText $zip 'word/_rels/document.xml.rels'
+        $dropped = @()
+        foreach ($m in [regex]::Matches($relsXml, '<Relationship\b[^>]*/>')) {
+            $id = [regex]::Match($m.Value, 'Id="([^"]+)"').Groups[1].Value
+            $type = [regex]::Match($m.Value, 'Type="[^"]*/([^"/]+)"').Groups[1].Value
+            if ($type -notin 'image', 'hyperlink') { continue }
+            if ($oldBody -match "r:(?:embed|id|link)=`"$([regex]::Escape($id))`"" -and $newDoc -notmatch "`"$([regex]::Escape($id))`"") {
+                $relsXml = $relsXml.Replace($m.Value, '')
+                if ($type -eq 'image') { $dropped += [regex]::Match($m.Value, 'Target="([^"]+)"').Groups[1].Value }
+            }
+        }
+        $add = -join @($ctx.Rels | ForEach-Object {
+                $mode = ''
+                if ($_.External) { $mode = ' TargetMode="External"' }
+                "<Relationship Id=`"$($_.Id)`" Type=`"$($_.Type)`" Target=`"$(Xml $_.Target)`"$mode/>" })
+        $relsXml = $relsXml.Replace('</Relationships>', "$add</Relationships>")
+        # The numbering: the content's lists (bullets; 1. 2.; a) b)), after the template's own.
+        if ($ctx.Nums.Count) {
+            if (-not $numXml) {
+                $numXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:numbering>'
+                $relsXml = $relsXml.Replace('</Relationships>', '<Relationship Id="rIdLsNum" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>')
+                $ct = Read-ZipText $zip '[Content_Types].xml'
+                Write-ZipText $zip '[Content_Types].xml' $ct.Replace('</Types>', '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>')
+            }
+            $absMax = 0; foreach ($m in [regex]::Matches($numXml, 'w:abstractNumId="(\d+)"')) { $absMax = [Math]::Max($absMax, [int]$m.Groups[1].Value) }
+            $abs = @{}
+            $absXml = New-Object Text.StringBuilder
+            foreach ($kind in 'bullet', 'decimal', 'letter') {
+                $absMax++
+                $abs[$kind] = $absMax
+                [void]$absXml.Append("<w:abstractNum w:abstractNumId=`"$absMax`"><w:multiLevelType w:val=`"hybridMultilevel`"/>")
+                for ($l = 0; $l -le 8; $l++) {
+                    $fmt = 'bullet'; $text = @([string][char]0x2022, [string][char]0x25E6, [string][char]0x25AA)[$l % 3]
+                    if ($kind -eq 'decimal') { $fmt = @('decimal', 'lowerLetter', 'lowerRoman')[$l % 3]; $text = "%$($l + 1)." }
+                    if ($kind -eq 'letter') { $fmt = @('lowerLetter', 'lowerRoman', 'decimal')[$l % 3]; $text = "%$($l + 1))" }
+                    [void]$absXml.Append("<w:lvl w:ilvl=`"$l`"><w:start w:val=`"1`"/><w:numFmt w:val=`"$fmt`"/><w:lvlText w:val=`"$(Xml $text)`"/><w:lvlJc w:val=`"left`"/><w:pPr><w:ind w:left=`"$(360 * ($l + 1) + 360)`" w:hanging=`"360`"/></w:pPr></w:lvl>")
+                }
+                [void]$absXml.Append('</w:abstractNum>')
+            }
+            $nums = New-Object Text.StringBuilder
+            for ($i = 0; $i -lt $ctx.Nums.Count; $i++) {
+                $id = $numMax + 1 + $i
+                [void]$nums.Append("<w:num w:numId=`"$id`"><w:abstractNumId w:val=`"$($abs[$ctx.Nums[$i]])`"/><w:lvlOverride w:ilvl=`"0`"><w:startOverride w:val=`"1`"/></w:lvlOverride></w:num>")
+            }
+            # The abstract numberings before every w:num (the schema's order).
+            $firstNum = $numXml.IndexOf('<w:num ')
+            if ($firstNum -lt 0) { $firstNum = $numXml.IndexOf('<w:numIdMacAtCleanup'); }
+            if ($firstNum -lt 0) { $firstNum = $numXml.IndexOf('</w:numbering>') }
+            $numXml = $numXml.Insert($firstNum, $absXml.ToString())
+            $cleanup = $numXml.IndexOf('<w:numIdMacAtCleanup')
+            if ($cleanup -lt 0) { $cleanup = $numXml.IndexOf('</w:numbering>') }
+            $numXml = $numXml.Insert($cleanup, $nums.ToString())
+            Write-ZipText $zip 'word/numbering.xml' $numXml
+        }
+        Write-ZipText $zip 'word/_rels/document.xml.rels' $relsXml
+        # The pictures, and their types.
+        $ct = Read-ZipText $zip '[Content_Types].xml'
+        foreach ($m in $ctx.Media) {
+            Write-ZipBytes $zip "word/media/$($m.Name)" $m.Bytes
+            if ($ct -notmatch "Extension=`"$($m.Ext)`"") { $ct = $ct.Replace('<Override ', "<Default Extension=`"$($m.Ext)`" ContentType=`"image/$($m.Ext)`"/><Override ") }
+        }
+        # A .dotx as the template: the result is a document.
+        $ct = $ct.Replace('wordprocessingml.template.main+xml', 'wordprocessingml.document.main+xml')
+        Write-ZipText $zip '[Content_Types].xml' $ct
+        # The sample body's pictures that nothing uses any more.
+        $allRels = -join @($zip.Entries | Where-Object { $_.FullName -match '\.rels$' } | ForEach-Object { Read-ZipText $zip $_.FullName })
+        foreach ($t in $dropped) {
+            if ($allRels -notmatch [regex]::Escape("Target=`"$t`"")) { $e = $zip.GetEntry("word/$t"); if ($e) { $e.Delete() } }
+        }
+        # The document's title in its properties.
+        $core = Read-ZipText $zip 'docProps/core.xml'
+        if ($core) {
+            $t = $x.SelectSingleNode("//p[@class='title']")
+            if ($t) {
+                $title = Xml $t.InnerText.Trim()
+                $core = [regex]::Replace($core, '<dc:title\s*/>|<dc:title>[^<]*</dc:title>', "<dc:title>$title</dc:title>")
+                Write-ZipText $zip 'docProps/core.xml' $core
+            }
+        }
+    }
+    finally { $pkg.Zip.Dispose() }
+    [IO.File]::WriteAllBytes($Target, $pkg.Stream.ToArray())
+    $pkg.Stream.Dispose()
+    # The contents' page numbers: Word fills them in when it's there (the rest of the document as written).
+    $word = $null
+    try { $word = New-Object -ComObject Word.Application } catch { }
+    if (-not $word) { Write-Host "  ! the contents have no page numbers yet: in Word, right-click them, Update Field (no Word on this PC)"; return }
+    $doc = $null
+    try {
+        $word.Visible = $false
+        $word.DisplayAlerts = 0
+        $doc = $word.Documents.Open($Target, $false, $false, $false)
+        foreach ($t in @($doc.TablesOfContents)) { $t.Update() }
+        $doc.Save()
+        Write-Host "  $($g.caret) contents' page numbers by Microsoft Word"
+    }
+    catch { Write-Host "  ! the contents' page numbers not filled in ($($_.Exception.Message)): in Word, Update Field" }
+    finally {
+        if ($doc) { try { $doc.Close($false) } catch { } }
+        try { $word.Quit() } catch { }
+        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($word)
+    }
+}
+
+function Invoke-Export([string]$Format, [string]$Target, [bool]$WithChanges, [bool]$OpenIt, [string]$ItemName, [bool]$Friendly, [string]$MarkdownPath, [string]$ItemTitle) {
+    # A Markdown document (-Markdown): in the project's look when it's in one; else the specification.
+    $mdDoc = $null
+    if ($MarkdownPath) {
+        $md = $MarkdownPath
+        if (-not [IO.Path]::IsPathRooted($md)) { $md = Join-Path (Get-Location).Path $md }
+        $md = [IO.Path]::GetFullPath($md)
+        if (-not (Test-Path -LiteralPath $md -PathType Leaf)) { throw "The Markdown file isn't there: $md" }
+        if ($ItemName -or $WithChanges) { Write-Host "  ! -Item and -IncludeChanges are for the specification: not used with -Markdown" }
+        $mdDoc = Read-MarkdownDocument $md
+        $script:wordMode = @{ ChapterBreaks = $false; TocLevels = 2; TocBreak = $mdDoc.Cover }
+        if (-not $hasRoot) { Write-Host "  ! $(Split-Path $md -Leaf) isn't in a project (no openspec folder above it): no project theme or template (-Theme, -Template still work)" }
+    }
+    elseif (-not $hasRoot) { throw "No openspec folder in $((Get-Location).Path) or above it: nothing to export." }
+    # Word: the project's template, when it has one; every format: its theme (checked first: a missing one
+    # stops the export). Both: Word documents use the template, PDF and HTML the theme.
+    $templatePath = ''
+    if ($Format -eq 'Word' -and -not ($Theme -and -not $Template)) { $templatePath = Get-DocumentTemplate }
+    elseif ($Template) { Write-Host "  ! -Template is for Word documents: the $Format export doesn't use it" }
+    $script:docTheme = Get-DocumentTheme
+    if ($script:docTheme -and $templatePath) { Write-Host "  ! a document template and a theme: this Word document uses the template ($(Split-Path $templatePath -Leaf)); PDF and HTML use the theme" }
+    elseif ($script:docTheme) { Write-Host "  $($g.caret) document theme: $($script:docTheme.Path)"; Write-ThemeFontWarning $script:docTheme ($Format -eq 'Word') }
     $ext = @{ Pdf = 'pdf'; Word = 'docx'; Html = 'html' }[$Format]
-    $doc = Get-ExportHtml $Format $WithChanges $ItemName $Friendly
-    if ($doc.Item) {
+    if ($mdDoc) { $doc = Get-ExportHtml $Format $false '' $Friendly $mdDoc } else { $doc = Get-ExportHtml $Format $WithChanges $ItemName $Friendly $null $ItemTitle }
+    if ($mdDoc) { $what = "document $(Split-Path $mdDoc.Path -Leaf): $($mdDoc.Title)" }
+    elseif ($doc.Item) {
         if (-not $doc.Chapters) { throw "$($doc.Item.Name) has none of its documents yet: nothing to export." }
         $what = "$($doc.Item.Type) $($doc.Item.Name): $($doc.Scope)"
         if ($doc.Item.Type -eq 'spec') { $what = "spec $($doc.Item.Name): $($doc.Reqs) requirements" }
+        if ($doc.Item.Type -eq 'bundle') { $what = "changes $($doc.Item.Name.Replace(',', ', ')) as one, $($doc.Item.Title): $($doc.Scope)" }
     }
     else {
         if (-not $doc.Specs) { throw 'openspec/specs has no specs yet: nothing to export.' }
         $what = "$($doc.Specs) specs, $($doc.Reqs) requirements"
         if ($WithChanges) { $what += ", $($doc.Changes) active changes" }
     }
+    # A Markdown document: next to it, the same name.
+    if (-not $Target -and $mdDoc) { $Target = [IO.Path]::ChangeExtension($mdDoc.Path, $ext) }
     if (-not $Target) {
         $slug = ($projectName.ToLower() -replace '[^a-z0-9]+', '-').Trim('-')
         if (-not $slug) { $slug = 'project' }
         $part = 'specification'
         if ($doc.Item) { $part = ($doc.Item.Name.ToLower() -replace '[^a-z0-9]+', '-').Trim('-') }
+        # Several changes as one: by the saved whole's key, else its title (without accents), else their names.
+        if ($doc.Item.Type -eq 'bundle') {
+            $t = ''
+            if ($doc.Item.Id) { $t = Get-Slug $doc.Item.Id } elseif ($ItemTitle) { $t = Get-Slug $ItemTitle }
+            if ($t) { $part = $t }
+        }
         $Target = Join-Path $Root "export\$slug-$part-$(Get-Date -Format 'yyyy-MM-dd').$ext"
     }
     $Target = [IO.Path]::GetFullPath($Target)
     [void](New-Item -ItemType Directory -Force -Path (Split-Path $Target -Parent))
-    Write-Host "  $($g.caret) $projectName`: $what"
+    if ($projectName) { Write-Host "  $($g.caret) $projectName`: $what" } else { Write-Host "  $($g.caret) $what" }
     $how = "language $($script:exportLang)"
     if ($Friendly) { $how += ', client-friendly (scenarios as sentences)' }
     Write-Host "  $($g.caret) $how"
+    # The previous export still open (a PDF viewer, Word): say so plainly, before the work.
+    if (Test-Path -LiteralPath $Target) {
+        try { $fs = [IO.File]::Open($Target, 'Open', 'ReadWrite', 'None'); $fs.Close() }
+        catch { throw "$(Split-Path $Target -Leaf) is open in another program (a PDF viewer, Word): close it and retry." }
+    }
     $utf8 = New-Object Text.UTF8Encoding $false
     if ($Format -eq 'Html') { [IO.File]::WriteAllText($Target, $doc.Html, $utf8) }
     else {
@@ -1888,10 +4211,15 @@ function Invoke-Export([string]$Format, [string]$Target, [bool]$WithChanges, [bo
             $htmlPath = Join-Path $tmp 'specification.html'
             [IO.File]::WriteAllText($htmlPath, $doc.Html, $utf8)
             if (Test-Path -LiteralPath $Target) { Remove-Item -LiteralPath $Target -Force }
-            if ($Format -eq 'Pdf') { Export-Pdf $htmlPath $Target } else { Export-Word $htmlPath $Target }
+            if ($Format -eq 'Pdf') { Export-Pdf $htmlPath $Target }
+            elseif ($templatePath) { Write-TemplateFontWarning $templatePath; Export-WordTemplate $doc.Html $Target $templatePath }
+            elseif ($script:docTheme) { Export-WordTheme $doc.Html $Target $script:docTheme $doc.Meta }
+            else { Export-Word $htmlPath $Target }
         }
         finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
     }
+    foreach ($t in $script:exportTempFiles) { Remove-Item -LiteralPath $t -Force -ErrorAction SilentlyContinue }
+    $script:exportTempFiles.Clear()
     Write-Host "$($g.check) Written: $Target"
     if ($OpenIt) { Invoke-Item -LiteralPath $Target }
 }
@@ -1903,7 +4231,7 @@ if ($Export) {
     # -KeepDiagrams; -RefreshDiagrams: the latest in any case (and says so when there is no token).
     $script:diagramsRefresh = $RefreshDiagrams.IsPresent -or (-not $KeepDiagrams.IsPresent -and [bool](Get-FigmaToken))
     $script:diagramsOffline = $KeepDiagrams.IsPresent -and -not $RefreshDiagrams.IsPresent
-    try { Invoke-Export $Export $Out $IncludeChanges.IsPresent $Open.IsPresent $Item $ClientFriendly.IsPresent; exit 0 }
+    try { Invoke-Export $Export $Out $IncludeChanges.IsPresent $Open.IsPresent (@($Item) -join ',') $ClientFriendly.IsPresent $Markdown $Title; exit 0 }
     catch { Write-Host "$($g.cross) Export failed: $($_.Exception.Message)" -ForegroundColor Red; exit 1 }
 }
 
@@ -2174,7 +4502,7 @@ function Home-Hints {
     if ($script:filtering) { return , @(@('type', 'filter'), @('Enter', 'keep'), @('Esc', 'clear')) }
     if ($script:zoom) { return , @(@("$($g.up)$($g.down) PgUp PgDn", 'scroll'), @('z Esc', 'show the lists'), @('Enter', 'read'), @('e', 'edit'), @('?', 'help'), @('q', 'quit')) }
     if ($script:pane -eq 'details') { return , @(@("$($g.up)$($g.down) PgUp PgDn", 'scroll'), @("$([string][char]0x2190) Esc", 'lists'), @('z', 'zoom'), @('Enter', 'read'), @('e', 'edit'), @('?', 'help'), @('q', 'quit')) }
-    return , @(@("$($g.up)$($g.down)", 'select'), @('Enter', 'open'), @('Tab', 'scope/plan'), @('v', 'validate'), @('a', 'archive'), @('n', 'new'), @('x', 'export'), @('e', 'edit'), @('s', 'sort'), @('/', 'filter'), @('?', 'help'), @('q', 'quit'))
+    return , @(@("$($g.up)$($g.down)", 'select'), @('Enter', 'open'), @('Tab', 'scope/plan'), @('v', 'validate'), @('a', 'archive'), @('n', 'new'), @('x', 'export'), @('m', 'as one'), @('e', 'edit'), @('s', 'sort'), @('/', 'filter'), @('?', 'help'), @('q', 'quit'))
 }
 
 function Home-Status([int]$Active, [int]$Lines, [int]$Rows) {
@@ -2292,6 +4620,7 @@ function Draw-Home([int]$W, [int]$H) {
 # The read screen: a spec (its spec.md) or a change (proposal, design, tasks, delta specs) in full.
 function Get-ReadTabs($Item) {
     if ($Item.Type -eq 'spec') { return @([pscustomobject]@{ Title = 'Spec'; Path = $Item.Path; Text = $Item.Text }) }
+    if ($Item.Type -eq 'bundle') { return Get-BundleReadTabs $Item }
     # One tab per document of the change's workflow, in its order (then the other .md files in its folder).
     $tabs = @()
     foreach ($d in $Item.Docs) {
@@ -2320,6 +4649,45 @@ function Get-ReadTabs($Item) {
         $tabs += [pscustomobject]@{ Title = "$($d.Title) ($($d.Files.Count))"; Path = $d.Files[0]; Text = $sb.ToString() }
     }
     if (-not $tabs.Count) { $tabs += [pscustomobject]@{ Title = 'Empty'; Path = $Item.Dir; Text = "This change has none of its workflow's documents yet ($(@($Item.Docs | ForEach-Object { $_.Generates }) -join ', '))." } }
+    return $tabs
+}
+# Several changes as one: a tab per kind of document, each change's part under its title.
+function Get-BundleReadTabs($Item) {
+    $tabs = @()
+    foreach ($d in $Item.Docs) {
+        $sb = New-Object Text.StringBuilder
+        $count = 0; $path = ''
+        foreach ($m in $Item.Members) {
+            if ($d.IsSpecs) {
+                foreach ($c in $m.Caps) {
+                    [void]$sb.AppendLine("# $(Get-ItemTitle $m) $($g.mid) $($c.Name)")
+                    [void]$sb.AppendLine('')
+                    [void]$sb.AppendLine((Remove-DocTitle (Read-Text $c.Path)))
+                    [void]$sb.AppendLine('')
+                    if (-not $path) { $path = $c.Path }
+                    $count++
+                }
+                continue
+            }
+            $md = @($m.Docs | Where-Object { $_.Id -eq $d.Id -and $_.Files.Count } | Select-Object -First 1)
+            if (-not $md.Count) { continue }
+            foreach ($f in $md[0].Files) {
+                $head = Get-ItemTitle $m
+                if ($md[0].Files.Count -gt 1) { $head += " $($g.mid) $(Split-Path $f -Leaf)" }
+                [void]$sb.AppendLine("# $head")
+                [void]$sb.AppendLine('')
+                [void]$sb.AppendLine((Remove-DocTitle (Read-Text $f)))
+                [void]$sb.AppendLine('')
+                if (-not $path) { $path = $f }
+            }
+            $count++
+        }
+        if (-not $count) { continue }
+        $t = $d.Title
+        if ($d.IsSpecs) { $t = 'Specs' }
+        $tabs += [pscustomobject]@{ Title = "$t ($count)"; Path = $path; Text = $sb.ToString() }
+    }
+    if (-not $tabs.Count) { $tabs += [pscustomobject]@{ Title = 'Empty'; Path = $Item.Dir; Text = 'None of these changes has its workflow''s documents yet.' } }
     return $tabs
 }
 function Draw-Read([int]$W, [int]$H) {
@@ -2367,6 +4735,184 @@ function Draw-Read([int]$W, [int]$H) {
     return , $rows
 }
 
+# Several changes as one (m on Home; x, chosen changes): the saved wholes, then the changes to mark; then
+# read or export them as one whole.
+function Get-PickRows($P) {
+    $rows = @()
+    foreach ($bd in @(Get-Bundles)) {
+        $found = @(foreach ($n in $bd.Changes) { Find-Change $n $script:changes })
+        $rows += [pscustomobject]@{ Kind = 'bundle'; Bundle = $bd; Found = $found; Missing = $bd.Changes.Count - $found.Count }
+    }
+    foreach ($c in $P.Items) { $rows += [pscustomobject]@{ Kind = 'change'; Change = $c } }
+    if ($P.Index -ge $rows.Count) { $P.Index = [Math]::Max(0, $rows.Count - 1) }
+    return $rows
+}
+function Draw-Pick([int]$W, [int]$H) {
+    $p = $script:pick
+    $all = @(Get-PickRows $p)
+    $lines = New-Object Collections.ArrayList
+    [void]$lines.Add(@())
+    $then = 'read them'
+    if ($p.Then -ne 'read') { $then = "export them as one $($p.Then.ToUpper())" }
+    foreach ($l in (Wrap "The changes that go to the client as one whole: a chapter per kind of document (proposal, specs, design, tasks ...), each change's part under its title. A saved whole: Enter. Else mark the changes, then Enter: a title for the whole (and save it for next time?), then $then." ($W - 8))) { [void]$lines.Add(@(S "  $l" $st.muted)) }
+    $tw = [Math]::Max(10, $W - 24)
+    $at = 0
+    $kind = ''
+    for ($i = 0; $i -lt $all.Count; $i++) {
+        $r = $all[$i]
+        if ($r.Kind -ne $kind) {
+            $kind = $r.Kind
+            [void]$lines.Add(@())
+            if ($kind -eq 'bundle') { [void]$lines.Add(@((S '  SAVED ' $st.title), (S "$($g.mid) openspec/config.yaml lazyspec: bundles:" $st.faint))) }
+            else { [void]$lines.Add(@((S '  CHANGES ' $st.title), (S "$($g.mid) $($p.Items.Count) active" $st.faint))) }
+        }
+        $mark = '  '
+        $style = $st.text
+        if ($i -eq $p.Index) { $mark = "$($g.tri) "; $style = $st.bold; $at = $lines.Count }
+        if ($r.Kind -eq 'bundle') {
+            $title = $r.Bundle.Title
+            if (-not $title) { $title = $r.Bundle.Id }
+            $note = "$($r.Found.Count) changes"
+            if ($r.Missing) { $note += ", $($r.Missing) not found" }
+            [void]$lines.Add(@((S "  $mark" $st.accent), (S "$($g.diamond) " $st.shared), (S (Pad (Short $title $tw) $tw) $style), (S (PadL $note 11) $st.muted)))
+            continue
+        }
+        $c = $r.Change
+        $box = S '[ ] ' $st.faint
+        if ($p.Marked[$c.Name]) { $box = S "[$($g.check)] " $st.ok }
+        $look = $stageLook[$c.Stage]
+        [void]$lines.Add(@((S "  $mark" $st.accent), $box, (S "$($look[0]) " $look[1]), (S (Pad (Short (Get-ItemTitle $c) ($tw - 4)) ($tw - 4)) $style), (S (PadL "$($c.Done)/$($c.Total)" 7) $st.muted)))
+    }
+    # The current one stays visible when the list is longer than the screen.
+    $bodyRows = $H - 4
+    $shown = @($lines)
+    if ($at -ge $bodyRows) { $shown = @($lines | Select-Object -Skip ($at - $bodyRows + 1)) }
+    $rows = New-Object Collections.ArrayList
+    [void]$rows.Add((Border-Top $W "$projectName $($g.mid) changes as one" "$(@($all | Where-Object { $_.Kind -eq 'bundle' }).Count) saved $($g.mid) $($p.Items.Count) active" 0))
+    foreach ($r in (Full-Rows $bodyRows $W $shown)) { [void]$rows.Add($r) }
+    [void]$rows.Add((Border-Line $W $g.lt $g.h $g.rt 0 ''))
+    # A question (remove a saved whole?), else what is marked.
+    $q = Bottom-Line $W 0
+    if (@($q).Count) { [void]$rows.Add($q[0]) }
+    else {
+        $names = @($p.Items | Where-Object { $p.Marked[$_.Name] } | ForEach-Object { Get-ItemTitle $_ })
+        $foot = @((S " $($names.Count) marked" $st.accent))
+        if ($names.Count) { $foot += (S "  $($g.mid)  $($names -join ', ')" $st.muted) }
+        foreach ($r in (Full-Rows 1 $W @(, $foot))) { [void]$rows.Add($r) }
+    }
+    $hints = @(@("$($g.up)$($g.down)", 'select'), @('Space', 'mark'), @('a', 'all, none'), @('Enter', 'go on'))
+    if (@($all | Where-Object { $_.Kind -eq 'bundle' }).Count) { $hints += , @('d', 'remove a saved one') }
+    if ($script:confirm) { $hints = Home-Hints } else { $hints += , @('Esc', 'cancel') }
+    [void]$rows.Add((Border-Bottom $W $hints 0))
+    return , $rows
+}
+function Start-Pick([string]$Then) {
+    $list = @(Get-VisibleChanges | Where-Object { -not $_.Archived })
+    if ($list.Count -lt 2) { $list = @($script:changes | Where-Object { -not $_.Archived } | Sort-Object Name) }
+    if ($list.Count -lt 2 -and -not @(Get-Bundles).Count) { $script:message = 'Changes as one: there are fewer than two active changes.'; return }
+    # The last ones marked again (else the selected change).
+    $marked = @{}
+    foreach ($n in $script:lastPick) { if (@($list | Where-Object { $_.Name -eq $n }).Count) { $marked[$n] = $true } }
+    $sel = Get-Selected
+    if (-not $marked.Count -and $sel -and $sel.Type -eq 'change') { $marked[$sel.Name] = $true }
+    $script:pick = [pscustomobject]@{ Then = $Then; Items = $list; Marked = $marked; Index = 0; Back = $script:screen }
+    $script:message = ''
+    $script:screen = 'pick'
+}
+function On-PickKey($K) {
+    $p = $script:pick
+    $name = $K.Name; $ch = [string]$K.Char
+    $script:message = ''
+    $all = @(Get-PickRows $p)
+    $n = $all.Count
+    $row = $all[$p.Index]
+    if ($name -eq 'Up' -or $ch -eq 'k') { $p.Index = ($p.Index - 1 + $n) % $n }
+    elseif ($name -eq 'Down' -or $ch -eq 'j') { $p.Index = ($p.Index + 1) % $n }
+    elseif ($name -eq 'Home') { $p.Index = 0 }
+    elseif ($name -eq 'End') { $p.Index = $n - 1 }
+    elseif ($name -eq 'Space') {
+        # A saved whole: its changes marked (to change them, then Enter).
+        if ($row.Kind -eq 'bundle') {
+            $p.Marked = @{}
+            foreach ($c in $row.Found) { $p.Marked[$c.Name] = $true }
+            $script:lastPickTitle = $row.Bundle.Title
+        }
+        else { $c = $row.Change; $p.Marked[$c.Name] = -not $p.Marked[$c.Name] }
+    }
+    elseif ($ch -eq 'a') {
+        $every = @($p.Items | Where-Object { $p.Marked[$_.Name] }).Count -eq $p.Items.Count
+        foreach ($c in $p.Items) { $p.Marked[$c.Name] = -not $every }
+    }
+    elseif ($ch -eq 'd' -and $row.Kind -eq 'bundle') {
+        $script:confirm = [pscustomobject]@{ Text = "Remove the saved whole '$($row.Bundle.Title)' from openspec/config.yaml?"; Choice = 1; Id = $row.Bundle.Id; Do = {
+                param($c)
+                Set-ConfigBundle $c.Id '' @()
+                $script:message = "Removed $($c.Id) from openspec/config.yaml."
+            } }
+    }
+    elseif ($name -eq 'Enter') {
+        if ($row.Kind -eq 'bundle') {
+            if (-not $row.Found.Count) { $script:message = "None of $($row.Bundle.Id)'s changes is in openspec/changes."; return }
+            $script:pick = $null
+            $script:screen = $p.Back
+            $script:lastPick = @($row.Found | ForEach-Object { $_.Name })
+            $script:lastPickTitle = $row.Bundle.Title
+            Use-Pick $p.Then ((@($row.Found | ForEach-Object { $_.Name })) -join ',') $row.Bundle.Title $row.Bundle.Id
+            return
+        }
+        Complete-Pick
+    }
+    elseif ($name -eq 'Esc' -or $ch -eq 'q') { $script:screen = $p.Back; $script:pick = $null }
+}
+function Complete-Pick {
+    $p = $script:pick
+    $names = @($p.Items | Where-Object { $p.Marked[$_.Name] } | ForEach-Object { $_.Name })
+    if (-not $names.Count) { $script:message = 'Mark at least one change (Space).'; return }
+    $script:pick = $null
+    $script:screen = $p.Back
+    $script:lastPick = $names
+    if ($names.Count -eq 1) { Use-Pick $p.Then $names[0] ''; return }
+    # The title: the saved whole's with the same changes, else the last one typed.
+    $value = $script:lastPickTitle
+    $key = (@($names | Sort-Object) -join ',')
+    foreach ($bd in @(Get-Bundles)) { if ((@($bd.Changes | Sort-Object) -join ',') -eq $key) { $value = $bd.Title } }
+    $script:input = [pscustomobject]@{ Label = 'Title of the whole:'; Value = $value; Hint = 'on the cover (Enter on nothing: the changes'' titles)'; Free = $true
+        Then = $p.Then; Names = ($names -join ','); Do = {
+            param($v, $i)
+            $script:lastPickTitle = $v
+            Start-SaveBundle $i.Then $i.Names $v
+        } }
+}
+# Not saved yet with this title and these changes: save it as a whole for next time?
+function Start-SaveBundle([string]$Then, [string]$Names, [string]$Title) {
+    $key = (@($Names.Split(',') | Sort-Object) -join ',')
+    $same = @(Get-Bundles | Where-Object { (@($_.Changes | Sort-Object) -join ',') -eq $key -and $_.Title -eq $Title })
+    if ($same.Count -or -not $Title -or -not (Get-Slug $Title)) { $id = ''; if ($same.Count) { $id = $same[0].Id }; Use-Pick $Then $Names $Title $id; return }
+    $id = Get-Slug $Title
+    $script:choose = [pscustomobject]@{ Text = "Save it as '$id' in openspec/config.yaml?"; Options = @('Save it', 'Not now'); Short = @('save', 'not now'); Keys = @('s', 'n'); Choice = 0
+        Then = $Then; Names = $Names; Title = $Title; Id = $id; Do = {
+            param($k, $c)
+            $saved = ''
+            if ($k -eq 0) {
+                try { Set-ConfigBundle $c.Id $c.Title $c.Names.Split(','); $saved = $c.Id }
+                catch { $script:message = "Not saved: $($_.Exception.Message)" }
+            }
+            Use-Pick $c.Then $c.Names $c.Title $saved
+            if ($saved) { $script:message = "Saved as $saved (openspec/config.yaml lazyspec: bundles:)." }
+        } }
+}
+function Use-Pick([string]$Then, [string]$Names, [string]$Title, [string]$Id) {
+    # A saved whole: exported by its key (-Item <key>), so the file has its name.
+    if ($Then -ne 'read') {
+        if ($Id -and @(Get-Bundles | Where-Object { $_.Id -eq $Id -and $_.Title -eq $Title }).Count) { Start-ExportAudience $Then $false $Id ''; return }
+        Start-ExportAudience $Then $false $Names $Title; return
+    }
+    $list = @(foreach ($n in $Names.Split(',')) { Find-Change $n $script:changes })
+    $item = $list[0]
+    if ($list.Count -gt 1) { $item = Get-ChangeBundle $list $Title $Id }
+    $script:readItem = $item; $script:readTab = 0; $script:readScroll = 0; $script:screen = 'read'
+}
+
 # --- the OpenSpec CLI ----------------------------------------------------------------------------------
 
 # The command and how to start it (npm puts openspec.cmd on Windows: it runs through cmd.exe).
@@ -2391,18 +4937,22 @@ function Start-Cli([string]$Label, [string[]]$CliArgs) {
     } else { Start-RunProcess $tool $argLine }
 }
 # Export in the run screen: this script again, in a PowerShell of its own (-Export), its output shown here.
-function Start-Export([string]$Format, [bool]$WithChanges, [string]$ItemName, [bool]$Friendly, [string]$Diagrams) {
+function Start-Export([string]$Format, [bool]$WithChanges, [string]$ItemName, [bool]$Friendly, [string]$Diagrams, [string]$Title) {
     $cliArgs = @('-Root', $Root, '-Export', $Format)
     if ($ItemName) { $cliArgs += @('-Item', $ItemName) }
+    if ($Title) { $cliArgs += @('-Title', $Title) }
     if ($WithChanges) { $cliArgs += '-IncludeChanges' }
     if ($Friendly) { $cliArgs += '-ClientFriendly' }
     if ($Diagrams -eq 'refresh') { $cliArgs += '-RefreshDiagrams' } elseif ($Diagrams -eq 'keep') { $cliArgs += '-KeepDiagrams' }
     if (-not $harness) { $cliArgs += '-Open' }
     $label = "Export $Format"
-    if ($ItemName) { $label += " ($ItemName)" }
+    if ($ItemName.Contains(',')) { $label += " ($(@($ItemName.Split(',')).Count) changes as one)" }
+    elseif ($ItemName) { $label += " ($ItemName)" }
     if ($WithChanges) { $label += ' (with the plan)' }
     if ($Friendly) { $label += ', client-friendly' }
     New-Run $label "lazyspec $(($cliArgs | Where-Object { $_ -ne $Root -and $_ -ne '-Root' }) -join ' ')"
+    # What r (retry) runs again when it fails.
+    $script:run | Add-Member -NotePropertyName Retry -NotePropertyValue ([pscustomobject]@{ Format = $Format; WithChanges = $WithChanges; Item = $ItemName; Friendly = $Friendly; Diagrams = $Diagrams; Title = $Title })
     $ps = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
     Start-RunProcess $ps ("-NoProfile -ExecutionPolicy Bypass -File $(Quote-Arg $PSCommandPath) " + ((@($cliArgs) | ForEach-Object { Quote-Arg $_ }) -join ' '))
 }
@@ -2493,7 +5043,7 @@ function Update-Run {
 function Stop-Run {
     $p = $script:run.Proc
     if ($p -and -not $p.HasExited) {
-        if ($env:OS -eq 'Windows_NT') { & taskkill.exe /T /F /PID $p.Id 2>&1 | Out-Null } else { try { $p.Kill() } catch { } }
+        Stop-ProcessTree $p
     }
     Add-RunLog "$($g.cross) Stopped." $st.err
     $script:run.Done = $true
@@ -2525,6 +5075,10 @@ function Draw-Run([int]$W, [int]$H) {
         elseif ($null -eq $run.Code) { [void]$prompt.Add(@((S " $($g.cross) " $st.err), (S "$($run.Label): didn't start." $st.err))) }
         else { [void]$prompt.Add(@((S ' ! ' $st.warn), (S "$($run.Label): ended with exit code $($run.Code)." $st.warn))) }
         $hints = @(@('Enter Esc', 'back'), @('PgUp PgDn Home End', 'scroll'))
+        if ($run.Code -ne 0 -and $run.PSObject.Properties['Retry'] -and $run.Retry) {
+            [void]$prompt.Add(@((S ' r ' $st.key), (S 'retry (after closing the file, if it was open)' $st.muted)))
+            $hints = @(, @('r', 'retry')) + $hints
+        }
     } else {
         $spin = $spinner[$script:tick % $spinner.Count]
         [void]$prompt.Add(@((S " $spin " $st.accent), (S "working $($g.mid) $($run.Label)" $st.bold)))
@@ -2585,6 +5139,7 @@ function Draw([int]$W, [int]$H) {
         'none' { return Draw-None $W $H }
         'help' { return Draw-Help $W $H }
         'read' { return Draw-Read $W $H }
+        'pick' { return Draw-Pick $W $H }
         'run' { return Draw-Run $W $H }
         default { return Draw-Home $W $H }
     }
@@ -2612,20 +5167,21 @@ function Draw-Help([int]$W, [int]$H) {
         @('PgUp PgDn', 'scroll the details a page (Home, End: top, end)'), @('Enter', 'read it in full'), @('v', 'validate all (openspec validate --all --strict)'),
         @('a', 'archive the selected change (asked first; merges its delta specs into openspec/specs)'),
         @('n', 'new change (asks its name: kebab-case, e.g. add-user-login)'),
-        @('x', 'export the specification for the client: PDF, Word or HTML (export\ in the project; opens it)'), @('e', 'edit: open the spec or the proposal in your editor'),
+        @('x', 'export the specification for the client: PDF, Word or HTML (export\ in the project; opens it)'),
+        @('m', 'changes as one: mark the ones that go to the client as one whole, read them together (x there: export)'), @('e', 'edit: open the spec or the proposal in your editor'),
         @('s', 'sort changes: name A-Z, name Z-A, recently modified'), @('h', 'show or hide archived changes'),
         @('/', 'filter specs and changes by name (Enter keeps it, Esc clears it)'), @('r', 'refresh (it also refreshes by itself when files change)'),
         @('?', 'this help'), @('q', 'quit'))
     & $section 'READ' @(
         @("$($g.up) $($g.down)", 'scroll a line'), @('PgUp PgDn', 'scroll a page'), @('Home End', 'top, end'),
-        @("$([string][char]0x2190) $([string][char]0x2192)", 'the change''s documents (its workflow''s: proposal, delta specs, design, tasks...)'), @('x', 'export this spec or change alone: PDF, Word or HTML'), @('e', 'edit this document'), @('Esc', 'back'))
+        @("$([string][char]0x2190) $([string][char]0x2192)", 'the change''s documents (its workflow''s: proposal, delta specs, design, tasks...)'), @('x', 'export this spec, change or changes as one: PDF, Word or HTML'), @('e', 'edit this document'), @('Esc', 'back'))
     & $section 'RUN' @(@('PgUp PgDn', 'scroll the output (Home, End: top, bottom)'), @('Esc', 'stop (asked first); when done: back'))
     & $section 'LOOK' @(
         @("$($g.diamond) $($g.dot)", 'a platform page (platform-*: overview, costs...), a capability spec'),
         @("$($g.ring) $($g.diamond) $($g.dot) $($g.mid)", 'a change: draft (no tasks), in progress, completed, archived'),
         @('+ ~ -', 'requirements a change adds, modifies, removes in a capability'))
     & $section 'THE SAME WITHOUT THE UI' @(
-        @('v', 'openspec validate --all --strict'), @('a', 'openspec archive <change> --yes'), @('n', 'openspec new change <name>'), @('x', 'lazyspec -Export Pdf|Word|Html [-IncludeChanges] [-Out <file>] [-Open]'),
+        @('v', 'openspec validate --all --strict'), @('a', 'openspec archive <change> --yes'), @('n', 'openspec new change <name>'), @('x', 'lazyspec -Export Pdf|Word|Html [-IncludeChanges] [-Out <file>] [-Open]'), @('m, x', 'lazyspec -Export Word -Item <change>,<change> -Title "<the whole''s title>"'),
         @('everything', '.\tools\lazyspec\lazyspec.ps1 -Help   and   tools\lazyspec\LAZYSPEC.md'))
     $bodyRows = $H - 2
     $max = [Math]::Max(0, $lines.Count - $bodyRows)
@@ -2691,9 +5247,25 @@ function Start-NewChange {
 }
 # x: the specification as a document for the client: the format, then (with active changes) whether the plan goes in.
 function Start-ExportMenu {
-    # No specs yet: the selected change alone (as x in Read).
+    # No specs yet: the selected change alone (as x in Read), or chosen changes as one.
     if (-not $script:specs.Count) {
         $sel = Get-Selected
+        $active = @($script:changes | Where-Object { -not $_.Archived }).Count
+        if ($active -ge 2) {
+            $name = ''
+            if ($sel -and $sel.Type -eq 'change') { $name = $sel.Name }
+            $script:choose = [pscustomobject]@{ Text = 'Export as'; Options = @('PDF', 'Word', 'HTML'); Keys = @('p', 'w', 'h'); Choice = 0; Item = $name; Do = {
+                    param($i, $c)
+                    $format = @('Pdf', 'Word', 'Html')[$i]
+                    if (-not $c.Item) { Start-Pick $format; return }
+                    $script:choose = [pscustomobject]@{ Text = "$($format.ToUpper()):"; Options = @("The change $($c.Item)", 'Chosen changes, as one'); Short = @('this change', 'chosen changes'); Keys = @('t', 'c'); Choice = 0; Format = $format; Item = $c.Item; Do = {
+                            param($j, $c)
+                            if ($j -eq 1) { Start-Pick $c.Format; return }
+                            Start-ExportAudience $c.Format $false $c.Item
+                        } }
+                } }
+            return
+        }
         if ($sel -and $sel.Type -eq 'change') { Start-ItemExportMenu $sel; return }
         $script:message = 'openspec/specs has no specs yet: select a change to export it.'; return
     }
@@ -2702,8 +5274,12 @@ function Start-ExportMenu {
             $format = @('Pdf', 'Word', 'Html')[$i]
             $active = @($script:changes | Where-Object { -not $_.Archived }).Count
             if (-not $active) { Start-ExportAudience $format $false ''; return }
-            $script:choose = [pscustomobject]@{ Text = "$($format.ToUpper()):"; Options = @('Specs only', "Specs + the plan ($active changes)"); Short = @('specs only', 'with the plan'); Keys = @('s', 'p'); Choice = 0; Format = $format; Do = {
+            $opts = @('Specs only', "Specs + the plan ($active changes)"); $short = @('specs only', 'with the plan'); $keys = @('s', 'p')
+            # Changes that go to the client as one whole: picked, alone in the document.
+            if ($active -ge 2) { $opts += 'Chosen changes, as one'; $short += 'chosen changes'; $keys += 'c' }
+            $script:choose = [pscustomobject]@{ Text = "$($format.ToUpper()):"; Options = $opts; Short = $short; Keys = $keys; Choice = 0; Format = $format; Do = {
                     param($j, $c)
+                    if ($j -eq 2) { Start-Pick $c.Format; return }
                     Start-ExportAudience $c.Format ($j -eq 1) ''
                 } }
         } }
@@ -2713,27 +5289,33 @@ function Start-ItemExportMenu($Item) {
     $what = 'the spec'
     if ($Item.Type -eq 'change') { $what = 'the change' }
     $name = $Item.Name
-    $script:choose = [pscustomobject]@{ Text = "Export $what $name as"; Options = @('PDF', 'Word', 'HTML'); Keys = @('p', 'w', 'h'); Choice = 0; Item = $name; Do = {
+    $label = $name
+    $title = ''
+    if ($Item.Type -eq 'bundle') {
+        $what = "$($Item.Members.Count) changes as one:"; $label = $Item.Title; $title = $Item.Title
+        if ($Item.Id) { $name = $Item.Id; $title = '' }
+    }
+    $script:choose = [pscustomobject]@{ Text = "Export $what $label as"; Options = @('PDF', 'Word', 'HTML'); Keys = @('p', 'w', 'h'); Choice = 0; Item = $name; Title = $title; Do = {
             param($i, $c)
-            Start-ExportAudience @('Pdf', 'Word', 'Html')[$i] $false $c.Item
+            Start-ExportAudience @('Pdf', 'Word', 'Html')[$i] $false $c.Item $c.Title
         } }
 }
 # The export's last question: for the client (scenarios as sentences) or as written.
-function Start-ExportAudience([string]$Format, [bool]$WithChanges, [string]$ItemName) {
+function Start-ExportAudience([string]$Format, [bool]$WithChanges, [string]$ItemName, [string]$Title) {
     $script:choose = [pscustomobject]@{ Text = "$($Format.ToUpper()) for:"; Options = @('The client (scenarios as sentences)', 'Technical (as written)'); Short = @('client', 'technical'); Keys = @('c', 't'); Choice = 0
-        Format = $Format; WithChanges = $WithChanges; Item = $ItemName; Do = {
+        Format = $Format; WithChanges = $WithChanges; Item = $ItemName; Title = $Title; Do = {
             param($k, $c)
-            Start-ExportDiagrams $c.Format $c.WithChanges $c.Item ($k -eq 0)
+            Start-ExportDiagrams $c.Format $c.WithChanges $c.Item ($k -eq 0) $c.Title
         } }
 }
 # With a Figma token and diagrams in the config: the latest from Figma, or the saved ones? Else straight on.
-function Start-ExportDiagrams([string]$Format, [bool]$WithChanges, [string]$ItemName, [bool]$Friendly) {
+function Start-ExportDiagrams([string]$Format, [bool]$WithChanges, [string]$ItemName, [bool]$Friendly, [string]$Title) {
     $script:projectConfig = $null
-    if (-not ((Test-Diagrams) -and (Get-FigmaToken))) { Start-Export $Format $WithChanges $ItemName $Friendly 'keep'; return }
+    if (-not ((Test-Diagrams) -and (Get-FigmaToken))) { Start-Export $Format $WithChanges $ItemName $Friendly 'keep' $Title; return }
     $script:choose = [pscustomobject]@{ Text = 'Diagrams:'; Options = @('Download the latest from Figma', 'Use the saved ones'); Short = @('download', 'saved'); Keys = @('d', 's'); Choice = 0
-        Format = $Format; WithChanges = $WithChanges; Item = $ItemName; Friendly = $Friendly; Do = {
+        Format = $Format; WithChanges = $WithChanges; Item = $ItemName; Friendly = $Friendly; Title = $Title; Do = {
             param($k, $c)
-            Start-Export $c.Format $c.WithChanges $c.Item $c.Friendly (@('refresh', 'keep')[$k])
+            Start-Export $c.Format $c.WithChanges $c.Item $c.Friendly (@('refresh', 'keep')[$k]) $c.Title
         } }
 }
 function On-Key($K) {
@@ -2782,11 +5364,12 @@ function On-Key($K) {
     if ($script:input) {
         $i = $script:input
         if ($name -eq 'Esc') { $script:input = $null; return }
-        if ($name -eq 'Enter') { $script:input = $null; if ($i.Value) { & $i.Do $i.Value }; return }
+        # Free text (a title): as typed, and Enter on nothing goes on too. Else a name: kebab-case as typed.
+        $free = [bool]$i.PSObject.Properties['Free']
+        if ($name -eq 'Enter') { $script:input = $null; if ($i.Value -or $free) { & $i.Do $i.Value.Trim() $i }; return }
         if ($name -eq 'Back') { if ($i.Value.Length) { $i.Value = $i.Value.Substring(0, $i.Value.Length - 1) }; return }
-        if ($name -eq 'Space') { $i.Value += '-'; return }
-        if ([string]$ch -eq ' ') { $i.Value += '-'; return }
-        if ($ch -and [int][char]$ch -ge 32) { $i.Value += ([string]$ch).ToLower() }
+        if ($name -eq 'Space' -or [string]$ch -eq ' ') { if ($free) { $i.Value += ' ' } else { $i.Value += '-' }; return }
+        if ($ch -and [int][char]$ch -ge 32) { if ($free) { $i.Value += [string]$ch } else { $i.Value += ([string]$ch).ToLower() } }
         return
     }
     # Typing a filter.
@@ -2798,6 +5381,7 @@ function On-Key($K) {
         $script:specIndex = 0; $script:changeIndex = 0; $script:detailScroll = 0
         return
     }
+    if ($script:screen -eq 'pick') { On-PickKey $K; return }
     if ([string]$ch -eq '?' -and @('home', 'read') -contains $script:screen) { $script:helpBack = $script:screen; $script:helpScroll = 0; $script:screen = 'help'; return }
     if ($script:screen -eq 'home') {
         $script:message = ''
@@ -2836,6 +5420,7 @@ function On-Key($K) {
             'a' { Start-Archive }
             'n' { Start-NewChange }
             'x' { Start-ExportMenu }
+            'm' { Start-Pick 'read' }
             'e' { $sel = Get-Selected; if ($sel) { Open-InEditor $sel.Path } }
             's' { $script:sort = $sortModes[([array]::IndexOf($sortModes, $script:sort) + 1) % $sortModes.Count]; $script:changeIndex = 0; $script:message = "Changes sorted by $($sortLabels[$script:sort])." }
             'h' { $script:showArchived = -not $script:showArchived; $script:changeIndex = 0 }
@@ -2872,6 +5457,14 @@ function On-Key($K) {
         return
     }
     if ($run.Done) {
+        # A failed export: the same again (the file was open in another program, Figma didn't answer ...).
+        if (([string]$ch).ToLower() -eq 'r' -and $run.Code -ne 0 -and $run.PSObject.Properties['Retry'] -and $run.Retry) {
+            $r = $run.Retry
+            $back = $run.Back
+            Start-Export $r.Format $r.WithChanges $r.Item $r.Friendly $r.Diagrams $r.Title
+            $script:run.Back = $back
+            return
+        }
         if ($name -eq 'Enter' -or $name -eq 'Esc' -or ([string]$ch).ToLower() -eq 'q') { $script:screen = 'home' }
         return
     }
@@ -3002,7 +5595,7 @@ try {
     $err = $_
 } finally {
     if ($script:run -and $script:run.Proc -and -not $script:run.Proc.HasExited) {
-        if ($env:OS -eq 'Windows_NT') { & taskkill.exe /T /F /PID $script:run.Proc.Id 2>&1 | Out-Null } else { try { $script:run.Proc.Kill() } catch { } }
+        Stop-ProcessTree $script:run.Proc
     }
     if (-not $harness) {
         [Console]::TreatControlCAsInput = $false
