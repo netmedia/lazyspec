@@ -182,8 +182,49 @@ artifacts: ...
 else `lazyspec.json` `export.language`, else `en`. In the export, everything LazySpec writes (the chapters
 *Proposal*, *Tasks* ..., *Requirement*, *Scenario*, the cover, the contents, the date) and OpenSpec's fixed
 English headings (`## ADDED Requirements`, `## Purpose`, `## Why` ...) are in that language; in the
-documents themselves and in the UI they stay English, as OpenSpec needs them. `en`, `hr` and `de` are in
-`tools/lazyspec/export-texts.json`: another language is another block there.
+documents themselves and in the UI they stay English, as OpenSpec needs them. `en`, `hr`, `de` and `nl` are in
+`tools/lazyspec/export-texts.json`: another language is another block there (`lazyspec -AddLanguage <xx>` makes one
+with DeepL, below).
+
+### Export in another language (DeepL)
+
+`-Language <xx>` exports in that language. When the documents are written in another one (the workflow schema's
+`language:`), LazySpec translates them with DeepL: the chapters, titles and capability titles; code, LazySpec's own
+texts and the layout stay. The settings are the project's `translation:` block in `openspec/config.yaml`, shared
+with the netmedia plugin (`netmedia:translate`):
+
+```yaml
+translation:
+  provider: deepl          # needed for -Language and -AddLanguage
+  keyEnv: DEEPL_AUTH_KEY   # the environment variable with the key (default DEEPL_AUTH_KEY)
+  english: en-GB           # DeepL's variant for English
+  formality: prefer_more   # optional, where DeepL supports it
+  hasek: ask               # translations into Croatian: ask | always | never
+```
+
+The key only in that environment variable (`setx DEEPL_AUTH_KEY "<key>"`, then a new terminal); a key in
+`config.yaml` is refused - the file is in git. Free keys end with `:fx` (api-free.deepl.com).
+
+```
+lazyspec -Export Pdf -Language en                 # a Croatian spec for an English-speaking reader
+lazyspec -Export Word -Item add-online-booking -Language de
+lazyspec -Export Pdf -Language hr -Beta           # into a DeepL beta language
+```
+
+- **Beta languages:** DeepL's additional languages (Croatian among them) run on its next-generation model:
+  no glossary, no formal/informal tone, often no markup handling - LazySpec then translates text by text,
+  which can split a sentence around bold or links. A beta language (source or target) needs `-Beta`; without
+  it LazySpec asks in a console, or stops and says so.
+- **Cache:** each text is translated once per language pair (`%LOCALAPPDATA%\LazySpec\translations\`), so a
+  second export costs no DeepL characters.
+- **Hasek:** an export into Croatian is checked by ispravi.me (the same API as Netmedia's Hasek add-ins), as
+  `translation: hasek:` says (`ask` asks in a console). The findings go to `<document>.hasek.md` next to the
+  document; nothing is changed - fix the source documents, or accept them.
+- **New languages:** `lazyspec -AddLanguage it` adds LazySpec's texts and OpenSpec's English headings for
+  Italian to `export-texts.json`, translated from English (`-Force` replaces them; `-Beta` for a beta
+  language). Have a native speaker read them, then commit the kit's `export-texts.json`.
+
+Tests: `.\tests\Test-Translation.ps1` (no network: `LAZYSPEC_DEEPL_FAKE`, `LAZYSPEC_HASEK_FAKE`).
 
 | Format | Made with | Notes |
 |---|---|---|
@@ -393,7 +434,7 @@ comma-separated. All of them links within the document (in PDF and Word too).
 | `tools/lazyspec/lazyspec.exe` | Starts it (also in the project's root) |
 | `tools/lazyspec/kit.json` | Version and the kit's files |
 | `tools/lazyspec/LAZYSPEC.md` | This |
-| `tools/lazyspec/export-texts.json` | The export's texts and OpenSpec's headings per language (en, hr, de) |
+| `tools/lazyspec/export-texts.json` | The export's texts and OpenSpec's headings per language (en, hr, de, nl; `-AddLanguage` adds more) |
 
 Put into a project and updated by `initintoproject.ps1` of the LazySpec repository
 (`.\initintoproject.ps1 <project> [-Update]`). Commit `tools/lazyspec/` and `lazyspec.exe`: everyone

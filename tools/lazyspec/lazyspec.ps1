@@ -73,6 +73,24 @@ workflow (proposal, delta specs, design, tasks ...). Default file: export\<proje
 normative keywords in brackets ("(MUST)"). The export's language (its texts and OpenSpec's English
 headings): the workflow schema's "language:" (e.g. hr), else lazyspec.json export.language, else en.
 
+.PARAMETER Language
+-Export: the export in this language (en, hr, de, nl ...). Another than the documents' own: LazySpec's texts
+in it (export-texts.json) and the documents translated by DeepL - "translation: provider: deepl" in
+openspec/config.yaml, the key in DEEPL_AUTH_KEY (never in config.yaml). Translations are cached per user.
+Into Croatian: checked by Hasek (ispravi.me) too, a report next to the document (translation: hasek).
+
+.PARAMETER Beta
+-Export -Language / -AddLanguage: yes to a DeepL beta language (an additional language such as Croatian:
+no glossary, no formal/informal tone, often translated piece by piece). Without it LazySpec asks (a console)
+or stops with the reason.
+
+.PARAMETER AddLanguage
+Adds a language to export-texts.json (LazySpec's texts and OpenSpec's English headings), translated from
+English by DeepL, then exits. -Force replaces one that is there. Have it read by a native speaker; commit it.
+
+.PARAMETER Force
+-AddLanguage: replace the language's block when export-texts.json already has it.
+
 .PARAMETER RefreshDiagrams
 -Export: the diagrams ("lazyspec: diagrams:" in openspec/config.yaml, Figma links) the latest from Figma,
 through its REST API with a personal access token ("lazyspec: figmaToken:" in config.yaml, or FIGMA_TOKEN).
@@ -162,6 +180,10 @@ param(
     [string]$Template,
     [string]$Theme,
     [string]$Markdown,
+    [string]$Language,
+    [switch]$Beta,
+    [string]$AddLanguage,
+    [switch]$Force,
     [switch]$Open,
     [string]$Keys,
     [string]$Frames,
@@ -271,6 +293,13 @@ function Show-Usage {
     & $d '  openspec\config.yaml, or -Template <path> (wins). Missing or broken: an error, not the default look.'
     & $d '  One look in PDF, Word and HTML: lazyspec: documentTheme: <a .yaml>, or -Theme <path>; its fonts in'
     & $d '  fonts\ next to it (embedded in Word). A template and a theme: Word uses the template.'
+    Write-Host ''
+    & $b 'IN ANOTHER LANGUAGE (DeepL)'
+    & $g '  lazyspec -Export Pdf -Language en                # the documents translated, the texts in English'
+    & $g '  lazyspec -Export Word -Language hr -Beta         # a DeepL beta language: -Beta (else it asks)'
+    & $g '  lazyspec -AddLanguage it                         # LazySpec''s texts for a new language'
+    & $d '  openspec\config.yaml: translation: provider: deepl (keyEnv, english, formality, hasek); the key in'
+    & $d '  DEEPL_AUTH_KEY, never in config.yaml. Into Croatian: a Hasek (ispravi.me) report next to the document.'
     Write-Host ''
     & $b 'ANY MARKDOWN AS A DOCUMENT (meeting notes, summaries ...)'
     & $g '  lazyspec -Export Word -Markdown "openspec_meetings\2026-11-04 summary.md"   # or Pdf, Html'
@@ -977,12 +1006,12 @@ function Get-VisibleChanges {
 }
 # What the lists and headers show: a spec's title (else its name), a change's number and title (else its name).
 function Get-ItemTitle($Item) {
-    if ($Item.Type -eq 'spec') { if ($Item.Title) { return $Item.Title }; return $Item.Short }
-    if ($Item.Type -eq 'bundle') { return $Item.Title }
+    if ($Item.Type -eq 'spec') { if ($Item.Title) { return (Get-TranslatedText $Item.Title) }; return $Item.Short }
+    if ($Item.Type -eq 'bundle') { return (Get-TranslatedText $Item.Title) }
     if ($Item.Title) {
         $m = [regex]::Match($Item.Name, '^(\d+)-')
-        if ($m.Success) { return "$($m.Groups[1].Value) $($Item.Title)" }
-        return $Item.Title
+        if ($m.Success) { return "$($m.Groups[1].Value) $(Get-TranslatedText $Item.Title)" }
+        return (Get-TranslatedText $Item.Title)
     }
     return $Item.Name
 }
@@ -1607,7 +1636,8 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
     & $flushSteps
     & $flushTable; & $flushPara; & $flushQuote; & $closeLists -1
     if ($inScenario) { [void]$out.Append("</div>`n") }
-    return $out.ToString()
+    # -Language another than the documents': the chapter in that language (DeepL).
+    return (Convert-TranslatedHtml $out.ToString())
 }
 # A document's text without its first "# " title (the chapter has its own).
 function Remove-DocTitle([string]$Text) { return [regex]::Replace($Text, '\A\s*#\s+[^\r\n]*\r?\n?', '') }
@@ -1619,14 +1649,16 @@ $script:projectConfig = $null
 function Get-ProjectConfig {
     if ($null -ne $script:projectConfig) { return $script:projectConfig }
     # Maps: titles and diagrams, each with the entries for every change (All) and a group per change (Groups).
-    $cfg = @{ Values = @{}; Maps = @{ titles = @{ All = @{}; Groups = @{} }; diagrams = @{ All = @{}; Groups = @{} }; bundles = @{ All = @{}; Groups = [ordered]@{} } } }
+    $cfg = @{ Values = @{}; Translation = @{}; Maps = @{ titles = @{ All = @{}; Groups = @{} }; diagrams = @{ All = @{}; Groups = @{} }; bundles = @{ All = @{}; Groups = [ordered]@{} } } }
     $script:projectConfig = $cfg
     if (-not $hasRoot) { return $cfg }
-    $in = $false; $keyIndent = -1; $sub = ''; $titleIndent = -1; $group = ''
+    $in = $false; $inT = $false; $keyIndent = -1; $sub = ''; $titleIndent = -1; $group = ''
     foreach ($line in (Read-Text (Join-Path $osDir 'config.yaml')).Replace("`r", '').Split("`n")) {
         if (-not $line.Trim() -or $line.TrimStart().StartsWith('#')) { continue }
         $indent = $line.Length - $line.TrimStart().Length
-        if ($indent -eq 0) { $in = $line -match '^lazyspec:\s*$'; $keyIndent = -1; $sub = ''; continue }
+        if ($indent -eq 0) { $in = $line -match '^lazyspec:\s*$'; $inT = $line -match '^translation:\s*$'; $keyIndent = -1; $sub = ''; continue }
+        # translation: (DeepL, Hasek; shared with the netmedia plugin): flat "key: value" lines.
+        if ($inT) { if ($line -match '^\s+([A-Za-z]+):\s*(.*?)\s*(#.*)?$') { $cfg.Translation[$Matches[1]] = Unquote $Matches[2] }; continue }
         if (-not $in) { continue }
         if ($keyIndent -lt 0) { $keyIndent = $indent }
         if ($line -notmatch '^\s*("[^"]*"|''[^'']*''|[^:#]+?):(?:\s+(.*))?$') { continue }
@@ -1666,8 +1698,8 @@ function Get-ConfigEntry([string]$Map, [string]$Name, [string]$Change) {
 }
 function Get-FriendlyTitle([string]$Name, [string]$Default, [string]$Change) {
     $t = Get-ConfigEntry 'titles' $Name $Change
-    if ($t) { return $t }
-    if ($exportSettings -and $exportSettings.titles -and $exportSettings.titles.$Name) { return [string]$exportSettings.titles.$Name }
+    if ($t) { return (Get-TranslatedText $t) }
+    if ($exportSettings -and $exportSettings.titles -and $exportSettings.titles.$Name) { return (Get-TranslatedText ([string]$exportSettings.titles.$Name)) }
     return $Default
 }
 
@@ -1925,6 +1957,347 @@ function Get-ExportHeading([string]$Heading) {
     $v = $t.headings.(($Heading -replace '\s+', ' ').Trim().ToLower())
     if ($v) { return [string]$v }
     return $Heading
+}
+
+# --- translation: DeepL (an export in another language, -AddLanguage) and Hasek (ispravi.me) for Croatian ---
+# Settings: the "translation:" block of openspec/config.yaml (shared with the netmedia plugin's translate
+# skill): provider (deepl), keyEnv (the environment variable with the key, default DEEPL_AUTH_KEY), english
+# (en-GB), formality, hasek (ask | always | never). The key only in that environment variable - never in
+# config.yaml (it is in git). Tests: LAZYSPEC_DEEPL_FAKE=1 / LAZYSPEC_HASEK_FAKE=1 (no network).
+$script:exportTranslate = $false
+$script:exportSourceLang = ''
+$script:deeplLangs = $null
+$script:deeplSupport = $null
+$script:translationCache = $null
+$script:translationCachePath = ''
+$script:translatedTexts = $null
+function Get-TranslationSetting([string]$Name, [string]$Default) {
+    $v = (Get-ProjectConfig).Translation[$Name]
+    if ($v) { return [string]$v }
+    return $Default
+}
+function Get-DeepLKey {
+    foreach ($k in @('authKey', 'apiKey', 'key')) {
+        if ((Get-ProjectConfig).Translation[$k]) { throw "openspec/config.yaml has a DeepL key (translation: $k) - config.yaml is in git. Remove it, rotate the key and set the $(Get-TranslationSetting 'keyEnv' 'DEEPL_AUTH_KEY') environment variable instead." }
+    }
+    if ($env:LAZYSPEC_DEEPL_FAKE) { return 'fake:fx' }
+    $name = Get-TranslationSetting 'keyEnv' 'DEEPL_AUTH_KEY'
+    foreach ($n in @($name, 'DEEPL_AUTH_KEY')) {
+        $v = [Environment]::GetEnvironmentVariable($n)
+        if (-not $v) { $v = [Environment]::GetEnvironmentVariable($n, 'User') }
+        if ($v) { return [string]$v }
+    }
+    return ''
+}
+function Test-DeepLReady { return ((Get-TranslationSetting 'provider' '') -eq 'deepl') -and [bool](Get-DeepLKey) }
+# DeepL's code: en -> en-GB (translation: english), pt -> pt-PT; others as they are.
+function Get-DeepLCode([string]$Lang) {
+    $l = $Lang.ToLower()
+    if ($l -eq 'en') { return (Get-TranslationSetting 'english' 'en-GB') }
+    if ($l -eq 'pt') { return 'pt-PT' }
+    return $l
+}
+function Invoke-DeepL([string]$Method, [string]$Path, $Body) {
+    $key = Get-DeepLKey
+    if ($env:LAZYSPEC_DEEPL_FAKE) {
+        # Fake DeepL for the tests: en/de stable with markup handling, hr beta without; "[XX] " + the text.
+        if ($Path -like '/v3/languages*') {
+            return @(
+                [pscustomobject]@{ lang = 'en'; name = 'English'; status = 'stable'; usable_as_source = $true; usable_as_target = $false; features = [pscustomobject]@{ tag_handling = @{} } },
+                [pscustomobject]@{ lang = 'en-gb'; name = 'English (British)'; status = 'stable'; usable_as_source = $false; usable_as_target = $true; features = [pscustomobject]@{ tag_handling = @{} } },
+                [pscustomobject]@{ lang = 'de'; name = 'German'; status = 'stable'; usable_as_source = $true; usable_as_target = $true; features = [pscustomobject]@{ tag_handling = @{}; formality = @{} } },
+                [pscustomobject]@{ lang = 'it'; name = 'Italian'; status = 'stable'; usable_as_source = $true; usable_as_target = $true; features = [pscustomobject]@{ tag_handling = @{} } },
+                [pscustomobject]@{ lang = 'hr'; name = 'Croatian'; status = 'beta'; usable_as_source = $true; usable_as_target = $true; features = [pscustomobject]@{} })
+        }
+        $script:deeplFakeCalls++
+        $tag = '[' + ([string]$Body.target_lang).Split('-')[0] + '] '
+        return [pscustomobject]@{ translations = @(foreach ($t in $Body.text) {
+                    if ($Body.tag_handling) { [pscustomobject]@{ text = [regex]::Replace($t, '(<[^>]*>)([^<]*\p{L}[^<]*)(?=<)', { param($m) if ($m.Groups[1].Value -match 'translate="no"') { $m.Value } else { $m.Groups[1].Value + $tag + $m.Groups[2].Value } }) } }
+                    else { [pscustomobject]@{ text = $tag + $t } } }) }
+    }
+    if (-not $key) { throw "No DeepL key: set the $(Get-TranslationSetting 'keyEnv' 'DEEPL_AUTH_KEY') environment variable (setx $(Get-TranslationSetting 'keyEnv' 'DEEPL_AUTH_KEY') `"<key>`", then a new terminal)." }
+    $base = 'https://api.deepl.com'
+    if ($key.EndsWith(':fx')) { $base = 'https://api-free.deepl.com' }
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
+    $p = @{ Uri = $base + $Path; Method = $Method; Headers = @{ Authorization = "DeepL-Auth-Key $key" }; UseBasicParsing = $true }
+    if ($null -ne $Body) { $p.Body = [Text.Encoding]::UTF8.GetBytes(($Body | ConvertTo-Json -Depth 5 -Compress)); $p.ContentType = 'application/json; charset=utf-8' }
+    try { return Invoke-RestMethod @p }
+    catch {
+        $code = 0
+        try { $code = [int]$_.Exception.Response.StatusCode } catch { }
+        $why = @{ 403 = 'the key is wrong or for the other plan (free keys end with :fx)'; 456 = 'the character quota is used up'; 429 = 'too many requests, try again later' }[$code]
+        if (-not $why) { $why = $_.Exception.Message }
+        throw "DeepL $Method $Path`: $why"
+    }
+}
+function Get-DeepLLanguages {
+    if ($null -eq $script:deeplLangs) {
+        $j = Invoke-DeepL 'GET' '/v3/languages?resource=translate_text&include=beta' $null
+        if ($j -isnot [array] -and $j -and $j.PSObject.Properties.Name -contains 'languages') { $j = $j.languages }
+        $script:deeplLangs = @($j)
+    }
+    return $script:deeplLangs
+}
+# How DeepL translates From -> To: Status stable | beta (an additional language: DeepL's next-generation
+# model, Croatian is one) | unsupported; Tags: markup handling on both sides; Note: what beta lacks.
+function Get-DeepLSupport([string]$To, [string]$From) {
+    $langs = Get-DeepLLanguages
+    $find = {
+        param([string]$Code, [string]$Role)
+        $c = $Code.ToLower()
+        $hit = @($langs | Where-Object { $_.lang.ToLower() -eq $c -and $_."usable_as_$Role" -ne $false })
+        if (-not $hit.Count) { $hit = @($langs | Where-Object { $_.lang.ToLower().Split('-')[0] -eq $c.Split('-')[0] -and $_."usable_as_$Role" -ne $false }) }
+        if ($hit.Count) { return $hit[0] }
+        return $null
+    }
+    $t = & $find (Get-DeepLCode $To) 'target'
+    $f = $null
+    if ($From) { $f = & $find $From 'source' }
+    if (-not $t -or ($From -and -not $f)) { return [pscustomobject]@{ Status = 'unsupported'; Tags = $false; Note = "DeepL does not translate $(if (-not $t) { "into $To" } else { "from $From" })" } }
+    $has = { param($L, [string]$K) (-not $L) -or ($L.features -and ($L.features.PSObject.Properties.Name -contains $K)) }
+    $beta = ($t.status -ne 'stable') -or ($f -and $f.status -ne 'stable')
+    $tags = (& $has $t 'tag_handling') -and (& $has $f 'tag_handling')
+    $note = ''
+    if ($beta) {
+        $missing = @()
+        if (-not ((& $has $t 'glossary') -and (& $has $f 'glossary'))) { $missing += 'glossaries' }
+        if (-not (& $has $t 'formality')) { $missing += 'formal/informal tone' }
+        if (-not $tags) { $missing += 'markup handling (translated piece by piece)' }
+        $names = @(@($f, $t) | Where-Object { $_ -and $_.status -ne 'stable' } | ForEach-Object { $_.name })
+        $note = "$($names -join ' / '): DeepL beta (an additional language, its next-generation model) - quality may vary"
+        if ($missing.Count) { $note += "; no $($missing -join ', no ')" }
+    }
+    return [pscustomobject]@{ Status = $(if ($beta) { 'beta' } else { 'stable' }); Tags = [bool]$tags; Formality = [bool](& $has $t 'formality'); Note = $note }
+}
+# A beta language needs the user's yes: -Beta, else asked here (a console), else an error saying so.
+function Confirm-DeepLBeta($Support) {
+    if ($Support.Status -ne 'beta' -or $Beta.IsPresent) { return }
+    $interactive = $false
+    try { $interactive = -not [Console]::IsInputRedirected -and [Environment]::UserInteractive } catch { }
+    if ($interactive -and -not $env:LAZYSPEC_DEEPL_FAKE) {
+        Write-Host "  ! $($Support.Note)" -ForegroundColor Yellow
+        $a = Read-Host '  Translate with DeepL anyway? [y/N]'
+        if ($a -match '^(?i)(y|yes|d|da)$') { return }
+        throw 'Not translated: DeepL beta language declined.'
+    }
+    throw "$($Support.Note). Add -Beta to translate anyway."
+}
+# The cache: the same text, the same pair, translated once (DeepL counts characters). Per user, outside the project.
+function Get-TranslationCacheKey([string]$Text, [bool]$Html) {
+    $sha = [Security.Cryptography.SHA1]::Create()
+    try { return [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes("$([int]$Html)|$Text"))).Replace('-', '') } finally { $sha.Dispose() }
+}
+function Open-TranslationCache([string]$From, [string]$To) {
+    $base = $env:LOCALAPPDATA
+    if (-not $base) { $base = [IO.Path]::GetTempPath() }
+    $dir = Join-Path $base 'LazySpec\translations'
+    [void](New-Item -ItemType Directory -Force -Path $dir)
+    $script:translationCachePath = Join-Path $dir "$From-$To.json"
+    $script:translationCache = @{}
+    if (Test-Path -LiteralPath $script:translationCachePath) {
+        try { foreach ($p in ((Read-Text $script:translationCachePath) | ConvertFrom-Json).PSObject.Properties) { $script:translationCache[$p.Name] = [string]$p.Value } } catch { }
+    }
+}
+function Save-TranslationCache {
+    if (-not $script:translationCachePath -or $null -eq $script:translationCache) { return }
+    [IO.File]::WriteAllText($script:translationCachePath, ($script:translationCache | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding $false))
+}
+# Texts from the export's source language into its language: the cache first, then DeepL (50 texts, ~100 KB a request).
+function Invoke-Translation([string[]]$Texts, [bool]$Html) {
+    $out = New-Object string[] $Texts.Count
+    $todo = New-Object Collections.Generic.List[int]
+    for ($i = 0; $i -lt $Texts.Count; $i++) {
+        $k = Get-TranslationCacheKey $Texts[$i] $Html
+        if ($script:translationCache.ContainsKey($k)) { $out[$i] = $script:translationCache[$k] } else { $todo.Add($i) }
+    }
+    $at = 0
+    while ($at -lt $todo.Count) {
+        $batch = New-Object Collections.Generic.List[int]
+        $size = 0
+        while ($at -lt $todo.Count -and $batch.Count -lt 50 -and ($batch.Count -eq 0 -or $size + $Texts[$todo[$at]].Length * 3 -lt 100000)) { $size += $Texts[$todo[$at]].Length * 3; $batch.Add($todo[$at]); $at++ }
+        $body = [ordered]@{ text = @($batch | ForEach-Object { $Texts[$_] }); target_lang = (Get-DeepLCode $script:exportLang).ToUpper(); source_lang = $script:exportSourceLang.ToUpper() }
+        if ($script:deeplSupport.Status -eq 'beta') { $body.enable_beta_languages = $true }
+        if ($Html) { $body.tag_handling = 'html' }
+        $f = Get-TranslationSetting 'formality' ''
+        if ($f -and $script:deeplSupport.Formality) { $body.formality = $f }
+        $r = Invoke-DeepL 'POST' '/v2/translate' $body
+        for ($j = 0; $j -lt $batch.Count; $j++) {
+            $t = [string]@($r.translations)[$j].text
+            $out[$batch[$j]] = $t
+            $script:translationCache[(Get-TranslationCacheKey $Texts[$batch[$j]] $Html)] = $t
+        }
+    }
+    if ($null -ne $script:translatedTexts) { foreach ($t in $out) { if (-not $Html) { $script:translatedTexts.Add($t) } } }
+    return , $out
+}
+# A title or a short value in the export's language (as it is when the export isn't translated).
+function Get-TranslatedText([string]$Text) {
+    if (-not $script:exportTranslate -or -not $Text -or $Text -notmatch '\p{L}') { return $Text }
+    return (Invoke-Translation @($Text) $false)[0]
+}
+# A chapter's HTML in the export's language. Code, pre and LazySpec's own labels are kept. With markup
+# handling: the HTML as it is (DeepL keeps the tags); without (beta languages): each text node alone.
+function Convert-TranslatedHtml([string]$Html) {
+    if (-not $script:exportTranslate -or $Html -notmatch '\p{L}') { return $Html }
+    if ($script:deeplSupport.Tags) {
+        $marked = [regex]::Replace($Html, '<(code|pre)\b', '<$1 translate="no"')
+        $marked = $marked.Replace('<span class="tag">', '<span class="tag" translate="no">')
+        # Pieces under ~100 KB, cut between top-level elements.
+        $pieces = New-Object Collections.Generic.List[string]
+        $cur = New-Object Text.StringBuilder
+        foreach ($part in [regex]::Split($marked, '(?=\n<(?:h[1-6]|p|ul|ol|table|div|pre)\b)')) {
+            if ($cur.Length -and $cur.Length + $part.Length -gt 90000) { $pieces.Add($cur.ToString()); [void]$cur.Clear() }
+            [void]$cur.Append($part)
+        }
+        if ($cur.Length) { $pieces.Add($cur.ToString()) }
+        $res = Invoke-Translation $pieces.ToArray() $true
+        if ($null -ne $script:translatedTexts) { foreach ($r in $res) { $script:translatedTexts.Add([regex]::Replace([regex]::Replace($r, '(?s)<(code|pre)\b.*?</\1>', ' '), '<[^>]+>', ' ')) } }
+        return ((-join $res) -replace ' translate="no"', '')
+    }
+    $tokens = [regex]::Split($Html, '(<[^>]+>)')
+    $skip = New-Object Collections.Generic.Stack[string]
+    $idx = New-Object Collections.Generic.List[int]
+    $texts = New-Object Collections.Generic.List[string]
+    for ($i = 0; $i -lt $tokens.Count; $i++) {
+        $t = $tokens[$i]
+        if ($t.StartsWith('<')) {
+            $m = [regex]::Match($t, '^<(/?)([a-zA-Z0-9]+)')
+            if (-not $m.Success -or $t.EndsWith('/>')) { continue }
+            $name = $m.Groups[2].Value.ToLower()
+            if ($m.Groups[1].Value) { if ($skip.Count -and $skip.Peek() -eq $name) { [void]$skip.Pop() } }
+            elseif ($skip.Count -or $name -in @('code', 'pre', 'script', 'style') -or $t -match 'class="tag"') {
+                if ($name -notin @('br', 'img', 'hr', 'col', 'meta', 'link', 'input')) { $skip.Push($name) }
+            }
+            continue
+        }
+        if ($skip.Count -or $t -notmatch '\p{L}') { continue }
+        $idx.Add($i)
+        $texts.Add([Net.WebUtility]::HtmlDecode($t).Trim())
+    }
+    if (-not $texts.Count) { return $Html }
+    $res = Invoke-Translation $texts.ToArray() $false
+    for ($k = 0; $k -lt $idx.Count; $k++) {
+        $orig = $tokens[$idx[$k]]
+        $lead = [regex]::Match($orig, '^\s*').Value
+        $trail = [regex]::Match($orig, '\s*$').Value
+        $tokens[$idx[$k]] = $lead + (Html $res[$k]) + $trail
+    }
+    return (-join $tokens)
+}
+# Starts translating the export: From (the documents' language) -> $script:exportLang. Needs DeepL set up.
+function Start-ExportTranslation([string]$From) {
+    $script:exportTranslate = $false
+    if ((Get-TranslationSetting 'provider' '') -ne 'deepl') { throw "The export is in $From and -Language $($script:exportLang) asks for another language: set up DeepL first (translation: provider: deepl in openspec/config.yaml, the key in DEEPL_AUTH_KEY)." }
+    if (-not (Get-DeepLKey)) { throw "No DeepL key: set the $(Get-TranslationSetting 'keyEnv' 'DEEPL_AUTH_KEY') environment variable (setx $(Get-TranslationSetting 'keyEnv' 'DEEPL_AUTH_KEY') `"<key>`", then a new terminal)." }
+    $script:exportSourceLang = $From
+    $script:deeplSupport = Get-DeepLSupport $script:exportLang $From
+    if ($script:deeplSupport.Status -eq 'unsupported') { throw "$($script:deeplSupport.Note): the export can't be translated." }
+    Confirm-DeepLBeta $script:deeplSupport
+    Open-TranslationCache $From $script:exportLang
+    $script:translatedTexts = New-Object Collections.Generic.List[string]
+    $script:exportTranslate = $true
+    $how = 'DeepL'
+    if ($script:deeplSupport.Status -eq 'beta') { $how += ' beta' }
+    if (-not $script:deeplSupport.Tags) { $how += ', piece by piece' }
+    Write-Host "  $($g.caret) translated $From -> $($script:exportLang) ($how)"
+}
+
+# Hasek (ispravi.me): the Croatian check of a translation into Croatian. A report next to the document; it
+# changes nothing (translation: hasek: ask | always | never; never: not run).
+function Get-HasekName { return "Ha$([char]0x0161)ek" }
+function Invoke-HasekCheck([string]$Text) {
+    if ($env:LAZYSPEC_HASEK_FAKE) {
+        $errs = @()
+        $at = $Text.IndexOf('greska')
+        if ($at -ge 0) { $errs += [pscustomobject]@{ class = 'spelling'; suspicious = 'greska'; suggestions = @("gre$([char]0x0161)ka"); position = @($at); message = '' } }
+        return [pscustomobject]@{ status = [pscustomobject]@{ code = 200 }; response = [pscustomobject]@{ error = $errs } }
+    }
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
+    $body = @{ text = $Text; context = $true; punctuation = $true; showinfo = $true; app = 'HasekLazySpec' } | ConvertTo-Json -Compress
+    try { return Invoke-RestMethod -Uri 'https://ispravi.me/api/ispravi' -Method Post -Body ([Text.Encoding]::UTF8.GetBytes($body)) -ContentType 'application/json; charset=utf-8' -UseBasicParsing }
+    catch {
+        $code = 0
+        try { $code = [int]$_.Exception.Response.StatusCode } catch { }
+        $why = @{ 402 = 'ispravi.me limits this network for texts over 50 letters (ask ispravi@ispravi.me to approve it)'; 413 = 'the text is too long (350,000 characters at most)'; 429 = 'the usage limit is reached, try again later' }[$code]
+        if (-not $why) { $why = $_.Exception.Message }
+        throw "ispravi.me: $why"
+    }
+}
+function Invoke-ExportHasek([string]$Target) {
+    if ($script:exportLang -ne 'hr' -or -not $script:exportTranslate -or -not $script:translatedTexts -or -not $script:translatedTexts.Count) { return }
+    $mode = (Get-TranslationSetting 'hasek' 'ask').ToLower()
+    $name = Get-HasekName
+    if ($mode -eq 'never') { return }
+    if ($mode -ne 'always') {
+        $interactive = $false
+        try { $interactive = -not [Console]::IsInputRedirected -and [Environment]::UserInteractive } catch { }
+        if (-not $interactive -or $env:LAZYSPEC_HASEK_FAKE) {
+            if (-not $env:LAZYSPEC_HASEK_FAKE) { Write-Host "  ! $name check skipped (translation: hasek: ask; set it to always, or export in a console)"; return }
+        }
+        elseif ((Read-Host "  Check the Croatian translation with $name (ispravi.me)? [Y/n]") -match '^(?i)(n|no|ne)$') { return }
+    }
+    $text = ($script:translatedTexts | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ -match '\p{L}' } | Select-Object -Unique) -join "`n"
+    if ($text.Length -gt 350000) { $text = $text.Substring(0, 350000) }
+    try { $r = Invoke-HasekCheck $text } catch { Write-Host "  ! $name`: $($_.Exception.Message)" -ForegroundColor Yellow; return }
+    $lines = $text.Split("`n")
+    $found = @()
+    foreach ($e in @($r.response.error)) {
+        if (-not $e -or -not $e.suspicious) { continue }
+        foreach ($p in @($e.position)) {
+            # The position counts code points; the text's line around it is the context.
+            $cp = [int]$p; $acc = 0; $ctx = ''
+            foreach ($l in $lines) { $len = [Globalization.StringInfo]::new($l).LengthInTextElements + 1; if ($cp -lt $acc + $len) { $ctx = $l; break }; $acc += $len }
+            $found += "- **$($e.suspicious)** $([char]0x2192) $(@($e.suggestions | Select-Object -First 3) -join ' | ')$(if ($e.message) { " - $($e.message)" })  `n  _$($ctx)_"
+        }
+    }
+    $report = [IO.Path]::ChangeExtension($Target, '.hasek.md')
+    $md = "# $name`: $(Split-Path $Target -Leaf)`n`nThe Croatian translation (DeepL) checked by ispravi.me: spelling, punctuation, grammar. Fix the documents' source or accept; nothing was changed.`n`n"
+    if ($found.Count) { $md += ($found -join "`n") + "`n" } else { $md += "No findings.`n" }
+    [IO.File]::WriteAllText($report, $md, (New-Object Text.UTF8Encoding $false))
+    Write-Host "  $($g.caret) $name`: $($found.Count) finding(s) - $report"
+}
+
+# -AddLanguage <xx>: export-texts.json gets a block for that language, translated from English by DeepL
+# (the labels, and OpenSpec's English headings). The kit's file: commit it (or -Update the projects).
+function Add-ExportLanguage([string]$Lang) {
+    $Lang = $Lang.ToLower()
+    if ($Lang -notmatch '^[a-z]{2}$') { throw "-AddLanguage: a two-letter code (it, sl, fr ...)" }
+    $path = Join-Path $kitDir 'export-texts.json'
+    $raw = Read-Text $path
+    $j = $raw | ConvertFrom-Json
+    if ($j.PSObject.Properties.Name -contains $Lang -and -not $Force.IsPresent) { throw "export-texts.json already has '$Lang' (-Force replaces it)." }
+    if ((Get-TranslationSetting 'provider' '') -ne 'deepl' -or -not (Get-DeepLKey)) { throw 'DeepL is not set up: translation: provider: deepl in openspec/config.yaml and the key in DEEPL_AUTH_KEY.' }
+    $script:exportLang = $Lang
+    $script:exportSourceLang = 'en'
+    $script:deeplSupport = Get-DeepLSupport $Lang 'en'
+    if ($script:deeplSupport.Status -eq 'unsupported') { throw $script:deeplSupport.Note }
+    Confirm-DeepLBeta $script:deeplSupport
+    Open-TranslationCache 'en' $Lang
+    $labelKeys = @($j.en.labels.PSObject.Properties | Where-Object { $_.Name -ne 'dateFormat' } | ForEach-Object { $_.Name })
+    $labelTexts = @($labelKeys | ForEach-Object { [string]$j.en.labels.$_ })
+    # The headings: the keys other languages translate (lower case English headings), sent capitalized.
+    $headKeys = @()
+    foreach ($p in $j.PSObject.Properties) { if (-not $p.Name.StartsWith('$') -and $p.Value.headings) { $headKeys += @($p.Value.headings.PSObject.Properties | ForEach-Object { $_.Name }) } }
+    $headKeys = @($headKeys | Select-Object -Unique)
+    $headTexts = @($headKeys | ForEach-Object { $_.Substring(0, 1).ToUpper() + $_.Substring(1) })
+    $res = Invoke-Translation (@($labelTexts) + @($headTexts)) $false
+    Save-TranslationCache
+    $labels = [ordered]@{}
+    for ($i = 0; $i -lt $labelKeys.Count; $i++) { $labels[$labelKeys[$i]] = $res[$i] }
+    $labels['dateFormat'] = [string]$j.en.labels.dateFormat
+    $heads = [ordered]@{}
+    for ($i = 0; $i -lt $headKeys.Count; $i++) { $heads[$headKeys[$i]] = $res[$labelKeys.Count + $i] }
+    $block = "  `"$Lang`": {`n    `"labels`": $(([pscustomobject]$labels | ConvertTo-Json -Compress))," + "`n    `"headings`": $(([pscustomobject]$heads | ConvertTo-Json -Compress))`n  }"
+    if ($j.PSObject.Properties.Name -contains $Lang) {
+        # -Force: the old block out (from its key to the next language's key, or the end).
+        $raw = [regex]::Replace($raw, "(?s),?\s*`"$Lang`"\s*:\s*\{.*?(?=,\s*`"[a-z]{2}`"\s*:\s*\{|\s*\}\s*$)", '')
+    }
+    $raw = [regex]::Replace($raw.TrimEnd(), '\}\s*$', ",`n$block`n}`n")
+    [void]($raw | ConvertFrom-Json)
+    [IO.File]::WriteAllText($path, $raw, (New-Object Text.UTF8Encoding $false))
+    $how = $script:deeplSupport.Status
+    Write-Host "$($g.check) export-texts.json: '$Lang' added ($($labelKeys.Count) labels, $($headKeys.Count) headings; DeepL $how). Have a native speaker read it, then commit it."
+    if ($script:deeplSupport.Status -eq 'beta' -or $Lang -eq 'hr') { Write-Host "  ! Plural forms other than one/many are only built in for hr (Get-CountText)." }
 }
 
 # --- the models' diagram: drawn from models.md (its sections, field tables and relations lines) ---------
@@ -2306,8 +2679,14 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
         if (-not $one) { throw "No spec, change or saved whole (lazyspec: bundles:) named '$ItemName' in openspec/." }
     }
     Load-ExportTexts
+    $script:exportTranslate = $false
     $script:exportLang = Get-ExportLanguage $one
     if ($Doc -and $Doc.Language) { $script:exportLang = ($Doc.Language.ToLower() -split '[-_]')[0] }
+    # -Language: the export in that language; the documents' own language is translated into it (DeepL).
+    if ($Language) {
+        $want = ($Language.ToLower() -split '[-_]')[0]
+        if ($want -ne $script:exportLang) { $from = $script:exportLang; $script:exportLang = $want; Start-ExportTranslation $from }
+    }
     $script:exportFriendly = $Friendly
     $script:exportFormat = $Format
     $title = Get-ExportSetting 'title' $projectName
@@ -2389,7 +2768,7 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
                     if ($many -and $parts.Count) { $own = @($parts[0].Doc.Files) }
                     if ($own.Count -eq 1) {
                         $h1 = [regex]::Match((Read-Text $own[0]), '(?m)^#\s+(.+?)\s*$')
-                        if ($h1.Success) { $dt = $h1.Groups[1].Value }
+                        if ($h1.Success) { $dt = Get-TranslatedText $h1.Groups[1].Value }
                     }
                 }
                 if ($d.IsSpecs) { $dt = Get-ExportText 'specs' }
@@ -4221,9 +4600,15 @@ function Invoke-Export([string]$Format, [string]$Target, [bool]$WithChanges, [bo
     foreach ($t in $script:exportTempFiles) { Remove-Item -LiteralPath $t -Force -ErrorAction SilentlyContinue }
     $script:exportTempFiles.Clear()
     Write-Host "$($g.check) Written: $Target"
+    if ($script:exportTranslate) { Save-TranslationCache; Invoke-ExportHasek $Target }
     if ($OpenIt) { Invoke-Item -LiteralPath $Target }
 }
 
+if ($AddLanguage) {
+    try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
+    try { Add-ExportLanguage $AddLanguage; exit 0 }
+    catch { Write-Host "$($g.cross) -AddLanguage failed: $($_.Exception.Message)" -ForegroundColor Red; exit 1 }
+}
 if ($Export) {
     # Shown in LazySpec's run screen too (it reads this as UTF-8).
     try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
