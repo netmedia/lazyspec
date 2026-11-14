@@ -1,10 +1,10 @@
-Nastavljamo rad na LazySpecu i Nava projektu. Odgovaraj mi na hrvatskom. Ovo je stanje gdje smo stali:
+Nastavljamo rad na LazySpecu i klijentskom projektu. Odgovaraj mi na hrvatskom. Ovo je stanje gdje smo stali:
 
 ## Repozitoriji
 - **LazySpec** (`D:\Development\Netmedia\LazySpec`, branch `develop`): terminalski UI i export za OpenSpec. Glavni program je `tools\lazyspec\lazyspec.ps1` (~4000 redaka, PowerShell 5.1/7, bez modula).
   - Datoteka mora ostati **čisti ASCII** (ne-ASCII znakovi kao `[char]0x2026` ili `\u2212` u regexu), LF, bez tabova.
   - Ostalo u repozitoriju: `install.ps1/.exe`, `initintoproject.ps1/.exe`, `build-exe.ps1`, `launcher\launcher.cs`, `tools\lazyspec\export-texts.json` (tekstovi exporta en/hr/de), `tools\lazyspec\LAZYSPEC.md`, `README.md`, `examples\document-theme\document-theme.yaml`, `tests\`.
-- **Nava** (`D:\Development\Nava\BackofficeAndPublicApi_2022`): klijentski projekt koji koristi LazySpec instaliran na računalu (bez kita u projektu).
+- **Klijentski projekt** (`D:\Development\<Klijent>\<Projekt>`): klijentski projekt koji koristi LazySpec instaliran na računalu (bez kita u projektu).
   - `openspec\config.yaml` sadrži `lazyspec:` blok: `name`, `documentTheme: openspec_artifacts/document-theme.yaml`, `figmaToken`, `titles`, `diagrams`.
   - Shema je `feature`. Dokumenti su na hrvatskom, a svi identifikatori i kod na engleskom.
 
@@ -30,7 +30,7 @@ Zadnji commit koji znam u LazySpecu: `44d6be2` (install: tolerira neispravne PAT
    - `install.ps1/.exe` u repozitoriju: `Profile`, `Global`, `Both`, `Update`, `-Uninstall`.
    - `initintoproject -Remove` vadi kit iz projekta i seli `lazyspec.json` u root projekta.
    - Postavke se čitaju iz `<root>\lazyspec.json` ili `tools\lazyspec\lazyspec.json`.
-6. **`models.md`** (novi artefakt v2 sheme, vidi Nava):
+6. **`models.md`** (novi artefakt v2 sheme, vidi klijentski projekt):
    - LazySpec ga prikazuje kao tab i poglavlje (naslovi u `export-texts.json`: Models / Modeli / Datenmodelle).
    - Tablice s prvim stupcem Promjena/Change/Änderung boje retke `+` zeleno, `~` žuto, `-` crveno (u HTML-u i Wordu preko pozadine ćelije).
    - **Dijagram modela** (C# System.Drawing, `LazySpecModelDiagram`) crta se iz `` ### `Name` ``, tablica i redaka `**Veze:**`. Raspored ima optimizaciju zamjenom pozicija. Ubacuje se iza tablice „Pregled”.
@@ -44,7 +44,7 @@ Zadnji commit koji znam u LazySpecu: `44d6be2` (install: tolerira neispravne PAT
    - Testovi „isto kao prije” trebaju `-Baseline <stari lazyspec.ps1>`. Ja koristim `%TEMP%\lazyspec-baseline\lazyspec.ps1` (HEAD + korisnikove izmjene, bez mojih).
    - Testovi uspoređuju bez `<style>` bloka i bez custom Word stilova.
 
-## Nava (necommitano)
+## Klijentski projekt (necommitano)
 - `openspec_artifacts\document-theme.yaml`: tema prema „Document template.docx”:
   - `numbering: false`;
   - Montserrat 11 pt, `lineHeight 1.4` (= Wordov 1,15);
@@ -64,17 +64,17 @@ Zadnji commit koji znam u LazySpecu: `44d6be2` (install: tolerira neispravne PAT
   - design upućuje na models.md;
   - `tiny` u `tasks.md` ima kratku sekciju „## Modeli” (samo novo, s prvim stupcem Promjena).
   - `openspec schema validate` prolazi za sve tri.
-- **`models.md` napisan za sva 4 aktivna changea** (add-charter-reservation-payment, add-guest-account, add-backoffice-online-reservations, fix-mmk-extras-import). Svi prolaze `openspec validate --strict`. Korisnik je prihvatio nazive koje su agenti izabrali.
-- Regeneriran je `export\backofficeandpublicapi-2022-add-charter-reservation-payment-2026-11-11.pdf` (s `-KeepDiagrams`).
+- **`models.md` napisan za sva 4 aktivna changea** (4 changea klijentskog projekta). Svi prolaze `openspec validate --strict`. Korisnik je prihvatio nazive koje su agenti izabrali.
+- Regeneriran je PDF export jednog changea u `export\` (s `-KeepDiagrams`).
 
 ## Važno za rad
 - U bashu, heredoc s Python kodom zna puknuti: Python skripte pišem Write alatom u `%TEMP%` pa ih pokrećem. Izmjene u .ps1 radim Edit alatom ili Pythonom s `assert count == 1`.
 - **Nikad ne gasiti sve `msedge` procese** (to su korisnikovi preglednici).
 - Za pregled PDF-a: PyMuPDF je u `%TEMP%\pylib` (`PYTHONPATH`). Word → PDF preko COM skripte `/tmp/w2p2.ps1` (`-In`, `-OutPdf`). Pandoc je instaliran.
-- Nava exporte radim u `%TEMP%` (`-Out`) s `-KeepDiagrams`, osim kad korisnik traži regeneriranje u `export\`. Ako je PDF otvoren, export javlja da je zaključan.
+- Exporte klijentskog projekta radim u `%TEMP%` (`-Out`) s `-KeepDiagrams`, osim kad korisnik traži regeneriranje u `export\`. Ako je PDF otvoren, export javlja da je zaključan.
 - Globalni `lazyspec` je star: korisnik treba pokrenuti `.\install.exe Update` da dobije sve ovo.
 
 ## Otvoreno / moguće sljedeće
 - PDF ima 147 stranica, Word 126 (raspored scenarija i dijagrama se malo razlikuje).
-- Ako korisnik želi razmake točno kao u templateu: `spaceAfter` u Nava temi na 0 (sada 6 pt za odlomke i 3 pt za liste, namjerno).
+- Ako korisnik želi razmake točno kao u templateu: `spaceAfter` u temi klijentskog projekta na 0 (sada 6 pt za odlomke i 3 pt za liste, namjerno).
 - `[NEEDS CLARIFICATION]` stavke u models.md datotekama čekaju odgovore klijenta.

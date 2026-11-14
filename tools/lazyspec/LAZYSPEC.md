@@ -61,8 +61,8 @@ headings, lists, checkboxes, tables, code, requirements (`◆`), scenarios (`▸
 (`lazyspec: bundles:` in `openspec/config.yaml`): `Enter` reads one, `Space` marks its changes (to change
 them), `d` removes it (asked first). Below, the active changes: `Space` marks them (`a` all or none), `Enter`
 asks a title for the whole (on the cover; nothing: the changes' titles) and, when it isn't saved yet, whether
-to save it (`s` save, `n` not now) — its key is the title without accents (`Online rezervacije` →
-`online-rezervacije`). Then Read shows them together: a tab per kind of document (*Proposal (2)*, *Specs*,
+to save it (`s` save, `n` not now) — its key is the title without accents (`Online plaćanja` →
+`online-placanja`). Then Read shows them together: a tab per kind of document (*Proposal (2)*, *Specs*,
 *Design (2)* ...), each change's part under its title. `x` there exports them as one document.
 
 **Run** — the OpenSpec CLI's output, coloured (`✓` passed, `✗` failed, `⚠` warnings).
@@ -95,7 +95,7 @@ It refreshes by itself when files under `openspec/` change (an editor, git, an a
 ## Conventions it understands
 
 - `openspec/specs/<name>/spec.md` — a spec; its `# Title` is shown without the project's name in front
-  (`RAGmatic — Costs` → `Costs`). Specs named `platform-*` are platform pages (overview, architecture,
+  (`Acme Portal — Costs` → `Costs`). Specs named `platform-*` are platform pages (overview, architecture,
   costs, roadmap, decisions...).
 - `openspec/changes/<name>/` — `proposal.md` (`## Why`, `## What Changes`, `## Impact`), `design.md`,
   `tasks.md` (`## 1. Group` + `- [ ]` / `- [x]`), `specs/<capability>/spec.md` (`## ADDED|MODIFIED|REMOVED|RENAMED Requirements`).
@@ -135,9 +135,9 @@ one's proposal and delta specs).
 ```
 .\lazyspec.exe -Export Pdf                        # or Word, Html
 .\lazyspec.exe -Export Word -IncludeChanges -Open
-.\lazyspec.exe -Export Pdf -Out D:\Clients\RAGmatic.pdf
+.\lazyspec.exe -Export Pdf -Out D:\Clients\AcmePortal.pdf
 .\lazyspec.exe -Export Pdf -Item add-user-login  # one spec or change alone (x in Read)
-.\lazyspec.exe -Export Word -Item add-guest-account,add-online-booking -Title "Online booking"
+.\lazyspec.exe -Export Word -Item add-user-signup,add-online-payments -Title "Online payments"
 ```
 
 **One spec or change** (`-Item <name>`, or `x` while reading it): a spec alone, or a change with every
@@ -157,12 +157,12 @@ too (its folder `<date>-<name>`).
 ```yaml
 lazyspec:
   bundles:
-    online-rezervacije:                    # its key: -Item online-rezervacije, the file's name
-      title: "Online rezervacije i gostinski račun"
-      changes: add-guest-account, add-backoffice-online-reservations
+    online-placanja:                       # its key: -Item online-placanja, the file's name
+      title: "Online plaćanja i korisnički račun"
+      changes: add-user-signup, add-online-payments
 ```
 
-`lazyspec -Export Word -Item online-rezervacije` exports it with its title (`-Title` wins). Saving and
+`lazyspec -Export Word -Item online-placanja` exports it with its title (`-Title` wins). Saving and
 removing in the UI change only these lines; the rest of `config.yaml` stays as it is.
 
 **For the client or technical** (asked last in the UI; `-ClientFriendly` on the command line): for the
@@ -173,7 +173,7 @@ itself stays as written. Technical: as written. Tasks are bullets either way (do
 **The language:** the workflow schema's `language:` (LazySpec's own key; the OpenSpec CLI ignores it):
 
 ```yaml
-name: nava-spec-driven
+name: acme-spec-driven
 version: 1
 language: hr
 artifacts: ...
@@ -207,7 +207,7 @@ The key only in that environment variable (`setx DEEPL_AUTH_KEY "<key>"`, then a
 
 ```
 lazyspec -Export Pdf -Language en                 # a Croatian spec for an English-speaking reader
-lazyspec -Export Word -Item add-online-booking -Language de
+lazyspec -Export Word -Item add-online-payments -Language de
 lazyspec -Export Pdf -Language hr -Beta           # into a DeepL beta language
 ```
 
@@ -254,9 +254,9 @@ lazyspec -Export Pdf -Markdown notes.md -Out D:\Clients\notes.pdf -Open
 
   ```markdown
   ---
-  title: Nava Charter booking
+  title: Acme Portal
   subtitle: Meeting summary, 4 November 2026
-  client: Nava d.o.o.             # else the project's
+  client: Acme d.o.o.             # else the project's
   author: Netmedia                # else the project's
   date: 4. 11. 2026.              # else today
   language: hr                    # the cover's and contents' words; else the project's
@@ -354,7 +354,7 @@ Tests: `.\tests\Test-WordTemplate.ps1` (in the LazySpec repository).
 ```json
 {
   "specOrder": ["platform-overview", "platform-functional", "platform-architecture"],
-  "export": { "title": "RAGmatic", "subtitle": "Functional specification", "client": "Acme d.o.o.", "author": "Netmedia" }
+  "export": { "title": "Acme Portal", "subtitle": "Functional specification", "client": "Acme d.o.o.", "author": "Netmedia" }
 }
 ```
 
@@ -366,15 +366,15 @@ it), the export's settings that belong to the specification; they win over `lazy
 
 ```yaml
 lazyspec:
-  name: Nava – Backoffice i javni API      # on the cover, instead of the folder's name
-  client: Nava d.o.o.                      # also: subtitle, author, language
+  name: Acme – Portal i javni API          # on the cover, instead of the folder's name
+  client: Acme d.o.o.                      # also: subtitle, author, language
   documentTemplate: openspec_artifacts/Document template.docx   # Word documents on it (see Export)
   documentTheme: openspec_artifacts/theme/document-theme.yaml    # PDF, Word and HTML in that look (see Export)
   titles:                                  # a capability's (or spec's) title in the export
-    add-charter-reservation-payment:       # a group per change (its folder's name): for that change
-      reservation-booking: Rezervacija bookinga
-    fix-mmk-extras-import:
-      mmk-extras-import: Uvoz dodataka iz MMK-a
+    add-online-payments:                   # a group per change (its folder's name): for that change
+      payment-checkout: Naplata narudžbe
+    fix-erp-import:
+      erp-import: Uvoz iz ERP-a
     platform-overview: Pregled platforme   # straight under titles: for every change, and for specs
 ```
 
@@ -391,10 +391,10 @@ specifications; a capability's: at the top of the capability, before its purpose
 ```yaml
 lazyspec:
   diagrams:
-    add-charter-reservation-payment:
+    add-online-payments:
       change: https://www.figma.com/board/<file>/<name>?node-id=18-350      # FigJam: Copy link to selection
-      reservation-availability: https://www.figma.com/board/<file>/<name>?node-id=35-2839
-      reservation-booking: diagrams/booking.png                               # or an image, in the change's folder
+      payment-refunds: https://www.figma.com/board/<file>/<name>?node-id=35-2839
+      payment-checkout: diagrams/checkout.png                                # or an image, in the change's folder
 ```
 
 A Figma link is saved as a PNG in the change's `diagrams\` folder (`openspec\diagrams\` for specs), as

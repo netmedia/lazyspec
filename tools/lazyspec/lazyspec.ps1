@@ -279,7 +279,7 @@ function Show-Usage {
     & $g '  .\lazyspec.exe -Export Pdf                     # or Word, Html'
     & $g '  .\lazyspec.exe -Export Word -IncludeChanges -Open'
     & $g '  .\lazyspec.exe -Export Pdf -Item add-user-login   # one spec or change (x in Read)'
-    & $g '  .\lazyspec.exe -Export Word -Item add-guest-account,add-online-booking -Title "Online booking"'
+    & $g '  .\lazyspec.exe -Export Word -Item add-user-signup,add-online-payments -Title "Online payments"'
     & $d '  Several changes as one whole (m, or x: chosen changes): a chapter per kind of document, each'
     & $d '  change''s part under its title; -Title on the cover (else the changes'' titles). m saves it as a'
     & $d '  named whole (lazyspec: bundles: in openspec\config.yaml): then -Item <its key>.'
@@ -670,7 +670,7 @@ function Read-Text([string]$Path) {
     return ''
 }
 $dashClass = "[-$(C 0x2013)$(C 0x2014)]"
-# A document's title (its first "# " line) without the project's name in front ("RAGmatic - Costs" -> "Costs").
+# A document's title (its first "# " line) without the project's name in front ("Acme Portal - Costs" -> "Costs").
 function Get-DocTitle([string]$Text, [string]$Name) {
     $m = [regex]::Match($Text, '(?m)^#\s+(.+?)\s*$')
     if (-not $m.Success) { return '' }
@@ -1035,9 +1035,9 @@ function Find-Change([string]$Name, $All) {
     return $null
 }
 # Named wholes: "lazyspec: bundles:" in openspec/config.yaml, an entry each (saved from the m screen):
-#   online-booking:
-#     title: "Online booking"
-#     changes: add-guest-account, add-online-booking
+#   online-payments:
+#     title: "Online payments"
+#     changes: add-user-signup, add-online-payments
 function Get-Bundles {
     $list = @()
     $m = (Get-ProjectConfig).Maps['bundles']
