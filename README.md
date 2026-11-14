@@ -47,7 +47,20 @@ version changes). They aren't code-signed, so Windows SmartScreen may ask once o
 
 **For the client:** `x` in the UI, or `lazyspec -Export Pdf` (or `Word`, `Html`), makes one document
 of the whole specification: a cover, the contents, a chapter per spec. See
-[Export for the client](tools/lazyspec/LAZYSPEC.md#export-for-the-client).
+[Export for the client](tools/lazyspec/LAZYSPEC.md#export-for-the-client). Changes that go to the client as
+one whole: `m` (mark them, read them together, `x` exports them; saved as a named whole in
+`openspec/config.yaml` for next time) or `lazyspec -Export Word -Item <change>,<change> -Title "<title>"`
+(a saved one: `-Item <its key>`). Word documents in the company's
+layout: `documentTemplate: <path to a .docx>` under `lazyspec:` in the project's `openspec/config.yaml`
+(relative to the project's root), or `-Template <path>` for one export; see
+[Word document template](tools/lazyspec/LAZYSPEC.md#word-document-template). The same company look in PDF,
+Word and HTML, with no Word needed: `documentTheme: <path to a .yaml>` (or `-Theme <path>`), its fonts in
+`fonts/` next to it (embedded in Word); see [Document theme](tools/lazyspec/LAZYSPEC.md#document-theme) and
+the example [`examples/document-theme/document-theme.yaml`](examples/document-theme/document-theme.yaml).
+Any Markdown file (meeting notes, a summary) as a document in that look: `lazyspec -Export Word -Markdown <file.md>`
+(or `Pdf`, `Html`; its front matter: title, subtitle, toc ...); see
+[Markdown documents](tools/lazyspec/LAZYSPEC.md#markdown-documents).
+Tests: `.\tests\Test-WordTemplate.ps1`, `.\tests\Test-DocumentTheme.ps1`, `.\tests\Test-MarkdownDocument.ps1`.
 
 ### 1. Installed on the PC (not in the project)
 
@@ -115,6 +128,8 @@ Everything else (screens, keys, conventions): [`tools/lazyspec/LAZYSPEC.md`](too
 | `build-exe.ps1`, `launcher/launcher.cs` | Builds the .exe launchers |
 | `tools/lazyspec/` | The kit, as it lands in a project (and what `install` runs) |
 | `tools/lazyspec/LAZYSPEC.md` | Everything about it |
+| `examples/document-theme/` | An example document theme (every key explained) |
+| `tests/` | Tests of the export (Word template, document theme): `.\tests\Test-*.ps1` |
 
 ---
 
