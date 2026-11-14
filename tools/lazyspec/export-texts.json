@@ -61,5 +61,9 @@
       "decisions": "Entscheidungen", "risks / trade-offs": "Risiken / Kompromisse", "migration plan": "Migrationsplan",
       "open questions": "Offene Fragen", "tasks": "Aufgaben"
     }
+  },
+  "nl": {
+    "labels": {"proposal": "Voorstel", "specs": "Specificaties", "models": "Datamodellen", "unchanged": "ongewijzigd", "moreFields": "nog {n}", "design": "Ontwerp", "tasks": "Taken", "open-questions": "Open vragen", "requirement": "Eis", "scenario": "Scenario", "capability": "Functionaliteit", "contents": "Inhoud", "client": "Klant", "date": "Datum", "preparedBy": "Opgesteld door", "scope": "Omvang", "specification": "Specificatie", "plannedChanges": "Geplande wijzigingen", "nChapters": "hoofdstukken", "nRequirements": "eisen", "nChanges": "geplande wijzigingen", "nDocuments": "documenten", "nCapabilities": "functionaliteiten", "nTasks": "taken", "workflow": "workflow", "diagram": "Diagram", "scenarios": "Scenario's", "nChapters.one": "hoofdstuk", "nRequirements.one": "eis", "nChanges.one": "geplande wijziging", "nDocuments.one": "document", "nCapabilities.one": "functionaliteit", "nTasks.one": "taak", "dateFormat": "dd-MM-yyyy"},
+    "headings": {"why": "Waarom", "what changes": "Wat verandert", "capabilities": "Functionaliteiten", "new capabilities": "Nieuwe functionaliteiten", "modified capabilities": "Gewijzigde functionaliteiten", "removed capabilities": "Verwijderde functionaliteiten", "impact": "Impact", "purpose": "Doel", "requirements": "Eisen", "added requirements": "Nieuwe eisen", "modified requirements": "Gewijzigde eisen", "removed requirements": "Verwijderde eisen", "renamed requirements": "Hernoemde eisen", "context": "Context", "goals / non-goals": "Doelen / niet-doelen", "goals": "Doelen", "non-goals": "Niet-doelen", "decisions": "Beslissingen", "risks / trade-offs": "Risico's / afwegingen", "migration plan": "Migratieplan", "open questions": "Open vragen", "tasks": "Taken"}
   }
 }
