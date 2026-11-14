@@ -122,6 +122,7 @@ root has a different one already, it keeps both and says so). Folders with anyth
 removal: the team then installs LazySpec on their PCs too.
 
 Everything else (screens, keys, conventions): [`tools/lazyspec/LAZYSPEC.md`](tools/lazyspec/LAZYSPEC.md).
+Step by step for developers, with diagrams and screenshots: [`docs/developer-guide.md`](docs/developer-guide.md).
 
 ## In this repository
 
@@ -132,6 +133,7 @@ Everything else (screens, keys, conventions): [`tools/lazyspec/LAZYSPEC.md`](too
 | `build-exe.ps1`, `launcher/launcher.cs` | Builds the .exe launchers |
 | `tools/lazyspec/` | The kit, as it lands in a project (and what `install` runs) |
 | `tools/lazyspec/LAZYSPEC.md` | Everything about it |
+| `docs/developer-guide.md` | Developer guide: install, add to a project, every workflow, with diagrams and screenshots |
 | `examples/document-theme/` | An example document theme (every key explained) |
 | `tests/` | Tests of the export (Word template, document theme): `.\tests\Test-*.ps1` |
 
