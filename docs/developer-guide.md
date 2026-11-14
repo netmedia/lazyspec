@@ -1,0 +1,411 @@
+# LazySpec — Developer Guide
+
+How to install LazySpec, add it to a project, and use it day to day. Full reference: [`tools/lazyspec/LAZYSPEC.md`](../tools/lazyspec/LAZYSPEC.md).
+
+## What LazySpec is
+
+LazySpec shows a project's OpenSpec specs and changes on one terminal screen and turns them into client-ready PDF, Word or HTML documents. It is the sibling of LazyBicep: same look, same keys, same technology (PowerShell 5.1 or 7, no modules).
+
+Use it when a project follows spec-driven development with [OpenSpec](https://github.com/Fission-AI/OpenSpec) and you want to:
+
+- browse `openspec/specs/` (platform pages and capability specs) and `openspec/changes/` (stage, task progress, capabilities touched) without opening files one by one;
+- read any spec or change formatted for the terminal (requirements, scenarios, tasks, tables);
+- run the OpenSpec CLI (validate, archive, new change) and see its output in the same screen;
+- export the specification, one change, or several changes as one document for the client, in the company look, optionally translated.
+
+It works alongside the OpenSpec CLI, openspec-ui and coding agents such as Claude Code: it reads the same files and refreshes by itself when they change.
+
+**Source:** `git@github.com:netmedia/lazyspec.git` (branch `develop`). Every script explains itself with `-Help`.
+
+## Install from scratch (on your PC)
+
+Install LazySpec once per PC, then type `lazyspec` anywhere inside a project. Nothing goes into the project.
+
+### Prerequisites
+
+| Need | For | How |
+| --- | --- | --- |
+| Windows PowerShell 5.1 or PowerShell 7 | Everything | Built into Windows |
+| OpenSpec CLI | Actions: validate, archive, new change, `openspec init` | `npm install -g @fission-ai/openspec` |
+| Execution policy that runs local scripts | The `Profile` install | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
+| Microsoft Edge or Google Chrome | PDF export | Usually present |
+| Microsoft Word or pandoc | Word export without a template or theme | Optional |
+| DeepL key in `DEEPL_AUTH_KEY` | Export in another language | Optional, see Integrations |
+| Figma token | Fresh FigJam diagrams in exports | Optional, see Integrations |
+
+### Steps
+
+1. Clone the repo: `git clone git@github.com:netmedia/lazyspec.git D:\Development\Netmedia\LazySpec`
+2. In the repo, pick an install mode:
+   - `.\install.exe Profile` — a `lazyspec` function in your PowerShell profiles. Runs the project's own copy if it has one, else this repo's copy. A `git pull` updates it. **Recommended for developers.**
+   - `.\install.exe Global` — a copy in `%LOCALAPPDATA%\Programs\LazySpec` on your user PATH. Works in cmd and other shells. Fixed version until you reinstall.
+   - `.\install.exe Both` — the project's copy first, else the global one.
+3. Open a **new** terminal.
+4. `cd` into any project with an `openspec\` folder and run `lazyspec`.
+
+LazySpec finds the project as the nearest folder with `openspec\` above the current folder, so you can start it from any subfolder.
+
+### Verify
+
+- `lazyspec -Help` prints the guide.
+- In a project, `lazyspec` opens the Home screen; `?` shows the keys.
+- `openspec --version` answers (needed only for the actions).
+
+### Keep it current or remove it
+
+| Command (in the repo) | What it does |
+| --- | --- |
+| `git pull` | Updates a `Profile` install immediately |
+| `.\install.exe Update` | After a pull: the global copy and the profile function get the new version (old → new shown) |
+| `.\install.exe -Uninstall` | Removes the function and the global copy |
+
+The `.exe` files are thin launchers for the `.ps1` of the same name, so no execution policy prompts and double-click works. They aren't code-signed; SmartScreen may ask once on a new PC.
+
+## Add LazySpec to a project
+
+Put the kit into the project when the whole team should run the same version without installing anything. A project's own copy always wins over a PC install.
+
+![Setup paths: PC install or project kit](images/diagram-setup-paths.png)
+
+Both paths end on the same Home screen; a project's own kit always wins over the PC install.
+
+### Which way to choose
+
+| | Installed on the PC | In the project (kit) |
+| --- | --- | --- |
+| What lives where | Nothing in the project | `tools\lazyspec\` + `lazyspec.exe` in the root, committed |
+| Set up | `.\install.exe Profile` once per PC | `.\initintoproject.exe <project>` once per project |
+| Start | `lazyspec` anywhere in the project | `.\lazyspec.exe` in the root (or `lazyspec` with the profile function) |
+| Version | The repo's (`git pull`) or the global copy's | The project's: same for everyone |
+| Settings file | `lazyspec.json` in the project root | `tools\lazyspec\lazyspec.json` |
+| Best for | Internal projects, people who use it everywhere | Client projects, mixed teams, CI-like reproducibility |
+
+### Scenario A: new project, no OpenSpec yet
+
+1. From the LazySpec repo: `.\initintoproject.exe D:\Development\Netmedia\MyProject` (add `-DryRun` first to preview).
+2. `cd D:\Development\Netmedia\MyProject`
+3. `openspec init` — creates `openspec\` (LazySpec never creates or touches it).
+4. `.\lazyspec.exe`
+5. Add `export/` to `.gitignore` (or decide to commit what was sent to the client).
+6. Commit `tools\lazyspec\` and `lazyspec.exe`.
+
+### Scenario B: existing project that already uses OpenSpec
+
+Same as A without `openspec init`. LazySpec reads the existing `openspec/specs`, `openspec/changes` and any custom workflow schema immediately.
+
+### Scenario C: use the PC install only (no kit)
+
+Nothing to add. Optionally create `lazyspec.json` in the project root for settings, and a `lazyspec:` block in `openspec/config.yaml` for export settings. Tell the team to install LazySpec on their PCs.
+
+### What gets created
+
+| Path | What | Replaced by `-Update` |
+| --- | --- | --- |
+| `lazyspec.exe` (root) | Launcher, so it starts from the root | Yes |
+| `tools/lazyspec/lazyspec.ps1` | The program | Yes |
+| `tools/lazyspec/lazyspec.exe` | Launcher | Yes |
+| `tools/lazyspec/kit.json` | Version + list of kit files | Yes |
+| `tools/lazyspec/LAZYSPEC.md` | Full reference | Yes |
+| `tools/lazyspec/export-texts.json` | Export texts per language (en, hr, de, nl) | Yes |
+| `tools/lazyspec/lazyspec.json` | Project settings (you create it) | No, kept |
+
+### Update or remove the kit
+
+- **Update:** `.\initintoproject.ps1 <project> -Update` replaces the kit files; `openspec/` and `lazyspec.json` stay.
+- **Remove:** `.\initintoproject.ps1 <project> -Remove [-DryRun]` deletes the kit and moves `tools\lazyspec\lazyspec.json` to `lazyspec.json` in the root. Commit the removal; the team then installs LazySpec on their PCs.
+- **Install on a PC from a project's kit:** `.\lazyspec.exe -Install Profile|Global|Both`, `.\lazyspec.exe -Uninstall`.
+
+In PowerShell always type `.\lazyspec.exe` (or `.\lazyspec`): PowerShell never runs a program from the current folder by name alone. In cmd, `lazyspec` is enough.
+
+## The screens and keys
+
+LazySpec has five screens; Home is where you start and `?` always shows the keys.
+
+| Screen | How you get there | What it shows |
+| --- | --- | --- |
+| Home | Start | Left: **Scope** (specs) and **Plan** (changes). Right: a summary of the selected item |
+| Read | `Enter` | The whole spec, or a change's documents as tabs (proposal, delta specs, models, design, tasks ...) |
+| Changes as one | `m` | Saved bundles on top, active changes below; mark changes that go to the client together |
+| Run | `v`, `a`, `n`, `x` | OpenSpec CLI or export output, coloured (✓ passed, ✗ failed, ⚠ warnings) |
+| Help | `?` | Keys and credits |
+
+**List symbols.** Scope: `◆` platform page (`platform-*`), `●` capability spec, with requirement count. Plan: `○` draft (no tasks), `◆` in progress, `●` completed, `·` archived (shown with `h`), with done/total tasks and a bar.
+
+**Details pane.** A spec shows requirement and scenario counts, purpose, requirements and the changes that will touch it (`+` added, `~` modified, `-` removed). A change shows progress, tasks by group, capabilities touched, why, and which workflow documents exist (`✓` done, `○` not yet).
+
+### What it looks like
+
+The screenshots below come from LazySpec itself, run on a made-up demo project (Acme Portal).
+
+**Home, a spec selected:** its purpose, its requirements, and the changes that will touch it.
+
+![Home screen with the User accounts spec selected](images/screen-home-spec.png)
+
+**Home, a change selected (Tab to Plan):** progress, tasks by group, capabilities, why, and which documents exist.
+
+![Home screen with an in-progress change selected](images/screen-home-change.png)
+
+**Read, delta specs tab:** requirements as `◆`, scenarios as `▸` with WHEN / THEN. Use `←` `→` to switch between Proposal, Specs, Design and Tasks.
+
+![Read screen showing a change's delta specs](images/screen-read-specs.png)
+
+**Read, tasks tab:** done tasks `✓`, open ones `○`, by group.
+
+![Read screen showing a change's tasks](images/screen-read-tasks.png)
+
+### Keys
+
+| Screen | Keys |
+| --- | --- |
+| Home | `↑` `↓` select · `Tab` Scope ↔ Plan · `→` into details, `←`/`Esc` back · `z` zoom details · `PgUp` `PgDn` `Home` `End` scroll details · `Enter` read · `v` validate all · `a` archive change · `n` new change · `x` export · `m` changes as one · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
+| Read | `↑` `↓` `PgUp` `PgDn` `Home` `End` scroll · `←` `→` previous/next document · `x` export this item · `e` edit · `Esc` back |
+| Changes as one | `↑` `↓` select · `Space` mark · `a` all/none · `Enter` continue · `d` remove saved bundle · `Esc` cancel |
+| Run | `PgUp` `PgDn` `Home` `End` scroll · `Esc` stop (asked first); when done `Enter`/`Esc` back |
+
+The screen refreshes by itself when files under `openspec/` change, whether from your editor, git or an agent.
+
+## Workflows in a project
+
+Each scenario below is a recipe: when to use it, then the steps. Commands are shown as `lazyspec`; with a project kit in PowerShell use `.\lazyspec.exe`.
+
+### Typical change lifecycle
+
+![Change lifecycle: 8 steps, 2 loops](images/diagram-change-lifecycle.png)
+
+LazySpec refreshes as files change, so you can keep it open through every step; the dashed lines are the two loops: client feedback and failed validation.
+
+### 1. Get an overview of the project
+
+**When:** starting the day, joining a project, before a client meeting.
+
+1. `lazyspec` in the project.
+2. Scope list: platform pages first (overview on top), then capability specs.
+3. `Tab` to Plan: each change's stage and task progress.
+4. `s` cycles sort (name A–Z, Z–A, recently modified); `/` filters; `h` shows archived changes.
+5. `z` widens the details pane for a long summary.
+
+### 2. Start a new change
+
+**When:** a new feature, fix or refactor needs a spec before code.
+
+1. Home, `n`, type the name (spaces become `-`, e.g. `add-user-signup`).
+2. LazySpec runs `openspec new change <name>` and shows the output.
+3. The change appears in Plan as `○` draft. `e` opens its proposal in `$VISUAL`/`$EDITOR`, else VS Code.
+4. Number changes (`01-...`, `02-...`) if you want the Plan list in delivery order.
+
+### 3. Review a change or spec
+
+**When:** code review of a spec, checking an agent's output, preparing questions for the client.
+
+1. Select it, `Enter`.
+2. `←` `→` switch documents in the order the change's workflow schema defines; other `.md` files in the folder come last.
+3. `e` edits the document you're reading; the view refreshes on save.
+
+### 4. Track implementation progress
+
+**When:** during development and standups.
+
+- Progress comes from `tasks.md` (`## 1. Group` + `- [ ]` / `- [x]`), or the file the schema's `apply.tracks` names.
+- Plan shows done/total and a bar; the details show tasks by group.
+- A change with all tasks ticked turns `●` completed.
+
+### 5. Validate
+
+**When:** before a commit or PR, after an agent wrote specs.
+
+1. Home, `v` — runs `openspec validate --all --strict --no-interactive`.
+2. Fix anything marked `✗`, then `v` again.
+
+### 6. Archive a finished change
+
+**When:** the change is implemented and merged.
+
+1. Select it, `a`. LazySpec asks first and shows the open task count.
+2. It runs `openspec archive <change> --yes`: delta specs merge into `openspec/specs`, the folder moves to `changes/archive/<date>-<name>/`.
+3. Commit the result.
+
+### Exports at a glance
+
+![Export pipeline: what, options, look, result](images/diagram-export-pipeline.png)
+
+Scenarios 7 to 11 are all the same pipeline: the UI asks the options in order, the command line takes them as parameters, and the project's `config.yaml` decides the look.
+
+### 7. Export the whole specification for the client
+
+**When:** a functional specification, an offer annex, a milestone sign-off.
+
+1. Home, `x`, pick format: `p` PDF, `w` Word, `h` HTML.
+2. With active changes: specs only, or with the plan (active changes after the specs).
+3. `c` for the client (scenarios as plain sentences, `MUST`-style keywords removed) or `t` technical (as written).
+4. The file lands in `export\<project>-specification-<date>.<ext>` and opens.
+
+![Export prompt at the bottom of the Home screen: PDF, Word or HTML](images/screen-export-prompt.png)
+
+Command line: `lazyspec -Export Pdf`, `lazyspec -Export Word -IncludeChanges -ClientFriendly -Open`, `-Out D:\Clients\X.pdf` to write elsewhere.
+
+### 8. Export one change or spec
+
+**When:** sending a single feature proposal for approval.
+
+1. Open it (`Enter`), `x`, pick format and client/technical.
+2. Output: `export\<project>-<name>-<date>.<ext>`, a chapter per workflow document.
+
+Command line: `lazyspec -Export Pdf -Item add-user-login`.
+
+### 9. Export several changes as one document
+
+**When:** a release or a client order spans several changes.
+
+1. Home, `m`. `Space` marks changes (`a` all/none), `Enter`.
+2. Give a title (on the cover and in the file name); choose `s` to save the bundle or `n` not now.
+3. Read shows them together, one tab per document kind; `x` exports.
+4. Saved bundles sit in `openspec/config.yaml` under `lazyspec: bundles:` and appear at the top of `m` next time.
+
+![Changes as one screen with two changes marked](images/screen-changes-as-one.png)
+
+Command line: `lazyspec -Export Word -Item add-user-signup,add-online-payments -Title "Online payments"`, or `-Item <bundle-key>`.
+
+### 10. Turn any Markdown into a branded document
+
+**When:** meeting notes, summaries, letters to the client.
+
+1. Write the `.md` anywhere inside the project; add optional front matter (`title`, `subtitle`, `client`, `author`, `date`, `language`, `toc`, `cover`).
+2. `lazyspec -Export Word -Markdown "openspec_meetings\2026-11-04 summary.md"` (or `Pdf`, `Html`).
+3. The document is written next to the `.md` in the project's theme or template.
+
+### 11. Export in another language
+
+**When:** specs are written in Croatian but the reader speaks English or German (or the reverse).
+
+1. Set up DeepL once (see Integrations).
+2. `lazyspec -Export Pdf -Language en`; for DeepL beta languages such as Croatian add `-Beta`.
+3. Exports into Croatian are checked by Hasek/ispravi.me; findings go to `<document>.hasek.md`. Nothing is changed automatically.
+4. Translations are cached in `%LOCALAPPDATA%\LazySpec\translations\`, so re-exports cost no DeepL characters.
+
+### 12. Add diagrams from FigJam
+
+**When:** a change or capability has a flow drawn in FigJam or Figma.
+
+1. In FigJam: select the section, Copy link to selection.
+2. Add it under `lazyspec: diagrams:` in `openspec/config.yaml` (per change: `change:` for the whole change, or per capability), or point to an image file.
+3. Export once with a Figma token: the PNG is saved in the change's `diagrams\` folder. Commit it so exports work for everyone without Figma.
+4. `-KeepDiagrams` uses saved images only; `-RefreshDiagrams` always fetches the latest.
+
+### 13. Give documents the company look
+
+**When:** any project whose documents go to a client.
+
+- **Theme (recommended):** `documentTheme:` pointing to a YAML in the project, with `fonts/` and logos next to it. Same look in PDF, Word and HTML, no Word needed. Start from [`examples/document-theme/document-theme.yaml`](../examples/document-theme/document-theme.yaml).
+- **Word template:** `documentTemplate:` pointing to a `.docx`. Used for Word only; its styles, header, footer and logo are kept.
+- With both set, Word uses the template and PDF/HTML the theme. `-Theme` / `-Template` override for one export.
+
+### 14. Work alongside Claude Code
+
+**When:** an agent writes or updates specs, designs and tasks.
+
+1. Keep LazySpec open in a second terminal pane.
+2. As the agent writes files under `openspec/`, Home and Read refresh by themselves.
+3. Review what it wrote in Read, `v` to validate, then commit.
+
+### 15. Custom workflow schemas and models
+
+**When:** the project uses its own OpenSpec schema (e.g. `feature`, `greenfield`).
+
+- LazySpec finds the schema as the CLI does: the change's `.openspec.yaml`, then `openspec/config.yaml`, then `spec-driven`.
+- Read gets one tab per artifact in the schema's order; the details list each as `✓` or `○`.
+- A `models.md` artifact gets its own tab and export chapter; tables whose first column is *Change* / *Promjena* colour `+` `~` `-` rows, and the export draws a models diagram from ``### `Name` `` headings and `**Relations:**` / `**Veze:**` lines.
+- The schema's `language:` sets the export language (`hr`, `en`, `de`, `nl`).
+
+## Configuration and integrations
+
+Settings live in two places: `lazyspec.json` for the UI and export defaults, and a `lazyspec:` block in `openspec/config.yaml` for everything that belongs to the specification. The `config.yaml` values win; the OpenSpec CLI ignores the block.
+
+### lazyspec.json
+
+In `tools/lazyspec/lazyspec.json` (kit) or `lazyspec.json` in the project root (PC install):
+
+```json
+{
+  "specOrder": ["platform-overview", "platform-functional", "platform-architecture"],
+  "export": { "title": "Acme Portal", "subtitle": "Functional specification", "client": "Acme d.o.o.", "author": "Netmedia", "language": "en" }
+}
+```
+
+`specOrder` sets the Scope list order and the order of exported chapters.
+
+### openspec/config.yaml — lazyspec block
+
+```yaml
+lazyspec:
+  name: Acme – Portal i javni API              # cover title instead of the folder name
+  client: Acme d.o.o.                          # also: subtitle, author, language
+  documentTheme: openspec_artifacts/theme/document-theme.yaml
+  documentTemplate: openspec_artifacts/Document template.docx
+  figmaToken: <prefer FIGMA_TOKEN env var>
+  titles:                                      # nicer capability titles in exports
+    add-online-payments:
+      payment-checkout: Naplata narudžbe
+    platform-overview: Pregled platforme
+  diagrams:
+    add-online-payments:
+      change: https://www.figma.com/board/<file>/<name>?node-id=18-350
+      payment-checkout: diagrams/checkout.png
+  bundles:
+    online-placanja:
+      title: "Online plaćanja i korisnički račun"
+      changes: add-user-signup, add-online-payments
+```
+
+### Integrations
+
+| Integration | Used for | Setup |
+| --- | --- | --- |
+| OpenSpec CLI | `v`, `a`, `n`, `openspec init` | `npm install -g @fission-ai/openspec` |
+| DeepL | `-Language`, `-AddLanguage` | `translation:` block in `config.yaml` (`provider: deepl`, `keyEnv`, `english`, `formality`, `hasek`); key via `setx DEEPL_AUTH_KEY "<key>"`, never in `config.yaml` (refused). Free keys end with `:fx` |
+| Hasek / ispravi.me | Spell-check of Croatian exports | `translation: hasek: ask \| always \| never` |
+| Figma / FigJam | Diagrams in exports | Personal access token with read access to file content; `FIGMA_TOKEN` user env var (keeps it off git) or `figmaToken:` |
+| Edge / Chrome | PDF export | Headless, automatic |
+| Word / pandoc | Word export without theme or template | Automatic if installed |
+| Your editor | `e` | `$env:VISUAL` / `$env:EDITOR`, else VS Code (`code`), else the default app |
+
+The `translation:` block is shared with the netmedia Claude Code plugin (`netmedia:translate`).
+
+### Command-line reference
+
+| Parameter | What it does |
+| --- | --- |
+| `-Root <path>` | Use this project instead of finding it from the current folder |
+| `-Export Pdf\|Word\|Html` | Export without opening the UI |
+| `-Item <name>[,<name>]` | One spec/change, several changes as one, or a saved bundle key |
+| `-Title <text>` | Cover subtitle and file name for a multi-change export |
+| `-IncludeChanges` | Add active changes after the specs |
+| `-ClientFriendly` | Scenarios as sentences, normative keywords removed |
+| `-Markdown <file.md>` | Export any Markdown file in the project's look |
+| `-Theme <yaml>` / `-Template <docx>` | Override the look for one export |
+| `-Language <xx>` / `-Beta` | Translate with DeepL; `-Beta` for beta languages |
+| `-KeepDiagrams` / `-RefreshDiagrams` | Saved diagrams only / always fetch from Figma |
+| `-Out <path>` / `-Open` | Write elsewhere / open when done |
+| `-AddLanguage <xx>` [`-Force`] | Add export texts for a new language to `export-texts.json` |
+| `-Install Profile\|Global\|Both` / `-Uninstall` | Install from a project's kit |
+| `-Keys "Down,Enter,snap" -Frames f.txt` | Scripted key presses for testing; screens written as text |
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `lazyspec` not recognised after install | Old terminal | Open a new terminal |
+| `lazyspec` not recognised in the project root | PowerShell doesn't run programs from the current folder by name | Type `.\lazyspec.exe`, or install the `Profile` function |
+| Profile install warns about scripts | Execution policy | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
+| SmartScreen prompt on first run | `.exe` launchers aren't code-signed | Allow once |
+| "No project found" | No `openspec\` above the current folder | `cd` into the project, run `openspec init`, or pass `-Root` |
+| `v` / `a` / `n` fail | OpenSpec CLI missing | `npm install -g @fission-ai/openspec` |
+| Global install is missing new features | Fixed version | `git pull` in the LazySpec repo, then `.\install.exe Update` |
+| Export stops with exit code 1 naming a path | Theme, template or logo missing or broken | Fix the path in `config.yaml` (relative to the project root) |
+| Export says the file is locked | The previous PDF/Word is open | Close it and export again |
+| Warning about a missing font | Font not in the theme's `fonts/` and not installed | Add the `.ttf` to `fonts/` (use `.ttf`, not `.otf`, for Word) |
+| Diagram missing from export | No saved PNG and no Figma token | Set `FIGMA_TOKEN`, export once, commit the `diagrams\` PNGs |
+| `-Language hr` stops | Croatian is a DeepL beta language | Add `-Beta` |
+| DeepL key refused | Key put in `config.yaml` | Use `setx DEEPL_AUTH_KEY "<key>"` and a new terminal |
+| Change shows as `spec-driven` with a warning | Its workflow schema can't be found | Check `openspec/schemas/<name>/schema.yaml` and `openspec schema validate` |
+
+**Where to get help:** `-Help` on any script, `?` in the UI, [`tools/lazyspec/LAZYSPEC.md`](../tools/lazyspec/LAZYSPEC.md) for the full reference, or the LazySpec repo ([github.com/netmedia/lazyspec](https://github.com/netmedia/lazyspec)).
