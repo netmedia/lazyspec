@@ -95,7 +95,7 @@ It refreshes by itself when files under `openspec/` change (an editor, git, an a
 ## Conventions it understands
 
 - `openspec/specs/<name>/spec.md` — a spec; its `# Title` is shown without the project's name in front
-  (`RAGmatic — Costs` → `Costs`). Specs named `platform-*` are platform pages (overview, architecture,
+  (`Acme Portal — Costs` → `Costs`). Specs named `platform-*` are platform pages (overview, architecture,
   costs, roadmap, decisions...).
 - `openspec/changes/<name>/` — `proposal.md` (`## Why`, `## What Changes`, `## Impact`), `design.md`,
   `tasks.md` (`## 1. Group` + `- [ ]` / `- [x]`), `specs/<capability>/spec.md` (`## ADDED|MODIFIED|REMOVED|RENAMED Requirements`).
@@ -135,9 +135,9 @@ one's proposal and delta specs).
 ```
 .\lazyspec.exe -Export Pdf                        # or Word, Html
 .\lazyspec.exe -Export Word -IncludeChanges -Open
-.\lazyspec.exe -Export Pdf -Out D:\Clients\RAGmatic.pdf
+.\lazyspec.exe -Export Pdf -Out D:\Clients\AcmePortal.pdf
 .\lazyspec.exe -Export Pdf -Item add-user-login  # one spec or change alone (x in Read)
-.\lazyspec.exe -Export Word -Item add-user-signup,add-online-booking -Title "Online booking"
+.\lazyspec.exe -Export Word -Item add-user-signup,add-online-payments -Title "Online payments"
 ```
 
 **One spec or change** (`-Item <name>`, or `x` while reading it): a spec alone, or a change with every
@@ -157,9 +157,9 @@ too (its folder `<date>-<name>`).
 ```yaml
 lazyspec:
   bundles:
-    online-placanja:                    # its key: -Item online-placanja, the file's name
+    online-placanja:                       # its key: -Item online-placanja, the file's name
       title: "Online plaćanja i korisnički račun"
-      changes: add-user-signup, add-order-history
+      changes: add-user-signup, add-online-payments
 ```
 
 `lazyspec -Export Word -Item online-placanja` exports it with its title (`-Title` wins). Saving and
@@ -207,7 +207,7 @@ The key only in that environment variable (`setx DEEPL_AUTH_KEY "<key>"`, then a
 
 ```
 lazyspec -Export Pdf -Language en                 # a Croatian spec for an English-speaking reader
-lazyspec -Export Word -Item add-online-booking -Language de
+lazyspec -Export Word -Item add-online-payments -Language de
 lazyspec -Export Pdf -Language hr -Beta           # into a DeepL beta language
 ```
 
@@ -254,7 +254,7 @@ lazyspec -Export Pdf -Markdown notes.md -Out D:\Clients\notes.pdf -Open
 
   ```markdown
   ---
-  title: Acme Online orders
+  title: Acme Portal
   subtitle: Meeting summary, 4 November 2026
   client: Acme d.o.o.             # else the project's
   author: Netmedia                # else the project's
@@ -354,7 +354,7 @@ Tests: `.\tests\Test-WordTemplate.ps1` (in the LazySpec repository).
 ```json
 {
   "specOrder": ["platform-overview", "platform-functional", "platform-architecture"],
-  "export": { "title": "RAGmatic", "subtitle": "Functional specification", "client": "Acme d.o.o.", "author": "Netmedia" }
+  "export": { "title": "Acme Portal", "subtitle": "Functional specification", "client": "Acme d.o.o.", "author": "Netmedia" }
 }
 ```
 
@@ -366,12 +366,12 @@ it), the export's settings that belong to the specification; they win over `lazy
 
 ```yaml
 lazyspec:
-  name: Acme – Portal i javni API      # on the cover, instead of the folder's name
+  name: Acme – Portal i javni API          # on the cover, instead of the folder's name
   client: Acme d.o.o.                      # also: subtitle, author, language
   documentTemplate: openspec_artifacts/Document template.docx   # Word documents on it (see Export)
   documentTheme: openspec_artifacts/theme/document-theme.yaml    # PDF, Word and HTML in that look (see Export)
   titles:                                  # a capability's (or spec's) title in the export
-    add-online-payments:       # a group per change (its folder's name): for that change
+    add-online-payments:                   # a group per change (its folder's name): for that change
       payment-checkout: Naplata narudžbe
     fix-erp-import:
       erp-import: Uvoz iz ERP-a
@@ -394,7 +394,7 @@ lazyspec:
     add-online-payments:
       change: https://www.figma.com/board/<file>/<name>?node-id=18-350      # FigJam: Copy link to selection
       payment-refunds: https://www.figma.com/board/<file>/<name>?node-id=35-2839
-      payment-checkout: diagrams/booking.png                               # or an image, in the change's folder
+      payment-checkout: diagrams/checkout.png                                # or an image, in the change's folder
 ```
 
 A Figma link is saved as a PNG in the change's `diagrams\` folder (`openspec\diagrams\` for specs), as
