@@ -34,7 +34,7 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'TestHelpers.ps1')
 $ps = (Get-Process -Id $PID).Path
-$work = Join-Path ([IO.Path]::GetTempPath()) ('lazyspec-translation-' + [guid]::NewGuid().ToString('N'))
+$work = Join-Path ([IO.Path]::GetTempPath() -replace '^/var/', '/private/var/') ('lazyspec-translation-' + [guid]::NewGuid().ToString('N'))
 $kit = Join-Path $work 'kit'
 [void](New-Item -ItemType Directory -Force -Path $kit)
 foreach ($f in @('lazyspec.ps1', 'export-texts.json', 'kit.json')) { Copy-Item (Join-Path (Join-Path $repo 'tools') (Join-Path 'lazyspec' $f)) $kit }

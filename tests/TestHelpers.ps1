@@ -1,6 +1,8 @@
 #  LazySpec tests: what the test scripts share (results, packages, pictures, running lazyspec). Dot-source it.
 
-Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem, System.Drawing
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+# The PowerShell this test runs in (powershell.exe 5.1 or pwsh 7), for lazyspec runs in a process of their own.
+$script:shell = [Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
 $script:failed = 0
 $script:passed = 0
 $script:skipped = 0
@@ -18,14 +20,56 @@ function Write-TestSummary([string]$Kept) {
 }
 
 function Get-Png([int]$W, [int]$H, [string]$Color) {
-    $bmp = New-Object Drawing.Bitmap($W, $H)
-    $gr = [Drawing.Graphics]::FromImage($bmp)
-    $gr.Clear([Drawing.Color]::FromName($Color))
-    $gr.Dispose()
-    $ms = New-Object IO.MemoryStream
-    $bmp.Save($ms, [Drawing.Imaging.ImageFormat]::Png)
-    $bmp.Dispose()
-    return , $ms.ToArray()
+    $rgb = @{ Red = @(255, 0, 0); Blue = @(0, 0, 255); SteelBlue = @(70, 130, 180) }[$Color]
+    if (-not $rgb) { throw "Get-Png: unknown colour '$Color'" }
+    $crcTable = New-Object 'uint32[]' 256
+    for ($n = 0; $n -lt 256; $n++) {
+        [uint32]$c = $n
+        for ($k = 0; $k -lt 8; $k++) { if ($c -band 1) { $c = [uint32](3988292384 -bxor ($c -shr 1)) } else { $c = [uint32]($c -shr 1) } }
+        $crcTable[$n] = $c
+    }
+    $be = { param([uint32]$v) , [byte[]]@((($v -shr 24) -band 255), (($v -shr 16) -band 255), (($v -shr 8) -band 255), ($v -band 255)) }
+    $chunk = {
+        param([string]$Type, [byte[]]$Data)
+        $td = New-Object byte[] (4 + $Data.Length)
+        [Text.Encoding]::ASCII.GetBytes($Type).CopyTo($td, 0)
+        $Data.CopyTo($td, 4)
+        [uint32]$crc = 4294967295
+        foreach ($b in $td) { $crc = [uint32]($crcTable[($crc -bxor $b) -band 255] -bxor ($crc -shr 8)) }
+        $crc = [uint32]($crc -bxor 4294967295)
+        $o = New-Object IO.MemoryStream
+        $l = & $be ([uint32]$Data.Length); $o.Write($l, 0, 4)
+        $o.Write($td, 0, $td.Length)
+        $cb = & $be $crc; $o.Write($cb, 0, 4)
+        return , $o.ToArray()
+    }
+    $row = New-Object byte[] (1 + 3 * $W)
+    for ($x = 0; $x -lt $W; $x++) { $row[1 + 3 * $x] = $rgb[0]; $row[2 + 3 * $x] = $rgb[1]; $row[3 + 3 * $x] = $rgb[2] }
+    $raw = New-Object byte[] ($row.Length * $H)
+    for ($y = 0; $y -lt $H; $y++) { [Array]::Copy($row, 0, $raw, $y * $row.Length, $row.Length) }
+    [uint32]$a = 1; [uint32]$b2 = 0
+    foreach ($v in $raw) { $a = ($a + $v) % 65521; $b2 = ($b2 + $a) % 65521 }
+    $z = New-Object IO.MemoryStream
+    $z.WriteByte(0x78); $z.WriteByte(0x9C)
+    $df = New-Object IO.Compression.DeflateStream($z, [IO.Compression.CompressionMode]::Compress, $true)
+    $df.Write($raw, 0, $raw.Length); $df.Dispose()
+    $ad = & $be ([uint32](($b2 -shl 16) -bor $a)); $z.Write($ad, 0, 4)
+    $ihdr = New-Object IO.MemoryStream
+    $t = & $be ([uint32]$W); $ihdr.Write($t, 0, 4)
+    $t = & $be ([uint32]$H); $ihdr.Write($t, 0, 4)
+    $ihdr.Write([byte[]]@(8, 2, 0, 0, 0), 0, 5)
+    $out = New-Object IO.MemoryStream
+    $out.Write([byte[]]@(137, 80, 78, 71, 13, 10, 26, 10), 0, 8)
+    foreach ($p in @((& $chunk 'IHDR' $ihdr.ToArray()), (& $chunk 'IDAT' $z.ToArray()), (& $chunk 'IEND' ([byte[]]@())))) { $out.Write($p, 0, $p.Length) }
+    return , $out.ToArray()
+}
+# The system's Georgia (regular, bold, italic, bold italic): Windows' Fonts folder, else macOS's.
+function Get-GeorgiaFiles {
+    $sets = @()
+    if ($env:WINDIR) { $sets += , @('georgia.ttf', 'georgiab.ttf', 'georgiai.ttf', 'georgiaz.ttf' | ForEach-Object { Join-Path $env:WINDIR "Fonts\$_" }) }
+    $sets += , @('Georgia.ttf', 'Georgia Bold.ttf', 'Georgia Italic.ttf', 'Georgia Bold Italic.ttf' | ForEach-Object { Join-Path '/System/Library/Fonts/Supplemental' $_ })
+    foreach ($s in $sets) { if (@($s | Where-Object { Test-Path -LiteralPath $_ }).Count -eq 4) { return , $s } }
+    throw 'Georgia is not installed (Windows: %WINDIR%\Fonts\georgia*.ttf, macOS: /System/Library/Fonts/Supplemental/Georgia*.ttf).'
 }
 function Get-Sha([byte[]]$Bytes) { return [BitConverter]::ToString((New-Object Security.Cryptography.SHA256Managed).ComputeHash($Bytes)) }
 function New-Package([string]$Path, [hashtable]$Parts) {
@@ -108,7 +152,7 @@ curl -s https://example.com/api/login
 function Invoke-LazySpec([string]$Script, [string]$Cwd, [string]$Format, [string[]]$More) {
     Push-Location $Cwd
     try {
-        $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $Script -Export $Format -KeepDiagrams @More 2>&1 | Out-String
+        $out = & $script:shell -NoProfile -ExecutionPolicy Bypass -File $Script -Export $Format -KeepDiagrams @More 2>&1 | Out-String
         return [pscustomobject]@{ Code = $LASTEXITCODE; Out = $out }
     } finally { Pop-Location }
 }
