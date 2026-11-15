@@ -328,7 +328,9 @@ if ($Help) {
 
 # --- -Install / -Uninstall: plain `lazyspec` in PowerShell ----------------------------------------------
 
-$globalDir = Join-Path $env:LOCALAPPDATA 'Programs\LazySpec'
+# Per-user data: %LOCALAPPDATA% on Windows, ~/Library/Application Support on macOS (.NET's LocalApplicationData).
+$localData = if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { [Environment]::GetFolderPath('LocalApplicationData') }
+$globalDir = Join-Path $localData 'Programs\LazySpec'
 $profileBegin = '# >>> LazySpec (Netmedia) >>>'
 $profileEnd = '# <<< LazySpec (Netmedia) <<<'
 # The lazyspec function: the nearest project's own copy, else the installed one ($Installed: this
@@ -521,6 +523,14 @@ function Uninstall-All {
 
 if ($Install -or $Uninstall) {
     Write-Host ''
+    # The profile function and the global copy are Windows': lazyspec.exe, the user PATH in the registry.
+    if ($env:OS -ne 'Windows_NT') {
+        Write-Host '  -Install / -Uninstall (and install.ps1) are for Windows. On macOS: an alias in your shell, e.g. in ~/.zshrc' -ForegroundColor Yellow
+        Write-Host "    alias lazyspec='pwsh -NoProfile -File $PSCommandPath'" -ForegroundColor Green
+        Write-Host '  README.md, "Starting on macOS", has the rest.' -ForegroundColor DarkGray
+        Write-Host ''
+        exit 1
+    }
     if ($Uninstall) { Uninstall-All }
     else {
         # "Profile,Global" arrives as one string through lazyspec.exe / install.exe (powershell -File).
@@ -773,7 +783,7 @@ function Get-SchemaDirs {
     $dirs = @()
     if ($hasRoot) { $dirs += (Join-Path $osDir 'schemas') }
     if ($env:XDG_DATA_HOME) { $dirs += (Join-Path $env:XDG_DATA_HOME 'openspec\schemas') }
-    elseif ($env:LOCALAPPDATA) { $dirs += (Join-Path $env:LOCALAPPDATA 'openspec\schemas') }
+    elseif ($localData) { $dirs += (Join-Path $localData 'openspec\schemas') }
     # The CLI's built-in schemas: next to the openspec command (npm, nvm), or in lib/node_modules.
     $cmd = Get-Command openspec -CommandType Application, ExternalScript -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($cmd -and $cmd.Source) {
@@ -1717,58 +1727,200 @@ $script:exportFormat = 'Pdf'
 $script:imageTool = $false
 function Initialize-ImageTool {
     if ($script:imageTool) { return }
-    Add-Type -AssemblyName System.Drawing
-    $refs = @('System.Drawing')
-    if ($PSVersionTable.PSEdition -eq 'Core') { $refs = @('System.Drawing.Common', 'System.Drawing.Primitives', 'System.Runtime.InteropServices') }
-    Add-Type -ReferencedAssemblies $refs -TypeDefinition @'
+    # No GDI+ (Windows only on PowerShell 7): the pictures' headers, PNG decoded and encoded here.
+    $refs = @()
+    if ($PSVersionTable.PSEdition -eq 'Core') { $refs = @('System.IO.Compression') }
+    $code = @'
 using System;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
-using System.Runtime.InteropServices;
+using System.IO.Compression;
+using System.Text;
 public static class LazySpecImage {
-    // Cuts an image's margins off (transparent, white, or light grey without colour: a FigJam section's
-    // background and its frame), keeping a border; transparency becomes white.
-    public static void Trim(string path, int border) {
-        Bitmap src;
-        using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read)) using (Image img = Image.FromStream(fs)) { src = new Bitmap(img); }
-        using (src) {
-            int w = src.Width, h = src.Height;
-            BitmapData data = src.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-            int[] px = new int[w * h];
-            Marshal.Copy(data.Scan0, px, 0, px.Length);
-            src.UnlockBits(data);
-            int minX = w, minY = h, maxX = -1, maxY = -1;
-            for (int y = 0; y < h; y++) {
-                int row = y * w;
-                for (int x = 0; x < w; x++) {
-                    int c = px[row + x];
-                    int a = (c >> 24) & 255, r = (c >> 16) & 255, g = (c >> 8) & 255, b = c & 255;
-                    int hi = Math.Max(r, Math.Max(g, b)), lo = Math.Min(r, Math.Min(g, b));
-                    if (a < 16 || (lo > 215 && hi - lo < 12)) { continue; }
-                    if (x < minX) { minX = x; }
-                    if (x > maxX) { maxX = x; }
-                    if (y < minY) { minY = y; }
-                    if (y > maxY) { maxY = y; }
-                }
+    // A picture's width and height from its header: PNG, JPEG, GIF, BMP, an SVG's width and height.
+    public static int[] Size(string path) { return SizeOf(File.ReadAllBytes(path)); }
+    public static int[] SizeOf(byte[] b) {
+        if (b.Length >= 24 && b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47) { return new int[] { (int)U32(b, 16), (int)U32(b, 20) }; }
+        if (b.Length >= 10 && b[0] == 0x47 && b[1] == 0x49 && b[2] == 0x46) { return new int[] { b[6] | (b[7] << 8), b[8] | (b[9] << 8) }; }
+        if (b.Length >= 26 && b[0] == 0x42 && b[1] == 0x4D) { return new int[] { Math.Abs(BitConverter.ToInt32(b, 18)), Math.Abs(BitConverter.ToInt32(b, 22)) }; }
+        if (b.Length >= 4 && b[0] == 0xFF && b[1] == 0xD8) {
+            // The frame's header (SOF0..SOF15, not DHT / JPG / DAC): its height, then its width.
+            int i = 2;
+            while (i + 9 < b.Length) {
+                if (b[i] != 0xFF) { i++; continue; }
+                int m = b[i + 1];
+                if (m == 0xFF) { i++; continue; }
+                if (m == 0xD8 || m == 0x01 || (m >= 0xD0 && m <= 0xD7)) { i += 2; continue; }
+                if (m >= 0xC0 && m <= 0xCF && m != 0xC4 && m != 0xC8 && m != 0xCC) { return new int[] { (b[i + 7] << 8) | b[i + 8], (b[i + 5] << 8) | b[i + 6] }; }
+                i += 2 + ((b[i + 2] << 8) | b[i + 3]);
             }
-            if (maxX < 0) { return; }
-            int x0 = Math.Max(0, minX - border), y0 = Math.Max(0, minY - border);
-            int x1 = Math.Min(w - 1, maxX + border), y1 = Math.Min(h - 1, maxY + border);
-            using (Bitmap dst = new Bitmap(x1 - x0 + 1, y1 - y0 + 1, PixelFormat.Format24bppRgb)) {
-                using (Graphics gr = Graphics.FromImage(dst)) {
-                    gr.Clear(Color.White);
-                    gr.DrawImage(src, new Rectangle(0, 0, dst.Width, dst.Height), new Rectangle(x0, y0, dst.Width, dst.Height), GraphicsUnit.Pixel);
-                }
-                dst.Save(path, ImageFormat.Png);
+            throw new Exception("a JPEG without a frame header");
+        }
+        string head = Encoding.UTF8.GetString(b, 0, Math.Min(b.Length, 4096));
+        int at = head.IndexOf("<svg");
+        if (at >= 0) {
+            int end = head.IndexOf('>', at);
+            string tag = end > at ? head.Substring(at, end - at) : head.Substring(at);
+            double w = SvgLength(tag, "width"), h = SvgLength(tag, "height");
+            if (w > 0 && h > 0) { return new int[] { (int)Math.Round(w), (int)Math.Round(h) }; }
+            throw new Exception("an SVG without its width and height");
+        }
+        throw new Exception("not a PNG, JPEG, GIF, BMP or SVG picture");
+    }
+    static double SvgLength(string tag, string name) {
+        int at = tag.IndexOf(" " + name + "=\"");
+        if (at < 0) { return 0; }
+        at += name.Length + 3;
+        int end = tag.IndexOf('"', at);
+        string v = tag.Substring(at, end - at).Trim();
+        if (v.EndsWith("px")) { v = v.Substring(0, v.Length - 2); }
+        double d;
+        return double.TryParse(v, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out d) ? d : 0;
+    }
+    static long U32(byte[] b, int o) { return ((long)b[o] << 24) | ((long)b[o + 1] << 16) | ((long)b[o + 2] << 8) | b[o + 3]; }
+
+    // Cuts an image's margins off (transparent, white, or light grey without colour: a FigJam section's
+    // background and its frame), keeping a border; transparency becomes white. An 8-bit PNG, not interlaced.
+    public static void Trim(string path, int border) {
+        int w, h;
+        int[] px = DecodePng(File.ReadAllBytes(path), out w, out h);
+        int minX = w, minY = h, maxX = -1, maxY = -1;
+        for (int y = 0; y < h; y++) {
+            int row = y * w;
+            for (int x = 0; x < w; x++) {
+                int c = px[row + x];
+                int a = (c >> 24) & 255, r = (c >> 16) & 255, g = (c >> 8) & 255, bl = c & 255;
+                int hi = Math.Max(r, Math.Max(g, bl)), lo = Math.Min(r, Math.Min(g, bl));
+                if (a < 16 || (lo > 215 && hi - lo < 12)) { continue; }
+                if (x < minX) { minX = x; }
+                if (x > maxX) { maxX = x; }
+                if (y < minY) { minY = y; }
+                if (y > maxY) { maxY = y; }
             }
         }
+        if (maxX < 0) { return; }
+        int x0 = Math.Max(0, minX - border), y0 = Math.Max(0, minY - border);
+        int x1 = Math.Min(w - 1, maxX + border), y1 = Math.Min(h - 1, maxY + border);
+        File.WriteAllBytes(path, EncodePng(px, w, x0, y0, x1 - x0 + 1, y1 - y0 + 1));
     }
-    public static int[] Size(string path) {
-        using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read)) using (Image img = Image.FromStream(fs, false, false)) { return new int[] { img.Width, img.Height }; }
+
+    // PNG -> ARGB pixels (8-bit grey, RGB, palette, grey + alpha, RGBA; tRNS too).
+    static int[] DecodePng(byte[] b, out int w, out int h) {
+        if (b.Length < 33 || b[0] != 0x89 || b[1] != 0x50 || b[2] != 0x4E || b[3] != 0x47) { throw new Exception("not a PNG"); }
+        w = 0; h = 0;
+        int depth = 0, type = 0, interlace = 0;
+        byte[] palette = null, trns = null;
+        MemoryStream idat = new MemoryStream();
+        int i = 8;
+        while (i + 8 <= b.Length) {
+            int len = (int)U32(b, i);
+            string tag = Encoding.ASCII.GetString(b, i + 4, 4);
+            int d = i + 8;
+            if (tag == "IHDR") { w = (int)U32(b, d); h = (int)U32(b, d + 4); depth = b[d + 8]; type = b[d + 9]; interlace = b[d + 12]; }
+            else if (tag == "PLTE") { palette = new byte[len]; Array.Copy(b, d, palette, 0, len); }
+            else if (tag == "tRNS") { trns = new byte[len]; Array.Copy(b, d, trns, 0, len); }
+            else if (tag == "IDAT") { idat.Write(b, d, len); }
+            else if (tag == "IEND") { break; }
+            i = d + len + 4;
+        }
+        if (depth != 8) { throw new Exception("a " + depth + "-bit PNG (8-bit only)"); }
+        if (interlace != 0) { throw new Exception("an interlaced PNG"); }
+        int ch;
+        if (type == 0) { ch = 1; } else if (type == 2) { ch = 3; } else if (type == 3) { ch = 1; } else if (type == 4) { ch = 2; } else if (type == 6) { ch = 4; }
+        else { throw new Exception("PNG colour type " + type); }
+        if (type == 3 && palette == null) { throw new Exception("a palette PNG without its palette"); }
+        // zlib: its 2-byte header off, the rest is deflate.
+        byte[] z = idat.ToArray();
+        MemoryStream raw = new MemoryStream();
+        using (DeflateStream ds = new DeflateStream(new MemoryStream(z, 2, z.Length - 2), CompressionMode.Decompress)) {
+            byte[] buf = new byte[65536];
+            int n;
+            while ((n = ds.Read(buf, 0, buf.Length)) > 0) { raw.Write(buf, 0, n); }
+        }
+        byte[] data = raw.ToArray();
+        int stride = w * ch;
+        if (data.Length < (stride + 1) * h) { throw new Exception("a PNG cut short"); }
+        byte[] prev = new byte[stride], cur = new byte[stride];
+        int[] px = new int[w * h];
+        for (int y = 0; y < h; y++) {
+            int f = data[y * (stride + 1)];
+            Array.Copy(data, y * (stride + 1) + 1, cur, 0, stride);
+            for (int x = 0; x < stride; x++) {
+                int a = x >= ch ? cur[x - ch] : 0, up = prev[x], c = x >= ch ? prev[x - ch] : 0;
+                int v = cur[x];
+                if (f == 1) { v += a; }
+                else if (f == 2) { v += up; }
+                else if (f == 3) { v += (a + up) >> 1; }
+                else if (f == 4) {
+                    int p = a + up - c, pa = Math.Abs(p - a), pb = Math.Abs(p - up), pc = Math.Abs(p - c);
+                    v += (pa <= pb && pa <= pc) ? a : (pb <= pc ? up : c);
+                }
+                else if (f != 0) { throw new Exception("PNG filter " + f); }
+                cur[x] = (byte)v;
+            }
+            for (int x = 0; x < w; x++) {
+                int r, g, bl, al = 255, o = x * ch;
+                if (type == 0) { r = g = bl = cur[o]; if (trns != null && trns.Length >= 2 && cur[o] == trns[1]) { al = 0; } }
+                else if (type == 2) { r = cur[o]; g = cur[o + 1]; bl = cur[o + 2]; if (trns != null && trns.Length >= 6 && r == trns[1] && g == trns[3] && bl == trns[5]) { al = 0; } }
+                else if (type == 3) { int k = cur[o]; r = palette[k * 3]; g = palette[k * 3 + 1]; bl = palette[k * 3 + 2]; if (trns != null && k < trns.Length) { al = trns[k]; } }
+                else if (type == 4) { r = g = bl = cur[o]; al = cur[o + 1]; }
+                else { r = cur[o]; g = cur[o + 1]; bl = cur[o + 2]; al = cur[o + 3]; }
+                px[y * w + x] = (al << 24) | (r << 16) | (g << 8) | bl;
+            }
+            byte[] t = prev; prev = cur; cur = t;
+        }
+        return px;
+    }
+
+    // A part of ARGB pixels -> an RGB PNG (on white), filter 0, zlib (header + Adler-32).
+    static byte[] EncodePng(int[] px, int srcW, int x0, int y0, int w, int h) {
+        byte[] rows = new byte[(w * 3 + 1) * h];
+        int o = 0;
+        for (int y = 0; y < h; y++) {
+            rows[o++] = 0;
+            for (int x = 0; x < w; x++) {
+                int c = px[(y0 + y) * srcW + x0 + x];
+                int a = (c >> 24) & 255;
+                rows[o++] = OnWhite((c >> 16) & 255, a);
+                rows[o++] = OnWhite((c >> 8) & 255, a);
+                rows[o++] = OnWhite(c & 255, a);
+            }
+        }
+        MemoryStream z = new MemoryStream();
+        z.WriteByte(0x78); z.WriteByte(0x9C);
+        using (DeflateStream ds = new DeflateStream(z, CompressionMode.Compress, true)) { ds.Write(rows, 0, rows.Length); }
+        uint s1 = 1, s2 = 0;
+        foreach (byte v in rows) { s1 = (s1 + v) % 65521; s2 = (s2 + s1) % 65521; }
+        WriteU32(z, (s2 << 16) | s1);
+        MemoryStream png = new MemoryStream();
+        png.Write(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A }, 0, 8);
+        MemoryStream ihdr = new MemoryStream();
+        WriteU32(ihdr, (uint)w); WriteU32(ihdr, (uint)h);
+        ihdr.Write(new byte[] { 8, 2, 0, 0, 0 }, 0, 5);
+        Chunk(png, "IHDR", ihdr.ToArray());
+        Chunk(png, "IDAT", z.ToArray());
+        Chunk(png, "IEND", new byte[0]);
+        return png.ToArray();
+    }
+    static byte OnWhite(int v, int a) { return (byte)((v * a + 255 * (255 - a) + 127) / 255); }
+    static void WriteU32(Stream s, uint v) { s.WriteByte((byte)(v >> 24)); s.WriteByte((byte)(v >> 16)); s.WriteByte((byte)(v >> 8)); s.WriteByte((byte)v); }
+    static uint[] crcTable;
+    static void Chunk(Stream s, string tag, byte[] data) {
+        if (crcTable == null) {
+            uint[] t = new uint[256];
+            for (uint n = 0; n < 256; n++) { uint c = n; for (int k = 0; k < 8; k++) { c = (c & 1) != 0 ? 0xEDB88320u ^ (c >> 1) : c >> 1; } t[n] = c; }
+            crcTable = t;
+        }
+        byte[] tb = Encoding.ASCII.GetBytes(tag);
+        WriteU32(s, (uint)data.Length);
+        s.Write(tb, 0, 4); s.Write(data, 0, data.Length);
+        uint crc = 0xFFFFFFFFu;
+        foreach (byte v in tb) { crc = crcTable[(crc ^ v) & 0xFF] ^ (crc >> 8); }
+        foreach (byte v in data) { crc = crcTable[(crc ^ v) & 0xFF] ^ (crc >> 8); }
+        WriteU32(s, crc ^ 0xFFFFFFFFu);
     }
 }
 '@
+    if ($refs.Count) { Add-Type -ReferencedAssemblies $refs -TypeDefinition $code } else { Add-Type -TypeDefinition $code }
     $script:imageTool = $true
 }
 # A Figma link's file and node (".../board/<file>/<name>?node-id=35-2839").
@@ -1865,8 +2017,8 @@ function Get-FigmaScale([string]$Path) {
 }
 # A diagram in the document, the page's width and 195 mm high at most (room for its chapter's heading above it
 # on the same page): Word gets the file (and embeds it), the others the image itself.
-# $Density: the picture's pixels per pixel of the page (the models' diagram: drawn at 3x, shown at 1.5x
-# its design size: sharp, and its text about as large as the document's).
+# $Density: the picture's pixels per pixel of the page (the models' diagram: an SVG at 1.5x its design size,
+# its text about as large as the document's; for Word a PNG of it at 2x).
 function Get-DiagramHtml([string]$Path, [string]$Caption, [double]$Density = 1) {
     if (-not $Path) { return '' }
     if ($script:figmaFiles.ContainsKey($Path)) { $Density = 1.0 / (Get-FigmaScale $Path) }
@@ -1877,7 +2029,7 @@ function Get-DiagramHtml([string]$Path, [string]$Caption, [double]$Density = 1) 
         $k = [Math]::Min(1.0 / $Density, [Math]::Min(640.0 / $size[0], 737.0 / $size[1]))
         $attr = " width=`"$([int]($size[0] * $k))`" height=`"$([int]($size[1] * $k))`""
     } catch { }
-    if ($script:exportFormat -eq 'Word') { $src = ([Uri]$Path).AbsoluteUri }
+    if ($script:exportFormat -eq 'Word') { $src = Get-FileUri $Path }
     else {
         $mime = @{ '.png' = 'image/png'; '.jpg' = 'image/jpeg'; '.jpeg' = 'image/jpeg'; '.gif' = 'image/gif'; '.svg' = 'image/svg+xml'; '.webp' = 'image/webp' }[[IO.Path]::GetExtension($Path).ToLower()]
         if (-not $mime) { $mime = 'image/png' }
@@ -2088,9 +2240,7 @@ function Get-TranslationCacheKey([string]$Text, [bool]$Html) {
     try { return [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes("$([int]$Html)|$Text"))).Replace('-', '') } finally { $sha.Dispose() }
 }
 function Open-TranslationCache([string]$From, [string]$To) {
-    $base = $env:LOCALAPPDATA
-    if (-not $base) { $base = [IO.Path]::GetTempPath() }
-    $dir = Join-Path $base 'LazySpec\translations'
+    $dir = Join-Path $(if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { $localData }) 'LazySpec\translations'
     [void](New-Item -ItemType Directory -Force -Path $dir)
     $script:translationCachePath = Join-Path $dir "$From-$To.json"
     $script:translationCache = @{}
@@ -2307,20 +2457,34 @@ function Add-ExportLanguage([string]$Lang) {
 $script:modelTool = $false
 function Initialize-ModelDiagramTool {
     if ($script:modelTool) { return }
-    Add-Type -AssemblyName System.Drawing
-    $refs = @('System.Drawing')
-    if ($PSVersionTable.PSEdition -eq 'Core') { $refs = @('System.Drawing.Common', 'System.Drawing.Primitives', 'System.Collections') }
-    Add-Type -ReferencedAssemblies $refs -TypeDefinition @'
+    Add-Type -TypeDefinition @'
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
+using System.Globalization;
+using System.IO;
+using System.Text;
 public static class LazySpecModelDiagram {
-    class Node { public string Name, Kind, Status; public List<string[]> Lines = new List<string[]>(); public RectangleF Box; }
+    class Box { public double X, Y, Width, Height; public double Right { get { return X + Width; } } public double CX { get { return X + Width / 2; } } public double CY { get { return Y + Height / 2; } } }
+    class Node { public string Name, Kind, Status; public List<string[]> Lines = new List<string[]>(); public Box Box = new Box(); }
     class Edge { public string From, To, Card, Mark; }
+    const string Sans = "'Segoe UI', -apple-system, Helvetica, Arial, sans-serif", Mono = "Consolas, Menlo, monospace";
+    // Arial / Helvetica Bold's widths (1/1000 em) of ' ' .. '~': the bold texts' widths, 5 % more for Segoe UI.
+    static readonly int[] Bold = {
+        278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556,
+        556, 556, 333, 333, 584, 584, 584, 611, 975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778,
+        667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556, 333, 556, 611, 556, 611, 556, 333, 611,
+        611, 278, 278, 556, 278, 889, 611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584 };
+    // A text's width as drawn (GDI+ added a sixth of the size on either side; the boxes keep that room).
+    static double BoldWidth(string t, double size) {
+        double u = 0;
+        foreach (char c in t) { u += c >= ' ' && c <= '~' ? Bold[c - ' '] : 611; }
+        return u / 1000 * size * 1.05 + size / 3;
+    }
+    static double MonoWidth(string t, double size) { return t.Length * 0.6 * size + size / 3; }
+    static string N(double v) { return v.ToString("0.##", CultureInfo.InvariantCulture); }
+    static string X(string t) { return t.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;"); }
     // Lines: "M|name|model|new" (or lookup / modified), "F|mark|text" (a field or value of the last M),
-    // "R|from|to|1:N|mark". Draws a PNG at 2x.
+    // "R|from|to|1:N|mark". Writes an SVG (its units the design's, shown at 1.5x).
     public static void Draw(string path, string[] lines) {
         var nodes = new List<Node>(); var byName = new Dictionary<string, Node>(); var edges = new List<Edge>();
         Node cur = null;
@@ -2334,38 +2498,32 @@ public static class LazySpecModelDiagram {
         foreach (Edge e in edges) foreach (string n in new string[] { e.From, e.To })
             if (!byName.ContainsKey(n)) { Node x = new Node { Name = n, Kind = "model", Status = "existing" }; nodes.Add(x); byName[n] = x; }
         if (nodes.Count == 0) { return; }
-        float s = 3f;
-        Font fHead = new Font("Segoe UI", 10f * s, FontStyle.Bold, GraphicsUnit.Pixel);
-        Font fText = new Font("Consolas", 8.5f * s, FontStyle.Regular, GraphicsUnit.Pixel);
-        Font fCard = new Font("Segoe UI", 8f * s, FontStyle.Bold, GraphicsUnit.Pixel);
-        Font fStrike = new Font("Consolas", 8.5f * s, FontStyle.Strikeout, GraphicsUnit.Pixel);
-        float pad = 6 * s, lineH = 13 * s, headH = 20 * s, gapX = 46 * s, gapY = 40 * s;
-        using (Bitmap probe = new Bitmap(10, 10)) using (Graphics g = Graphics.FromImage(probe)) {
-            foreach (Node n in nodes) {
-                float w = g.MeasureString(n.Name, fHead).Width + 2 * pad;
-                foreach (string[] ln in n.Lines) w = Math.Max(w, g.MeasureString(ln[0] + " " + ln[1], fText).Width + 2 * pad);
-                w = Math.Max(w, 110 * s);
-                float h = headH + n.Lines.Count * lineH + pad;
-                if (n.Lines.Count == 0) h = headH;
-                n.Box = new RectangleF(0, 0, w, h);
-            }
+        double fHead = 10, fText = 8.5, fCard = 8;
+        double pad = 6, lineH = 13, headH = 20, gapX = 46, gapY = 40;
+        foreach (Node n in nodes) {
+            double w = BoldWidth(n.Name, fHead) + 2 * pad;
+            foreach (string[] ln in n.Lines) w = Math.Max(w, MonoWidth(ln[0] + " " + ln[1], fText) + 2 * pad);
+            w = Math.Max(w, 110);
+            double h = headH + n.Lines.Count * lineH + pad;
+            if (n.Lines.Count == 0) h = headH;
+            n.Box.Width = w; n.Box.Height = h;
         }
         // The order: the most connected first, then its neighbours (related boxes next to each other).
         var degree = new Dictionary<string, int>();
         foreach (Node n in nodes) degree[n.Name] = 0;
         foreach (Edge e in edges) { degree[e.From]++; degree[e.To]++; }
-        var order = new List<Node>(); var seen = new HashSet<string>();
+        var order = new List<Node>(); var seen = new Dictionary<string, bool>();
         var rest = new List<Node>(nodes);
         rest.Sort((a, b) => degree[b.Name].CompareTo(degree[a.Name]));
         foreach (Node start in rest) {
-            if (seen.Contains(start.Name)) continue;
-            var queue = new Queue<Node>(); queue.Enqueue(start); seen.Add(start.Name);
+            if (seen.ContainsKey(start.Name)) continue;
+            var queue = new Queue<Node>(); queue.Enqueue(start); seen[start.Name] = true;
             while (queue.Count > 0) {
                 Node n = queue.Dequeue(); order.Add(n);
                 var next = new List<Node>();
                 foreach (Edge e in edges) {
                     string o = e.From == n.Name ? e.To : (e.To == n.Name ? e.From : null);
-                    if (o != null && !seen.Contains(o)) { seen.Add(o); next.Add(byName[o]); }
+                    if (o != null && !seen.ContainsKey(o)) { seen[o] = true; next.Add(byName[o]); }
                 }
                 next.Sort((a, b) => degree[b.Name].CompareTo(degree[a.Name]));
                 foreach (Node x in next) queue.Enqueue(x);
@@ -2421,64 +2579,61 @@ public static class LazySpecModelDiagram {
         var colOf = new Dictionary<string, int>(); var rowOf = new Dictionary<string, int>();
         for (int i = 0; i < slots; i++) if (cell[i] != null) { order.Add(cell[i]); colOf[cell[i].Name] = usedCols.IndexOf(i % cols); rowOf[cell[i].Name] = usedRows.IndexOf(i / cols); }
         cols = usedCols.Count; rows = usedRows.Count;
-        float[] colW = new float[cols]; float[] rowH = new float[rows];
+        double[] colW = new double[cols]; double[] rowH = new double[rows];
         foreach (Node n in order) { colW[colOf[n.Name]] = Math.Max(colW[colOf[n.Name]], n.Box.Width); rowH[rowOf[n.Name]] = Math.Max(rowH[rowOf[n.Name]], n.Box.Height); }
-        float margin = 20 * s;
+        double margin = 20;
         foreach (Node n in order) {
-            float x = margin, y = margin;
+            double x = margin, y = margin;
             for (int c = 0; c < colOf[n.Name]; c++) x += colW[c] + gapX;
             for (int r = 0; r < rowOf[n.Name]; r++) y += rowH[r] + gapY;
-            n.Box = new RectangleF(x + (colW[colOf[n.Name]] - n.Box.Width) / 2, y, n.Box.Width, n.Box.Height);
+            n.Box.X = x + (colW[colOf[n.Name]] - n.Box.Width) / 2; n.Box.Y = y;
         }
-        float W = margin * 2 - gapX, H = margin * 2 - gapY;
-        foreach (float c in colW) W += c + gapX;
-        foreach (float r in rowH) H += r + gapY;
-        using (Bitmap bmp = new Bitmap((int)Math.Ceiling(W), (int)Math.Ceiling(H)))
-        using (Graphics g = Graphics.FromImage(bmp)) {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-            g.Clear(Color.White);
-            // The relations first: the boxes over their ends.
-            foreach (Edge e in edges) {
-                RectangleF a = byName[e.From].Box, b = byName[e.To].Box;
-                if (e.From == e.To) continue;
-                PointF pa = BoxEdge(a, Center(b)), pb = BoxEdge(b, Center(a));
-                Color c = e.Mark == "+" ? Color.FromArgb(46, 125, 50) : (e.Mark == "-" ? Color.FromArgb(198, 40, 40) : Color.FromArgb(120, 130, 140));
-                using (Pen pen = new Pen(c, 1.4f * s)) {
-                    if (e.Mark == "-") pen.DashStyle = DashStyle.Dash;
-                    if (e.Mark == "~") pen.DashStyle = DashStyle.Dot;
-                    g.DrawLine(pen, pa, pb);
-                }
-                string[] card = e.Card.Split(':');
-                if (card.Length == 2) {
-                    using (Brush br = new SolidBrush(c)) {
-                        DrawCard(g, card[0], pa, pb, fCard, br, s);
-                        DrawCard(g, card[1], pb, pa, fCard, br, s);
-                    }
-                }
+        double W = margin * 2 - gapX, H = margin * 2 - gapY;
+        foreach (double c in colW) W += c + gapX;
+        foreach (double r in rowH) H += r + gapY;
+        W = Math.Ceiling(W); H = Math.Ceiling(H);
+        var sb = new StringBuilder();
+        sb.Append("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"" + N(W * 1.5) + "\" height=\"" + N(H * 1.5) + "\" viewBox=\"0 0 " + N(W) + " " + N(H) + "\" xml:space=\"preserve\">\n");
+        sb.Append("<rect width=\"100%\" height=\"100%\" fill=\"#FFFFFF\"/>\n");
+        // The relations first: the boxes over their ends.
+        foreach (Edge e in edges) {
+            if (e.From == e.To) continue;
+            Box a = byName[e.From].Box, b = byName[e.To].Box;
+            double[] pa = BoxEdge(a, b.CX, b.CY), pb = BoxEdge(b, a.CX, a.CY);
+            string c = e.Mark == "+" ? "#2E7D32" : (e.Mark == "-" ? "#C62828" : "#78828C");
+            string dash = e.Mark == "-" ? " stroke-dasharray=\"4.2 1.4\"" : (e.Mark == "~" ? " stroke-dasharray=\"1.4 1.4\"" : "");
+            sb.Append("<line x1=\"" + N(pa[0]) + "\" y1=\"" + N(pa[1]) + "\" x2=\"" + N(pb[0]) + "\" y2=\"" + N(pb[1]) + "\" stroke=\"" + c + "\" stroke-width=\"1.4\"" + dash + "/>\n");
+            string[] card = e.Card.Split(':');
+            if (card.Length == 2) {
+                Card(sb, card[0], pa, pb, fCard, c);
+                Card(sb, card[1], pb, pa, fCard, c);
             }
-            foreach (Node n in nodes) {
-                Color border, head;
-                if (n.Kind == "lookup") { border = Color.FromArgb(91, 107, 127); head = n.Status == "new" ? Color.FromArgb(230, 244, 234) : Color.FromArgb(238, 242, 247); }
-                else if (n.Status == "new") { border = Color.FromArgb(46, 125, 50); head = Color.FromArgb(230, 244, 234); }
-                else if (n.Status == "modified") { border = Color.FromArgb(183, 121, 31); head = Color.FromArgb(255, 244, 214); }
-                else { border = Color.FromArgb(150, 158, 168); head = Color.FromArgb(245, 246, 248); }
-                RectangleF r = n.Box;
-                using (Brush white = new SolidBrush(Color.White)) g.FillRectangle(white, r);
-                using (Brush hb = new SolidBrush(head)) g.FillRectangle(hb, r.X, r.Y, r.Width, headH);
-                using (Pen bp = new Pen(border, 1.5f * s)) { if (n.Kind == "lookup") bp.DashStyle = DashStyle.Dash; g.DrawRectangle(bp, r.X, r.Y, r.Width, r.Height); if (n.Lines.Count > 0) g.DrawLine(bp, r.X, r.Y + headH, r.Right, r.Y + headH); }
-                using (Brush tb = new SolidBrush(Color.FromArgb(31, 41, 51))) g.DrawString(n.Name, fHead, tb, r.X + pad, r.Y + 3 * s);
-                float y = r.Y + headH + 2 * s;
-                foreach (string[] ln in n.Lines) {
-                    Color tc = ln[0] == "+" ? Color.FromArgb(46, 125, 50) : (ln[0] == "~" ? Color.FromArgb(160, 100, 10) : (ln[0] == "-" ? Color.FromArgb(198, 40, 40) : Color.FromArgb(62, 76, 89)));
-                    using (Brush b2 = new SolidBrush(tc)) g.DrawString((ln[0] == "" ? "  " : ln[0] + " ") + ln[1], ln[0] == "-" ? fStrike : fText, b2, r.X + pad, y);
-                    y += lineH;
-                }
-            }
-            bmp.Save(path, ImageFormat.Png);
         }
+        foreach (Node n in nodes) {
+            string border, head;
+            if (n.Kind == "lookup") { border = "#5B6B7F"; head = n.Status == "new" ? "#E6F4EA" : "#EEF2F7"; }
+            else if (n.Status == "new") { border = "#2E7D32"; head = "#E6F4EA"; }
+            else if (n.Status == "modified") { border = "#B7791F"; head = "#FFF4D6"; }
+            else { border = "#969EA8"; head = "#F5F6F8"; }
+            Box r = n.Box;
+            string dash = n.Kind == "lookup" ? " stroke-dasharray=\"4.5 1.5\"" : "";
+            sb.Append("<rect x=\"" + N(r.X) + "\" y=\"" + N(r.Y) + "\" width=\"" + N(r.Width) + "\" height=\"" + N(r.Height) + "\" fill=\"#FFFFFF\"/>\n");
+            sb.Append("<rect x=\"" + N(r.X) + "\" y=\"" + N(r.Y) + "\" width=\"" + N(r.Width) + "\" height=\"" + N(headH) + "\" fill=\"" + head + "\"/>\n");
+            sb.Append("<rect x=\"" + N(r.X) + "\" y=\"" + N(r.Y) + "\" width=\"" + N(r.Width) + "\" height=\"" + N(r.Height) + "\" fill=\"none\" stroke=\"" + border + "\" stroke-width=\"1.5\"" + dash + "/>\n");
+            if (n.Lines.Count > 0) sb.Append("<line x1=\"" + N(r.X) + "\" y1=\"" + N(r.Y + headH) + "\" x2=\"" + N(r.Right) + "\" y2=\"" + N(r.Y + headH) + "\" stroke=\"" + border + "\" stroke-width=\"1.5\"" + dash + "/>\n");
+            // The texts on their baselines (GDI+ drew them from their top).
+            sb.Append("<text x=\"" + N(r.X + pad + fHead / 6) + "\" y=\"" + N(r.Y + 3 + fHead * 1.08) + "\" font-family=\"" + Sans + "\" font-size=\"" + N(fHead) + "\" font-weight=\"bold\" fill=\"#1F2933\">" + X(n.Name) + "</text>\n");
+            double y = r.Y + headH + 2;
+            foreach (string[] ln in n.Lines) {
+                string tc = ln[0] == "+" ? "#2E7D32" : (ln[0] == "~" ? "#A0640A" : (ln[0] == "-" ? "#C62828" : "#3E4C59"));
+                string strike = ln[0] == "-" ? " text-decoration=\"line-through\"" : "";
+                sb.Append("<text x=\"" + N(r.X + pad + fText / 6) + "\" y=\"" + N(y + fText * 0.95) + "\" font-family=\"" + Mono + "\" font-size=\"" + N(fText) + "\" fill=\"" + tc + "\"" + strike + ">" + X((ln[0] == "" ? "  " : ln[0] + " ") + ln[1]) + "</text>\n");
+                y += lineH;
+            }
+        }
+        sb.Append("</svg>\n");
+        File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
     }
-    static PointF Center(RectangleF r) { return new PointF(r.X + r.Width / 2, r.Y + r.Height / 2); }
     // Does the line between two cells' centres pass through another cell (its middle 80 %)?
     static bool Crosses(double ax, double ay, double bx, double by, double cx, double cy) {
         double x0 = cx - 0.4, x1 = cx + 0.4, y0 = cy - 0.4, y1 = cy + 0.4, t0 = 0, t1 = 1, dx = bx - ax, dy = by - ay;
@@ -2490,24 +2645,24 @@ public static class LazySpecModelDiagram {
         }
         return true;
     }
-    // Where the line from the box's centre towards p leaves the box.
-    static PointF BoxEdge(RectangleF r, PointF p) {
-        PointF c = Center(r);
-        float dx = p.X - c.X, dy = p.Y - c.Y;
-        if (dx == 0 && dy == 0) return c;
-        float tx = dx == 0 ? float.MaxValue : (r.Width / 2) / Math.Abs(dx);
-        float ty = dy == 0 ? float.MaxValue : (r.Height / 2) / Math.Abs(dy);
-        float t = Math.Min(tx, ty);
-        return new PointF(c.X + dx * t, c.Y + dy * t);
+    // Where the line from the box's centre towards (px, py) leaves the box.
+    static double[] BoxEdge(Box r, double px, double py) {
+        double dx = px - r.CX, dy = py - r.CY;
+        if (dx == 0 && dy == 0) return new double[] { r.CX, r.CY };
+        double tx = dx == 0 ? double.MaxValue : (r.Width / 2) / Math.Abs(dx);
+        double ty = dy == 0 ? double.MaxValue : (r.Height / 2) / Math.Abs(dy);
+        double t = Math.Min(tx, ty);
+        return new double[] { r.CX + dx * t, r.CY + dy * t };
     }
-    static void DrawCard(Graphics g, string text, PointF at, PointF towards, Font f, Brush b, float s) {
-        float dx = towards.X - at.X, dy = towards.Y - at.Y, len = (float)Math.Sqrt(dx * dx + dy * dy);
+    // A cardinality next to a line's end, on white.
+    static void Card(StringBuilder sb, string text, double[] at, double[] towards, double f, string color) {
+        double dx = towards[0] - at[0], dy = towards[1] - at[1], len = Math.Sqrt(dx * dx + dy * dy);
         if (len < 1) return;
-        float ux = dx / len, uy = dy / len;
-        SizeF sz = g.MeasureString(text, f);
-        float x = at.X + ux * 12 * s - uy * 8 * s - sz.Width / 2, y = at.Y + uy * 12 * s + ux * 8 * s - sz.Height / 2;
-        using (Brush bg = new SolidBrush(Color.White)) g.FillRectangle(bg, x, y, sz.Width, sz.Height);
-        g.DrawString(text, f, b, x, y);
+        double ux = dx / len, uy = dy / len;
+        double w = BoldWidth(text, f), h = f * 1.33;
+        double x = at[0] + ux * 12 - uy * 8 - w / 2, y = at[1] + uy * 12 + ux * 8 - h / 2;
+        sb.Append("<rect x=\"" + N(x) + "\" y=\"" + N(y) + "\" width=\"" + N(w) + "\" height=\"" + N(h) + "\" fill=\"#FFFFFF\"/>\n");
+        sb.Append("<text x=\"" + N(x + f / 6) + "\" y=\"" + N(y + f * 1.08) + "\" font-family=\"" + Sans + "\" font-size=\"" + N(f) + "\" font-weight=\"bold\" fill=\"" + color + "\">" + X(text) + "</text>\n");
     }
 }
 '@
@@ -2605,14 +2760,14 @@ function Get-ModelDiagramData([string]$Text) {
     if (-not @($out | Where-Object { $_.StartsWith('M|') }).Count) { return @() }
     return , $out.ToArray()
 }
-# The diagram of a models.md as a picture file (for the export); '' when there is nothing to draw.
+# The diagram of a models.md as an SVG file (for the export); '' when there is nothing to draw.
 $script:exportTempFiles = New-Object Collections.ArrayList
 function New-ModelDiagram([string]$Text) {
     $data = Get-ModelDiagramData $Text
     if (-not @($data).Count) { return '' }
     try {
         Initialize-ModelDiagramTool
-        $f = Join-Path ([IO.Path]::GetTempPath()) ('lazyspec-models-' + [guid]::NewGuid().ToString('N') + '.png')
+        $f = Join-Path ([IO.Path]::GetTempPath()) ('lazyspec-models-' + [guid]::NewGuid().ToString('N') + '.svg')
         [LazySpecModelDiagram]::Draw($f, [string[]]$data)
         if (-not (Test-Path -LiteralPath $f)) { return '' }
         [void]$script:exportTempFiles.Add($f)
@@ -2746,9 +2901,16 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
                                 $docHtml = ConvertTo-HtmlBody (Remove-DocTitle $docText) $shift
                                 # models.md: the models' diagram, after the overview (else at the top).
                                 if ((Split-Path $f -Leaf) -ieq 'models.md') {
-                                    $png = New-ModelDiagram $docText
-                                    if ($png) {
-                                        $dia = Get-DiagramHtml $png (Get-ExportText 'models') 2
+                                    $pic = New-ModelDiagram $docText
+                                    $density = 1
+                                    # Word: a PNG of it (2x; old Word, LibreOffice and pandoc may show no SVG).
+                                    if ($pic -and $script:exportFormat -eq 'Word') {
+                                        $png = [IO.Path]::ChangeExtension($pic, '.png')
+                                        try { ConvertTo-PngFromSvg $pic $png; [void]$script:exportTempFiles.Add($png); $pic = $png; $density = 2 }
+                                        catch { Write-Host "  ! the models' diagram left out: $($_.Exception.Message)"; $pic = '' }
+                                    }
+                                    if ($pic) {
+                                        $dia = Get-DiagramHtml $pic (Get-ExportText 'models') $density
                                         $at = $docHtml.IndexOf('</table>')
                                         if ($at -ge 0) { $docHtml = $docHtml.Insert($at + 8, "`n$dia") } else { $docHtml = $dia + $docHtml }
                                     }
@@ -2810,7 +2972,7 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
         $themeCss = Get-ThemeCss $script:docTheme $meta ($Format -eq 'Pdf')
         $cl = $script:docTheme.Cover
         if ($cl.Logo) {
-            $src = ([Uri]$cl.Logo).AbsoluteUri
+            $src = Get-FileUri $cl.Logo
             if ($Format -ne 'Word') { $src = "data:image/$([IO.Path]::GetExtension($cl.Logo).TrimStart('.').ToLower().Replace('jpg', 'jpeg'));base64," + [Convert]::ToBase64String([IO.File]::ReadAllBytes($cl.Logo)) }
             $coverLogo = "<div class=`"cover-logo`"><img src=`"$src`" style=`"height: $(Format-Num $cl.LogoHeight)mm`" data-height-mm=`"$(Format-Num $cl.LogoHeight)`" alt=`"`"></div>`n"
         }
@@ -2972,13 +3134,44 @@ $subtitleHtml
     return [pscustomobject]@{ Html = $h.ToString(); Specs = $specs.Count; Changes = $changes.Count; Reqs = $reqs; Item = $one; Chapters = $chapters.Count; Scope = $scope; Meta = $meta }
 }
 
+# A file's path as a file:// URI ([Uri] alone takes a Unix path for a relative one).
+function Get-FileUri([string]$Path) { return (New-Object Uri $Path, ([UriKind]::Absolute)).AbsoluteUri }
+# Edge or Chrome: Windows' install folders, macOS's applications (Chromium too).
 function Find-Browser {
-    $candidates = @(
-        (Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'), (Join-Path $env:ProgramFiles 'Microsoft\Edge\Application\msedge.exe'),
-        (Join-Path $env:ProgramFiles 'Google\Chrome\Application\chrome.exe'), (Join-Path ${env:ProgramFiles(x86)} 'Google\Chrome\Application\chrome.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Google\Chrome\Application\chrome.exe'))
+    $candidates = @()
+    foreach ($d in ${env:ProgramFiles(x86)}, $env:ProgramFiles) { if ($d) { $candidates += (Join-Path $d 'Microsoft\Edge\Application\msedge.exe') } }
+    foreach ($d in $env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:LOCALAPPDATA) { if ($d) { $candidates += (Join-Path $d 'Google\Chrome\Application\chrome.exe') } }
+    foreach ($d in '/Applications', "$HOME/Applications") {
+        foreach ($app in 'Microsoft Edge', 'Google Chrome', 'Chromium') { $candidates += "$d/$app.app/Contents/MacOS/$app" }
+    }
     foreach ($c in $candidates) { if ($c -and (Test-Path -LiteralPath $c)) { return $c } }
     return $null
+}
+# The browser, headless: its window hidden on Windows (-WindowStyle is Windows only); elsewhere its messages
+# into files in its profile's folder, not over the terminal.
+function Start-Browser([string]$Browser, [string]$ArgLine, [string]$ProfileDir) {
+    if ($env:OS -eq 'Windows_NT') { return (Start-Process -FilePath $Browser -ArgumentList $ArgLine -WindowStyle Hidden -PassThru) }
+    [void](New-Item -ItemType Directory -Force -Path $ProfileDir)
+    return (Start-Process -FilePath $Browser -ArgumentList $ArgLine -PassThru -RedirectStandardOutput (Join-Path $ProfileDir 'out.log') -RedirectStandardError (Join-Path $ProfileDir 'err.log'))
+}
+# SVG -> PNG at 2x: the browser's screenshot of it, its window the SVG's size, with its own empty profile.
+function ConvertTo-PngFromSvg([string]$Svg, [string]$Png) {
+    $browser = Find-Browser
+    if (-not $browser) { throw 'a PNG of it needs Microsoft Edge or Google Chrome (neither was found)' }
+    Initialize-ImageTool
+    $size = [LazySpecImage]::Size($Svg)
+    $profileDir = Join-Path ([IO.Path]::GetTempPath()) ('lazyspec-browser-' + [guid]::NewGuid().ToString('N'))
+    if (Test-Path -LiteralPath $Png) { Remove-Item -LiteralPath $Png -Force }
+    $argLine = "--headless=new --disable-gpu --no-first-run --no-default-browser-check --disable-extensions --hide-scrollbars --user-data-dir=`"$profileDir`" " +
+        "--force-device-scale-factor=2 --window-size=$($size[0]),$($size[1]) --screenshot=`"$Png`" `"$(Get-FileUri $Svg)`""
+    $p = Start-Browser $browser $argLine $profileDir
+    try {
+        $watch = [Diagnostics.Stopwatch]::StartNew()
+        while (-not $p.HasExited -and $watch.Elapsed.TotalSeconds -lt 60) { Start-Sleep -Milliseconds 200 }
+        Stop-ProcessTree $p
+        if (-not (Wait-File $Png 2)) { throw "$(Split-Path $browser -Leaf) wrote no PNG" }
+    }
+    finally { Remove-Item -LiteralPath $profileDir -Recurse -Force -ErrorAction SilentlyContinue }
 }
 function Wait-File([string]$Path, [int]$Seconds) {
     $watch = [Diagnostics.Stopwatch]::StartNew()
@@ -3061,8 +3254,8 @@ function Invoke-PdfPrint([string]$HtmlPath, [string]$Target) {
     Write-Host "  $($g.caret) printing with $(Split-Path $browser -Leaf)"
     $profileDir = Join-Path (Split-Path $HtmlPath -Parent) 'browser'
     $argLine = "--headless=new --disable-gpu --no-first-run --no-default-browser-check --disable-extensions --user-data-dir=`"$profileDir`" " +
-        "--no-pdf-header-footer --print-to-pdf-no-header --print-to-pdf=`"$Target`" `"$(([Uri]$HtmlPath).AbsoluteUri)`""
-    $p = Start-Process -FilePath $browser -ArgumentList $argLine -WindowStyle Hidden -PassThru
+        "--no-pdf-header-footer --print-to-pdf-no-header --print-to-pdf=`"$Target`" `"$(Get-FileUri $HtmlPath)`""
+    $p = Start-Browser $browser $argLine $profileDir
     # Headless Edge sometimes stays running after it wrote the PDF: done when the file stops growing.
     $watch = [Diagnostics.Stopwatch]::StartNew()
     $size = -1; $stable = 0
@@ -3176,6 +3369,48 @@ public static class LazySpecFont {
         if (style.ToLower().Contains("italic") || style.ToLower().Contains("oblique")) { italic = 1; }
         return new string[] { names[1] ?? "", style, names[16] ?? names[1] ?? "", weight.ToString(), italic.ToString(), version == 0x4F54544F ? "1" : "0" };
     }
+    // A font file's family names (name 1 and 16, every language), every font of a collection (.ttc); only
+    // its tables' directory and its name table are read.
+    public static string[] Families(string path) {
+        var found = new System.Collections.Generic.List<string>();
+        using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read)) {
+            byte[] h = ReadAt(fs, 0, 12);
+            long[] fonts = { 0 };
+            if (U32(h, 0) == 0x74746366) {
+                int count = (int)U32(h, 8);
+                byte[] offs = ReadAt(fs, 12, count * 4);
+                fonts = new long[count];
+                for (int i = 0; i < count; i++) { fonts[i] = U32(offs, i * 4); }
+            }
+            foreach (long at in fonts) {
+                byte[] head = ReadAt(fs, at, 12);
+                int n = U16(head, 4);
+                byte[] dir = ReadAt(fs, at + 12, n * 16);
+                for (int i = 0; i < n; i++) {
+                    if (Encoding.ASCII.GetString(dir, i * 16, 4) != "name") { continue; }
+                    byte[] b = ReadAt(fs, U32(dir, i * 16 + 8), (int)U32(dir, i * 16 + 12));
+                    int records = U16(b, 2), strings = U16(b, 4);
+                    for (int k = 0; k < records; k++) {
+                        int r = 6 + k * 12;
+                        int platform = U16(b, r), id = U16(b, r + 6), len = U16(b, r + 8), off = strings + U16(b, r + 10);
+                        if ((id != 1 && id != 16) || off + len > b.Length) { continue; }
+                        string s = null;
+                        if (platform == 3 || platform == 0) { s = Encoding.BigEndianUnicode.GetString(b, off, len); }
+                        else if (platform == 1 && U16(b, r + 2) == 0) { s = Encoding.ASCII.GetString(b, off, len); }
+                        if (!string.IsNullOrEmpty(s) && !found.Contains(s)) { found.Add(s); }
+                    }
+                }
+            }
+        }
+        return found.ToArray();
+    }
+    static byte[] ReadAt(FileStream fs, long at, int len) {
+        byte[] b = new byte[len];
+        fs.Seek(at, SeekOrigin.Begin);
+        int got = 0;
+        while (got < len) { int n = fs.Read(b, got, len - got); if (n <= 0) { throw new Exception("a font file cut short"); } got += n; }
+        return b;
+    }
     // Word's embedded font: the first 32 bytes XORed with the key (the GUID's 16 bytes, last to first).
     public static byte[] Obfuscate(byte[] font, Guid key) {
         byte[] k = new byte[16];
@@ -3188,6 +3423,26 @@ public static class LazySpecFont {
 }
 '@
     $script:fontTool = $true
+}
+# The installed fonts' families (lowercase name -> $true), from the font files themselves (Windows: the
+# machine's and the user's; macOS). Once a run.
+$script:installedFonts = $null
+function Get-InstalledFontFamilies {
+    if ($null -ne $script:installedFonts) { return $script:installedFonts }
+    $dirs = @()
+    if ($env:WINDIR) { $dirs += (Join-Path $env:WINDIR 'Fonts') }
+    if ($env:LOCALAPPDATA) { $dirs += (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows\Fonts') }
+    $dirs += '/System/Library/Fonts', '/Library/Fonts', "$HOME/Library/Fonts"
+    $found = @{}
+    Initialize-FontTool
+    foreach ($d in $dirs) {
+        if (-not $d -or -not (Test-Path -LiteralPath $d -PathType Container)) { continue }
+        foreach ($f in (Get-ChildItem -LiteralPath $d -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in '.ttf', '.otf', '.ttc' })) {
+            try { foreach ($n in [LazySpecFont]::Families($f.FullName)) { $found[$n.ToLower()] = $true } } catch { }
+        }
+    }
+    $script:installedFonts = $found
+    return $found
 }
 
 # A small YAML: block mappings by indentation, flow mappings { a: b } and lists [a, b], quoted and plain
@@ -3345,7 +3600,7 @@ function Get-DocumentTheme {
     elseif ($hasRoot) { $raw = [string](Get-ProjectConfig).Values['documentTheme'] }
     $raw = $raw.Trim().Trim('"', "'")
     if (-not $raw) { return $null }
-    $path = $raw.Replace('/', '\')
+    $path = ($raw -replace '[\\/]', [IO.Path]::DirectorySeparatorChar)
     if (-not [IO.Path]::IsPathRooted($path)) { $path = Join-Path $base $path }
     $path = [IO.Path]::GetFullPath($path)
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "The document theme isn't there: $path ($from). Client documents need the company layout: fix the path (or remove the setting)." }
@@ -3414,7 +3669,7 @@ function Get-DocumentTheme {
     $picture = {
         param([string]$P, [string]$What)
         if (-not $P) { return '' }
-        $f = $P.Replace('/', '\')
+        $f = ($P -replace '[\\/]', [IO.Path]::DirectorySeparatorChar)
         if (-not [IO.Path]::IsPathRooted($f)) { $f = Join-Path $dir $f }
         $f = [IO.Path]::GetFullPath($f)
         if (-not (Test-Path -LiteralPath $f -PathType Leaf)) { throw "the theme's $What isn't there: $f" }
@@ -3479,8 +3734,7 @@ function Get-ThemeFontFiles($T, [string]$Family) {
     return $files
 }
 function Write-ThemeFontWarning($T, [bool]$ForWord) {
-    $installed = @{}
-    try { Add-Type -AssemblyName System.Drawing; foreach ($f in (New-Object Drawing.Text.InstalledFontCollection).Families) { $installed[$f.Name.ToLower()] = $true } } catch { }
+    $installed = Get-InstalledFontFamilies
     $missing = @()
     foreach ($fam in (Get-ThemeFontFamilies $T)) {
         if (@(Get-ThemeFontFiles $T $fam).Count) { continue }
@@ -3889,7 +4143,7 @@ function Get-DocumentTemplate {
     elseif ($hasRoot) { $raw = [string](Get-ProjectConfig).Values['documentTemplate'] }
     $raw = $raw.Trim().Trim('"', "'")
     if (-not $raw) { return '' }
-    $path = $raw.Replace('/', '\')
+    $path = ($raw -replace '[\\/]', [IO.Path]::DirectorySeparatorChar)
     if (-not [IO.Path]::IsPathRooted($path)) { $path = Join-Path $base $path }
     $path = [IO.Path]::GetFullPath($path)
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "The Word template isn't there: $path ($from). Client documents need the company layout: fix the path (or remove the setting)." }
@@ -3920,22 +4174,13 @@ function Get-MissingTemplateFonts([string]$Path) {
         }
     }
     finally { $pkg.Zip.Dispose(); $pkg.Stream.Dispose() }
-    $installed = @{}
-    try {
-        Add-Type -AssemblyName System.Drawing
-        foreach ($f in (New-Object Drawing.Text.InstalledFontCollection).Families) { $installed[$f.Name.ToLower()] = $true }
-    } catch { }
-    # Per-user fonts (Windows 10 and later) and the machine's, by their registered names ("Lato Bold (TrueType)").
-    $registered = @()
-    foreach ($key in 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts', 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts') {
-        try { $registered += @((Get-Item -LiteralPath $key -ErrorAction Stop).GetValueNames() | ForEach-Object { $_.ToLower() }) } catch { }
-    }
+    # The installed ones (the machine's and the user's) by their family names.
+    $installed = Get-InstalledFontFamilies
     $missing = @()
     foreach ($name in ($fonts.Keys | Sort-Object)) {
         if (-not $name -or $name.StartsWith('+')) { continue }
         $n = $name.ToLower()
         if ($installed.ContainsKey($n)) { continue }
-        if (@($registered | Where-Object { $_ -eq $n -or $_.StartsWith("$n ") -or $_.StartsWith("$n(") }).Count) { continue }
         $missing += $name
     }
     return , $missing
@@ -4139,10 +4384,9 @@ function Get-WordImage($Ctx, $Img) {
     if ($ext -notin 'png', 'jpeg', 'gif', 'bmp') { Write-Host "  ! a $ext picture not added (Word takes png, jpeg, gif, bmp)"; return '' }
     $w = 0; $h = 0
     try {
-        $ms = New-Object IO.MemoryStream(, $bytes)
-        Add-Type -AssemblyName System.Drawing
-        $im = [Drawing.Image]::FromStream($ms, $false, $false)
-        $w = $im.Width; $h = $im.Height; $im.Dispose(); $ms.Dispose()
+        Initialize-ImageTool
+        $size = [LazySpecImage]::SizeOf($bytes)
+        $w = $size[0]; $h = $size[1]
     } catch { }
     if (-not $w) { $w = [int]$Img.GetAttribute('width'); $h = [int]$Img.GetAttribute('height') }
     if (-not $w -or -not $h) { $w = 600; $h = 400 }
@@ -5506,7 +5750,12 @@ function Open-InEditor([string]$Path) {
     }
     $code = Get-Command code -ErrorAction SilentlyContinue | Select-Object -First 1
     try {
-        if ($code) { Start-Process -FilePath $code.Source -ArgumentList @("`"$Path`"") -WindowStyle Hidden; $script:message = "Opened in VS Code: $Path" }
+        if ($code) {
+            # -WindowStyle exists only on Windows (macOS: an error).
+            if ($env:OS -eq 'Windows_NT') { Start-Process -FilePath $code.Source -ArgumentList @("`"$Path`"") -WindowStyle Hidden }
+            else { Start-Process -FilePath $code.Source -ArgumentList @("`"$Path`"") }
+            $script:message = "Opened in VS Code: $Path"
+        }
         else { Invoke-Item -LiteralPath $Path; $script:message = "Opened: $Path" }
     } catch { $script:message = "Can't open $Path`: $($_.Exception.Message)" }
 }
