@@ -168,7 +168,7 @@ root has a different one already, it keeps both and says so). Folders with anyth
 removal: the team then installs LazySpec on their PCs too.
 
 Everything else (screens, keys, conventions): [`tools/lazyspec/LAZYSPEC.md`](tools/lazyspec/LAZYSPEC.md).
-Step by step for developers, with diagrams and screenshots: [`docs/developer-guide.md`](docs/developer-guide.md) (as Word: [`docs/developer-guide.docx`](docs/developer-guide.docx)).
+Step by step for developers, with diagrams and screenshots: [`docs/developer-guide.md`](docs/developer-guide.md) (as Word: [`docs/LazySpec-Developer-Guide.docx`](docs/LazySpec-Developer-Guide.docx)).
 
 ## In this repository
 
@@ -180,7 +180,7 @@ Step by step for developers, with diagrams and screenshots: [`docs/developer-gui
 | `tools/lazyspec/` | The kit, as it lands in a project (and what `install` runs) |
 | `tools/lazyspec/LAZYSPEC.md` | Everything about it |
 | `docs/developer-guide.md` | Developer guide: install, add to a project, every workflow, with diagrams and screenshots |
-| `docs/developer-guide.docx` | The same guide as a Word document, made from the Markdown by LazySpec (`-Markdown`, Netmedia's document theme) |
+| `docs/LazySpec-Developer-Guide.docx` | The same guide as a Word document, made from the Markdown by LazySpec (`-Markdown`, Netmedia's document theme) |
 | `examples/document-theme/` | An example document theme (every key explained) |
 | `tests/` | Tests of the export (Word template, document theme): `.\tests\Test-*.ps1` |
 
