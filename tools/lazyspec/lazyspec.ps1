@@ -1162,6 +1162,13 @@ function Get-Selected {
 
 # --- markdown, readable in a terminal -------------------------------------------------------------------
 
+# A Markdown table row's cells: split at the pipes, not at an escaped one (\|, a pipe inside a cell).
+function Split-TableRow([string]$Row) {
+    $r = $Row.Trim()
+    if ($r.StartsWith('|')) { $r = $r.Substring(1) }
+    if ($r.EndsWith('|') -and -not $r.EndsWith('\|')) { $r = $r.Substring(0, $r.Length - 1) }
+    return @([regex]::Split($r, '(?<!\\)\|') | ForEach-Object { $_.Trim().Replace('\|', '|') })
+}
 # Inline markup off (**bold**, `code`, [text](link)): the line keeps its words.
 function Plain-Inline([string]$T) {
     $T = [regex]::Replace($T, '\[([^\]]+)\]\(([^)]+)\)', '$1')
@@ -1182,7 +1189,7 @@ function Render-Table($Lines, $Rows, [int]$Width) {
     foreach ($r in $Rows) {
         $t = $r.Trim()
         if ($t -match '^\|?\s*:?-{2,}') { $cells += , $null; continue }
-        $parts = @($t.Trim('|').Split('|') | ForEach-Object { Plain-Inline $_.Trim() })
+        $parts = @(Split-TableRow $t | ForEach-Object { Plain-Inline $_ })
         $cells += , $parts
     }
     # A table without a header row ("| | |"): no empty first line.
@@ -1274,6 +1281,7 @@ function Render-Markdown([string]$Text, [int]$Width) {
         }
         if ($t -match '^>\s?(.*)$') { Add-Wrapped $lines "  $($g.v) " $st.faint (Plain-Inline $Matches[1]) $st.muted $Width; continue }
         if ($t -match '^(-{3,}|\*{3,})$') { [void]$lines.Add(@(S ($g.h * [Math]::Min(60, $Width)) $st.faint)); continue }
+        if ($t -match '^!\[([^\]]*)\]\(([^)\s]+)\)$') { [void]$lines.Add(@(S "  [picture: $($Matches[1])]" $st.faint)); continue }
         # Relations, transitions ... (several, ;-separated): the label, then one item a line.
         $ll = Get-LabelledList $t
         if ($ll) {
@@ -1308,6 +1316,8 @@ function ConvertTo-HtmlInline([string]$T) {
     return $t
 }
 $script:docAnchors = @{}
+# A Markdown document's folder (-Markdown): its pictures' paths are relative to it.
+$script:mdBaseDir = ''
 # A code block. A drawing (box lines, ASCII arrows) is never wrapped, so it keeps its shape: long lines get
 # a smaller font to fit the page. Anything else (commands, JSON) wraps at the page's width, readable.
 function ConvertTo-HtmlPre($Lines) {
@@ -1485,7 +1495,7 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
         $rows = @(); $head = $null
         foreach ($r in $table) {
             if ($r.Trim() -match '^\|?\s*:?-{2,}') { if ($rows.Count -eq 1 -and $null -eq $head) { $head = $rows[0]; $rows = @() }; continue }
-            $rows += , @($r.Trim().Trim('|').Split('|') | ForEach-Object { $_.Trim() })
+            $rows += , @(Split-TableRow $r)
         }
         $widths = Get-TableWidths $head $rows
         if ($widths) { [void]$out.Append("<table class=`"sized`">`n") } else { [void]$out.Append("<table>`n") }
@@ -1570,6 +1580,17 @@ function ConvertTo-HtmlBody([string]$Text, [int]$Shift = 0) {
                 [void]$out.Append("<h$level class=`"$cls`"$id>$mark$(ConvertTo-HtmlInline (Get-ExportHeading $h))</h$level>`n")
                 if ($hd -and $hd.Children.Count) { [void]$out.Append((Get-TocHtml $hd.Children)) }
             }
+            continue
+        }
+        # A picture on a line of its own (![alt](path); the path relative to the Markdown file): the picture,
+        # the page's width at most, its alt text under it.
+        if ($t -match '^!\[([^\]]*)\]\(([^)\s]+)\)$') {
+            & $flushPara; & $flushQuote
+            $alt = $Matches[1]; $src = [Uri]::UnescapeDataString($Matches[2])
+            $file = $src
+            if (-not [IO.Path]::IsPathRooted($file) -and $script:mdBaseDir) { $file = Join-Path $script:mdBaseDir $file }
+            if ($src -notmatch '^[a-z]+://' -and (Test-Path -LiteralPath $file -PathType Leaf)) { [void]$out.Append((Get-DiagramHtml (Resolve-Path -LiteralPath $file).Path $alt 1 $true)) }
+            else { Write-Host "  ! picture not found: $src"; [void]$out.Append("<p>$(Html $alt)</p>`n") }
             continue
         }
         if ($t -match '^(-{3,}|\*{3,}|_{3,})$') { & $flushPara; & $flushQuote; [void]$out.Append("<hr>`n"); continue }
@@ -2019,7 +2040,8 @@ function Get-FigmaScale([string]$Path) {
 # on the same page): Word gets the file (and embeds it), the others the image itself.
 # $Density: the picture's pixels per pixel of the page (the models' diagram: an SVG at 1.5x its design size,
 # its text about as large as the document's; for Word a PNG of it at 2x).
-function Get-DiagramHtml([string]$Path, [string]$Caption, [double]$Density = 1) {
+# $Picture: a Markdown document's picture: its caption as it is (no "Diagram: ").
+function Get-DiagramHtml([string]$Path, [string]$Caption, [double]$Density = 1, [bool]$Picture = $false) {
     if (-not $Path) { return '' }
     if ($script:figmaFiles.ContainsKey($Path)) { $Density = 1.0 / (Get-FigmaScale $Path) }
     $attr = ''
@@ -2035,7 +2057,11 @@ function Get-DiagramHtml([string]$Path, [string]$Caption, [double]$Density = 1) 
         if (-not $mime) { $mime = 'image/png' }
         $src = "data:$mime;base64," + [Convert]::ToBase64String([IO.File]::ReadAllBytes($Path))
     }
-    return "<div class=`"diagram`"><img src=`"$src`"$attr alt=`"$(Html $Caption)`"><p class=`"caption`">$(Html "$(Get-ExportText 'diagram'): $Caption")</p></div>`n"
+    $cap = "$(Get-ExportText 'diagram'): $Caption"
+    if ($Picture) { $cap = $Caption }
+    $capHtml = ''
+    if ($cap) { $capHtml = "<p class=`"caption`">$(Html $cap)</p>" }
+    return "<div class=`"diagram`"><img src=`"$src`"$attr alt=`"$(Html $Caption)`">$capHtml</div>`n"
 }
 # A small contents: links, one a line.
 function Get-TocHtml($Entries) {
@@ -2713,7 +2739,7 @@ function Get-ModelDiagramData([string]$Text) {
         if (-not $model) { continue }
         # A table row: the field (or value) and its type; changed models: only the changed rows.
         if ($l -match '^\s*\|') {
-            $cells = @($l.Trim().Trim('|').Split('|') | ForEach-Object { $_.Trim() })
+            $cells = @(Split-TableRow $l)
             $tableRows++
             if ($tableRows -eq 1) { $hasMark = ($cells[0] -replace '[*`]', '') -match '^(?i)(change|promjena|.nderung)$'; continue }
             if ($cells[0] -match '^:?-{2,}') { continue }
@@ -2855,6 +2881,7 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
         if ($Doc.Client) { $client = $Doc.Client }
         if ($Doc.Author) { $author = $Doc.Author }
         if ($Doc.Date) { $date = $Doc.Date }
+        $script:mdBaseDir = Split-Path $Doc.Path -Parent
         $docBody = ConvertTo-HtmlBody $Doc.Text
     }
     $reqs = 0
@@ -4693,7 +4720,8 @@ function Export-WordOnBase([string]$Html, [string]$Target, [byte[]]$Base, [strin
                 for ($l = 0; $l -le 8; $l++) {
                     $fmt = 'bullet'; $text = @([string][char]0x2022, [string][char]0x25E6, [string][char]0x25AA)[$l % 3]
                     if ($kind -eq 'decimal') { $fmt = @('decimal', 'lowerLetter', 'lowerRoman')[$l % 3]; $text = "%$($l + 1)." }
-                    if ($kind -eq 'letter') { $fmt = @('lowerLetter', 'lowerRoman', 'decimal')[$l % 3]; $text = "%$($l + 1))" }
+                    # Lettered (answers under a numbered question): letters at any level, as in PDF and HTML.
+                    if ($kind -eq 'letter') { $fmt = 'lowerLetter'; $text = "%$($l + 1)." }
                     [void]$absXml.Append("<w:lvl w:ilvl=`"$l`"><w:start w:val=`"1`"/><w:numFmt w:val=`"$fmt`"/><w:lvlText w:val=`"$(Xml $text)`"/><w:lvlJc w:val=`"left`"/><w:pPr><w:ind w:left=`"$(360 * ($l + 1) + 360)`" w:hanging=`"360`"/></w:pPr></w:lvl>")
                 }
                 [void]$absXml.Append('</w:abstractNum>')
