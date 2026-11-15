@@ -14,7 +14,7 @@
 .SYNOPSIS
     Tests the export with a document theme (lazyspec: documentTheme: in openspec/config.yaml, or -Theme):
     the same look in PDF, Word and HTML, its fonts from fonts\ next to it (embedded in Word). No modules:
-    it builds its own project and theme in %TEMP% (the fonts: copies of Windows' Georgia).
+    it builds its own project and theme in %TEMP% (the fonts: copies of the system's Georgia, Windows or macOS).
 
 .DESCRIPTION
     1. Without a theme: the HTML is the same as before themes (-Baseline: that lazyspec.ps1; default: git
@@ -48,13 +48,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $lazyspec = Join-Path $repo 'tools\lazyspec\lazyspec.ps1'
-$work = Join-Path ([IO.Path]::GetTempPath()) ('lazyspec-theme-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+$work = Join-Path ([IO.Path]::GetTempPath() -replace '^/var/', '/private/var/') ('lazyspec-theme-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 . (Join-Path $PSScriptRoot 'TestHelpers.ps1')
 
 # A theme in a folder with a space: fonts\ (Georgia's four files), images\ (the logos), the YAML.
 function New-FixtureTheme([string]$Dir, [string]$Yaml) {
     [void](New-Item -ItemType Directory -Force -Path (Join-Path $Dir 'fonts'), (Join-Path $Dir 'images'))
-    foreach ($f in 'georgia.ttf', 'georgiab.ttf', 'georgiai.ttf', 'georgiaz.ttf') { Copy-Item -LiteralPath (Join-Path $env:WINDIR "Fonts\$f") -Destination (Join-Path $Dir 'fonts') }
+    foreach ($f in (Get-GeorgiaFiles)) { Copy-Item -LiteralPath $f -Destination (Join-Path $Dir 'fonts') }
     [IO.File]::WriteAllBytes((Join-Path $Dir 'images\logo.png'), (Get-Png 120 40 'Red'))
     [IO.File]::WriteAllBytes((Join-Path $Dir 'images\cover.png'), (Get-Png 300 100 'Blue'))
     [IO.File]::WriteAllText((Join-Path $Dir 'document-theme.yaml'), $Yaml)

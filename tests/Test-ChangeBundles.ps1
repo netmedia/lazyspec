@@ -41,7 +41,7 @@ param([switch]$Keep)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $lazyspec = Join-Path $repo 'tools\lazyspec\lazyspec.ps1'
-$work = Join-Path ([IO.Path]::GetTempPath()) ('lazyspec-bundle-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+$work = Join-Path ([IO.Path]::GetTempPath() -replace '^/var/', '/private/var/') ('lazyspec-bundle-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 . (Join-Path $PSScriptRoot 'TestHelpers.ps1')
 
 $utf8 = New-Object Text.UTF8Encoding $false
@@ -57,7 +57,7 @@ function New-Change([string]$Dir, [string]$Title, [string]$Cap, [int]$Tasks) {
 # The TUI with test keys in $Dir: its frames (snap).
 function Invoke-Keys([string]$Dir, [string]$Keys) {
     $frames = Join-Path $work ('frames-' + [guid]::NewGuid().ToString('N').Substring(0, 6) + '.txt')
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $lazyspec -Root $Dir -Width 110 -Height 32 -Keys $Keys -Frames $frames 2>&1 | Out-Null
+    & $script:shell -NoProfile -ExecutionPolicy Bypass -File $lazyspec -Root $Dir -Width 110 -Height 32 -Keys $Keys -Frames $frames 2>&1 | Out-Null
     if (Test-Path -LiteralPath $frames) { return [IO.File]::ReadAllText($frames, $utf8) }
     return ''
 }

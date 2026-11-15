@@ -38,7 +38,7 @@ param([switch]$Keep)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $lazyspec = Join-Path $repo 'tools\lazyspec\lazyspec.ps1'
-$work = Join-Path ([IO.Path]::GetTempPath()) ('lazyspec-md-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+$work = Join-Path ([IO.Path]::GetTempPath() -replace '^/var/', '/private/var/') ('lazyspec-md-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 . (Join-Path $PSScriptRoot 'TestHelpers.ps1')
 
 function Write-Md([string]$Path, [string]$Text) { [void](New-Item -ItemType Directory -Force -Path (Split-Path $Path)); [IO.File]::WriteAllText($Path, $Text, (New-Object Text.UTF8Encoding $false)) }
@@ -83,7 +83,7 @@ try {
     New-FixtureProject $proj @('documentTheme: theme/document-theme.yaml')
     $theme = Join-Path $proj 'theme'
     [void](New-Item -ItemType Directory -Force -Path (Join-Path $theme 'fonts'))
-    Copy-Item -LiteralPath (Join-Path $env:WINDIR 'Fonts\georgia.ttf') -Destination (Join-Path $theme 'fonts')
+    Copy-Item -LiteralPath (Get-GeorgiaFiles)[0] -Destination (Join-Path $theme 'fonts')
     [IO.File]::WriteAllText((Join-Path $theme 'document-theme.yaml'), "styles:`n  body: { font: Georgia, size: 10pt }`n  heading1: { color: `"#C2185B`" }`nfooter: { right: `"{page} / {pages}`" }`n")
     $md = Join-Path $proj 'meetings\2026-11-04 weekly.md'
     Write-Md $md $notes

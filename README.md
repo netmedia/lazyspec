@@ -15,9 +15,54 @@ A project's **OpenSpec** specifications and changes in **one terminal screen** â
 - **Actions** through the OpenSpec CLI: validate all, archive a change, new change; the output in the
   same screen. Edit opens your editor.
 
-Windows PowerShell 5.1 or PowerShell 7, no modules. The OpenSpec CLI for the actions
-(`npm install -g @fission-ai/openspec`). It works alongside other OpenSpec tools (the CLI, openspec-ui,
-coding agents): it reads the same files and refreshes when they change.
+**Windows and macOS.** Windows PowerShell 5.1 or PowerShell 7 on Windows, PowerShell 7 on macOS; no
+modules. The OpenSpec CLI for the actions (`npm install -g @fission-ai/openspec`). It works alongside other
+OpenSpec tools (the CLI, openspec-ui, coding agents): it reads the same files and refreshes when they change.
+
+## Windows and macOS
+
+The program is the same `.ps1` on both; only how it starts and what the exports use differ.
+
+| | Windows | macOS |
+|---|---|---|
+| PowerShell | Windows PowerShell 5.1 (built in) or PowerShell 7 | PowerShell 7: `brew install powershell` |
+| Start in a project | `.\lazyspec.exe` (or `.\tools\lazyspec\lazyspec.ps1`) | `pwsh tools/lazyspec/lazyspec.ps1` |
+| The `.exe` files | start the `.ps1` next to them | Windows only: use `pwsh <script>.ps1` |
+| Kit into a project | `.\initintoproject.exe <project>` | `pwsh initintoproject.ps1 <project>` |
+| Plain `lazyspec` | `.\install.exe Profile` / `Global` / `Both` | an alias in your shell (below); `install` is for Windows |
+| PDF export | Edge (always there) or Chrome | Chrome or Edge in `/Applications` |
+| Word export, default look | Microsoft Word, else pandoc | pandoc (`brew install pandoc`) |
+| Word export, theme or template | LazySpec writes it; Word fills in the contents' page numbers | LazySpec writes it; page numbers: open it in Word, right-click the contents, Update Field |
+| Data-model diagram | a picture in Word made by Edge/Chrome; vector in PDF and HTML | the same (Chrome or Edge) |
+| Your per-user data (translation cache) | `%LOCALAPPDATA%\LazySpec` | `~/Library/Application Support/LazySpec` |
+
+### Starting on macOS
+
+```
+brew install powershell                          # once
+cd ~/Development/MyProject
+pwsh tools/lazyspec/lazyspec.ps1                 # the project's own kit (initintoproject put it there)
+```
+
+A project without the kit: LazySpec from this repository, inside the project or pointed at it.
+
+```
+pwsh <this repository>/tools/lazyspec/lazyspec.ps1
+pwsh <this repository>/tools/lazyspec/lazyspec.ps1 -Root ~/Development/MyProject
+```
+
+Plain `lazyspec` in every terminal: an alias to this repository's copy (a `git pull` here updates it).
+
+```
+# zsh (the macOS default)
+echo "alias lazyspec='pwsh -NoProfile -File <this repository>/tools/lazyspec/lazyspec.ps1'" >> ~/.zshrc
+# fish
+alias --save lazyspec 'pwsh -NoProfile -File <this repository>/tools/lazyspec/lazyspec.ps1'
+```
+
+The alias always runs this repository's version; in a project with its own kit,
+`pwsh tools/lazyspec/lazyspec.ps1` runs the team's. Paths in `openspec/config.yaml` (theme, template) may
+use `/` or `\`: both work on both systems.
 
 ## How to use it
 
@@ -64,7 +109,8 @@ In another language: `lazyspec -Export Pdf -Language en` translates the document
 `openspec/config.yaml`, the key in `DEEPL_AUTH_KEY`; `-Beta` for DeepL beta languages such as Croatian; an export into
 Croatian is checked by Hasek/ispravi.me); `lazyspec -AddLanguage it` adds LazySpec's texts for a new language. See
 [Export in another language](tools/lazyspec/LAZYSPEC.md#export-in-another-language-deepl).
-Tests: `.\tests\Test-WordTemplate.ps1`, `.\tests\Test-DocumentTheme.ps1`, `.\tests\Test-MarkdownDocument.ps1`, `.\tests\Test-Translation.ps1`.
+Tests: `.\tests\Test-WordTemplate.ps1`, `.\tests\Test-DocumentTheme.ps1`, `.\tests\Test-MarkdownDocument.ps1`, `.\tests\Test-Translation.ps1`
+(macOS: `pwsh tests/Test-WordTemplate.ps1` and so on). They use the system's Georgia, which Windows and macOS both have.
 
 ### 1. Installed on the PC (not in the project)
 
