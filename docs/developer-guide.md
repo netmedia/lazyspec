@@ -4,7 +4,7 @@ How to install LazySpec, add it to a project, and use it day to day. Full refere
 
 ## What LazySpec is
 
-LazySpec shows a project's OpenSpec specs and changes on one terminal screen and turns them into client-ready PDF, Word or HTML documents. It is the sibling of LazyBicep: same look, same keys, same technology (PowerShell 5.1 or 7, no modules).
+LazySpec shows a project's OpenSpec specs and changes on one terminal screen and turns them into client-ready PDF, Word or HTML documents. It is the sibling of LazyBicep: same look, same keys, same technology (PowerShell, no modules). It runs on **Windows** (Windows PowerShell 5.1 or PowerShell 7) and **macOS** (PowerShell 7): the same `.ps1` on both.
 
 Use it when a project follows spec-driven development with [OpenSpec](https://github.com/Fission-AI/OpenSpec) and you want to:
 
@@ -25,11 +25,12 @@ Install LazySpec once per PC, then type `lazyspec` anywhere inside a project. No
 
 | Need | For | How |
 | --- | --- | --- |
-| Windows PowerShell 5.1 or PowerShell 7 | Everything | Built into Windows |
+| Windows PowerShell 5.1 or PowerShell 7 | Everything (Windows) | Built into Windows |
+| PowerShell 7 | Everything (macOS) | `brew install powershell` |
 | OpenSpec CLI | Actions: validate, archive, new change, `openspec init` | `npm install -g @fission-ai/openspec` |
 | Execution policy that runs local scripts | The `Profile` install | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
-| Microsoft Edge or Google Chrome | PDF export | Usually present |
-| Microsoft Word or pandoc | Word export without a template or theme | Optional |
+| Microsoft Edge or Google Chrome | PDF export; the data-model diagram in Word | Windows: Edge is always there. macOS: Chrome or Edge in `/Applications` |
+| Microsoft Word or pandoc | Word export without a template or theme | Optional (macOS: `brew install pandoc`) |
 | DeepL key in `DEEPL_AUTH_KEY` | Export in another language | Optional, see Integrations |
 | Figma token | Fresh FigJam diagrams in exports | Optional, see Integrations |
 
@@ -44,6 +45,20 @@ Install LazySpec once per PC, then type `lazyspec` anywhere inside a project. No
 4. `cd` into any project with an `openspec\` folder and run `lazyspec`.
 
 LazySpec finds the project as the nearest folder with `openspec\` above the current folder, so you can start it from any subfolder.
+
+### On macOS
+
+The `.exe` launchers and `install` are for Windows; on macOS start the `.ps1` with `pwsh`.
+
+1. `brew install powershell` (once).
+2. Clone the repo, e.g. to `~/Development/LazySpec`.
+3. In a project with its own kit: `pwsh tools/lazyspec/lazyspec.ps1`. Without a kit: `pwsh ~/Development/LazySpec/tools/lazyspec/lazyspec.ps1` inside the project, or with `-Root <project>`.
+4. Plain `lazyspec` in every terminal: an alias to the repo's copy (a `git pull` updates it):
+   - zsh: `echo "alias lazyspec='pwsh -NoProfile -File ~/Development/LazySpec/tools/lazyspec/lazyspec.ps1'" >> ~/.zshrc`
+   - fish: `alias --save lazyspec 'pwsh -NoProfile -File ~/Development/LazySpec/tools/lazyspec/lazyspec.ps1'`
+5. Put the kit into a project with `pwsh initintoproject.ps1 <project>`.
+
+Differences from Windows: PDF needs Chrome or Edge in `/Applications`; Word in the default look needs pandoc; a Word document with a theme or template gets its contents' page numbers when you open it in Word (right-click the contents, Update Field); per-user data (the translation cache) is in `~/Library/Application Support/LazySpec`. Paths in `openspec/config.yaml` may use `/` or `\` on both systems.
 
 ### Verify
 
@@ -239,6 +254,8 @@ Scenarios 7 to 11 are all the same pipeline: the UI asks the options in order, t
 3. `c` for the client (scenarios as plain sentences, `MUST`-style keywords removed) or `t` technical (as written).
 4. The file lands in `export\<project>-specification-<date>.<ext>` and opens.
 
+Every export has a cover and a contents; in PDF the contents shows page numbers with dot leaders, as Word's does (LazySpec prints the PDF twice for that). Tables get column widths from their content: short columns as wide as their longest word or identifier, the rest to the longest text, the same in PDF, HTML and Word.
+
 ![Export prompt at the bottom of the Home screen: PDF, Word or HTML](images/screen-export-prompt.png)
 
 Command line: `lazyspec -Export Pdf`, `lazyspec -Export Word -IncludeChanges -ClientFriendly -Open`, `-Out D:\Clients\X.pdf` to write elsewhere.
@@ -288,8 +305,9 @@ Command line: `lazyspec -Export Word -Item add-user-signup,add-online-payments -
 
 1. In FigJam: select the section, Copy link to selection.
 2. Add it under `lazyspec: diagrams:` in `openspec/config.yaml` (per change: `change:` for the whole change, or per capability), or point to an image file.
-3. Export once with a Figma token: the PNG is saved in the change's `diagrams\` folder. Commit it so exports work for everyone without Figma.
+3. Export once with a Figma token: the PNG is saved in the change's `diagrams\` folder, the space around its part of the process cut off. Commit it so exports work for everyone without Figma.
 4. `-KeepDiagrams` uses saved images only; `-RefreshDiagrams` always fetches the latest.
+5. Placement: the whole change's diagram (`change:`) opens the Specifications chapter, before the list of capabilities; a capability's diagram opens that capability. All diagrams of a change from the same Figma file are shown at the scale of the whole change's diagram, so the boxes are equally large everywhere.
 
 ### 13. Give documents the company look
 
@@ -394,6 +412,8 @@ The `translation:` block is shared with the netmedia Claude Code plugin (`netmed
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | `lazyspec` not recognised after install | Old terminal | Open a new terminal |
+| `lazyspec.exe` / `install.exe` don't run on macOS | They are Windows launchers | `pwsh tools/lazyspec/lazyspec.ps1`, or the shell alias (Install, On macOS) |
+| PDF export fails on macOS | No Chrome or Edge in `/Applications` | Install Google Chrome |
 | `lazyspec` not recognised in the project root | PowerShell doesn't run programs from the current folder by name | Type `.\lazyspec.exe`, or install the `Profile` function |
 | Profile install warns about scripts | Execution policy | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
 | SmartScreen prompt on first run | `.exe` launchers aren't code-signed | Allow once |
@@ -407,5 +427,7 @@ The `translation:` block is shared with the netmedia Claude Code plugin (`netmed
 | `-Language hr` stops | Croatian is a DeepL beta language | Add `-Beta` |
 | DeepL key refused | Key put in `config.yaml` | Use `setx DEEPL_AUTH_KEY "<key>"` and a new terminal |
 | Change shows as `spec-driven` with a warning | Its workflow schema can't be found | Check `openspec/schemas/<name>/schema.yaml` and `openspec schema validate` |
+
+This guide as a Word document: [`docs/developer-guide.docx`](developer-guide.docx) (made from this file; see `docs/build/README.md`).
 
 **Where to get help:** `-Help` on any script, `?` in the UI, [`tools/lazyspec/LAZYSPEC.md`](../tools/lazyspec/LAZYSPEC.md) for the full reference, or the LazySpec repo ([github.com/netmedia/lazyspec](https://github.com/netmedia/lazyspec)).
