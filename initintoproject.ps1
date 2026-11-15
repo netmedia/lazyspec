@@ -240,7 +240,7 @@ if ($Remove) {
     if ($failed) { Write-Warn "Done, with $failed thing(s) left (above)." } else { Write-OK "LazySpec is out of $Target." }
     # Installed on this PC? Else lazyspec doesn't start in the project any more.
     $docs = [Environment]::GetFolderPath('MyDocuments')
-    $installed = Test-Path (Join-Path $env:LOCALAPPDATA 'Programs\LazySpec\lazyspec.exe')
+    $installed = Test-Path (Join-Path $(if ($env:LOCALAPPDATA) { $env:LOCALAPPDATA } else { [Environment]::GetFolderPath('LocalApplicationData') }) 'Programs\LazySpec\lazyspec.exe')
     foreach ($pp in @((Join-Path $docs 'WindowsPowerShell\profile.ps1'), (Join-Path $docs 'PowerShell\profile.ps1'))) {
         if ((Test-Path $pp) -and (Select-String -LiteralPath $pp -SimpleMatch '# >>> LazySpec (Netmedia) >>>' -Quiet)) { $installed = $true }
     }

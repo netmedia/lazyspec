@@ -48,7 +48,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $lazyspec = Join-Path $repo 'tools\lazyspec\lazyspec.ps1'
-$work = Join-Path ([IO.Path]::GetTempPath()) ('lazyspec-test-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+$work = Join-Path ([IO.Path]::GetTempPath() -replace '^/var/', '/private/var/') ('lazyspec-test-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 . (Join-Path $PSScriptRoot 'TestHelpers.ps1')
 
 # --- the fixtures -----------------------------------------------------------------------------------------
