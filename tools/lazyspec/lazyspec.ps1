@@ -1350,7 +1350,7 @@ $script:docSeq = 0
 # A table's column widths (percent), for PDF, HTML and Word alike: each column at least its longest word or
 # identifier (up to a limit: longer ones break), the rest of the width to the columns with more text
 # ("Description"), as far as they need it. Estimated in ems of the table's font: a letter about 0.56 (a
-# header's, bold, 0.66), code's 0.56 and its box 0.3, a cell's padding 1.3; a page's text about 45 ems wide.
+# header's, bold, 0.75), code's 0.56 and its box 0.3, a cell's padding 1.3; a page's text about 45 ems wide.
 function Get-TableWidths($Head, $Rows) {
     $all = @()
     if ($Head) { $all += , @($Head) }
@@ -1373,7 +1373,7 @@ function Get-TableWidths($Head, $Rows) {
                 if ($code) { $txt = $m.Groups[1].Value } elseif ($m.Groups[2].Success) { $txt = $m.Groups[2].Value }
                 $txt = $txt.Replace('**', '').Replace('__', '')
                 $per = 0.56
-                if ($ri -lt $first) { $per = 0.66 }
+                if ($ri -lt $first) { $per = 0.75 }
                 if ($code) { $per = 0.56 }
                 foreach ($w in ($txt -split '\s+')) { if ($w) { $longest = [Math]::Max($longest, $w.Length * $per + $(if ($code) { 0.3 } else { 0 })) } }
                 $total += $txt.Length * $per

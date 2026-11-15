@@ -114,9 +114,9 @@ try {
         $b = Invoke-LazySpec $lazyspec $plain 'Html' @('-Out', (Join-Path $work 'now.html'))
         # The document as before (LazySpec's own stylesheet may have grown since: it isn't compared), and no theme in the styles.
         # The cover's counts aren't compared either: their words now have singular forms ("1 chapter"); nor the
-        # tables' column widths (<colgroup>, class "sized"), new since.
-        $noStyle = { param([string]$P) $t = [regex]::Replace([regex]::Replace([IO.File]::ReadAllText($P), '(?s)<style>.*?</style>', ''), 'Scope: [^<]*', 'Scope:'); [regex]::Replace($t.Replace('<table class="sized">', '<table>'), '<colgroup>.*?</colgroup>?
-', '') }
+        # tables' column widths (<colgroup>, class "sized"), new since; nor the line ends (a .ps1 checked out with
+        # CRLF writes its here-strings with CRLF).
+        $noStyle = { param([string]$P) $t = [regex]::Replace([regex]::Replace([IO.File]::ReadAllText($P).Replace("`r`n", "`n"), '(?s)<style>.*?</style>', ''), 'Scope: [^<]*', 'Scope:'); [regex]::Replace($t.Replace('<table class="sized">', '<table>'), '<colgroup>.*?</colgroup>\r?\n', '') }
         $same = $a.Code -eq 0 -and $b.Code -eq 0 -and ((& $noStyle (Join-Path $work 'before.html')) -eq (& $noStyle (Join-Path $work 'now.html')))
         Check $same 'without a theme: the same document as before' "$($a.Out) $($b.Out)"
         $now = [IO.File]::ReadAllText((Join-Path $work 'now.html'))

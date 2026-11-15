@@ -62,7 +62,7 @@ function Invoke-Keys([string]$Dir, [string]$Keys) {
     return ''
 }
 
-$c = [string][char]0x10D
+$c = [string][char]0x10D; $cc = [string][char]0x107
 $proj = Join-Path $work 'proj'
 $cfgPath = Join-Path $proj 'openspec\config.yaml'
 $cfgText = "schema: spec-driven`n`nlazyspec:`n  name: Acme Portal`n  language: hr`n  titles:`n    add-alpha:`n      cap-alpha: Alpha capability`n  diagrams:`n    add-alpha:`n      change: flow.png`n`nrules:`n  proposal:`n    - Keep it short`n"
@@ -109,8 +109,8 @@ try {
 
     # 1. The file's name: the title without accents.
     $exp = Join-Path $proj 'export'
-    $r = Invoke-LazySpec $lazyspec $proj 'Html' @('-Item', 'add-alpha,add-gamma', '-Title', "Ra${c}un i narudzbe")
-    $f = @(Get-ChildItem -LiteralPath $exp -Filter '*.html' | Where-Object { $_.Name -like 'proj-racun-i-narudzbe-*' })
+    $r = Invoke-LazySpec $lazyspec $proj 'Html' @('-Item', 'add-alpha,add-gamma', '-Title', "Pla${cc}anja i ra${c}uni")
+    $f = @(Get-ChildItem -LiteralPath $exp -Filter '*.html' | Where-Object { $_.Name -like 'proj-placanja-i-racuni-*' })
     Check ($r.Code -eq 0 -and $f.Count -eq 1) 'the file named by the title, without accents' (@(Get-ChildItem -LiteralPath $exp -Name) -join ', ')
 
     # 9. PDF: the contents' page numbers (read from a first print, then printed again).
