@@ -267,7 +267,11 @@ lazyspec -Export Pdf -Markdown notes.md -Out D:\Clients\notes.pdf -Open
 
   No `title`: the first `# ` heading (then not repeated in the text), else the file's name.
 - **The text:** as in the export (headings, lists, tables, code, links, quotes); `# ` headings don't start
-  pages here; a hard line break (`\` or two spaces at a line's end) is kept.
+  pages here; a hard line break (`\` or two spaces at a line's end) is kept; a `|` inside a table cell is
+  written `\|`.
+- **Pictures:** a line with only `![caption](path)` (the path relative to the `.md` file; spaces as `%20`):
+  the picture inside the document (embedded in Word), the page's width at most, the caption under it. A
+  picture that isn't there: a note in the output, its caption in its place.
 
 Tests: `.\tests\Test-MarkdownDocument.ps1` (in the LazySpec repository).
 

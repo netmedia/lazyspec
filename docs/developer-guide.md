@@ -1,3 +1,10 @@
+---
+subtitle: Install, add to a project, every workflow
+author: Netmedia
+language: en
+toc: true
+---
+
 # LazySpec — Developer Guide
 
 How to install LazySpec, add it to a project, and use it day to day. Full reference: [`tools/lazyspec/LAZYSPEC.md`](../tools/lazyspec/LAZYSPEC.md).
@@ -289,6 +296,7 @@ Command line: `lazyspec -Export Word -Item add-user-signup,add-online-payments -
 1. Write the `.md` anywhere inside the project; add optional front matter (`title`, `subtitle`, `client`, `author`, `date`, `language`, `toc`, `cover`).
 2. `lazyspec -Export Word -Markdown "openspec_meetings\2026-11-04 summary.md"` (or `Pdf`, `Html`).
 3. The document is written next to the `.md` in the project's theme or template.
+4. Pictures: a line with only `![caption](images/flow.png)` (the path relative to the `.md`) puts the picture in, the page's width at most, the caption under it. A `|` inside a table cell is written `\|`.
 
 ### 11. Export in another language
 
@@ -428,6 +436,6 @@ The `translation:` block is shared with the netmedia Claude Code plugin (`netmed
 | DeepL key refused | Key put in `config.yaml` | Use `setx DEEPL_AUTH_KEY "<key>"` and a new terminal |
 | Change shows as `spec-driven` with a warning | Its workflow schema can't be found | Check `openspec/schemas/<name>/schema.yaml` and `openspec schema validate` |
 
-This guide as a Word document: [`docs/developer-guide.docx`](developer-guide.docx) (made from this file; see `docs/build/README.md`).
+This guide as a Word document: [`docs/developer-guide.docx`](developer-guide.docx), made from this file by LazySpec itself in Netmedia's document theme (the `templates/` folder of the AIToolbelt repository): `lazyspec -Export Word -Markdown docs\developer-guide.md -Theme <AIToolbelt>\templates\document-theme.yaml` (or `Pdf`).
 
 **Where to get help:** `-Help` on any script, `?` in the UI, [`tools/lazyspec/LAZYSPEC.md`](../tools/lazyspec/LAZYSPEC.md) for the full reference, or the LazySpec repo ([github.com/netmedia/lazyspec](https://github.com/netmedia/lazyspec)).

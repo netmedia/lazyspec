@@ -180,7 +180,7 @@ Step by step for developers, with diagrams and screenshots: [`docs/developer-gui
 | `tools/lazyspec/` | The kit, as it lands in a project (and what `install` runs) |
 | `tools/lazyspec/LAZYSPEC.md` | Everything about it |
 | `docs/developer-guide.md` | Developer guide: install, add to a project, every workflow, with diagrams and screenshots |
-| `docs/developer-guide.docx`, `docs/build/` | The same guide as a Word document, and how it is made from the Markdown |
+| `docs/developer-guide.docx` | The same guide as a Word document, made from the Markdown by LazySpec (`-Markdown`, Netmedia's document theme) |
 | `examples/document-theme/` | An example document theme (every key explained) |
 | `tests/` | Tests of the export (Word template, document theme): `.\tests\Test-*.ps1` |
 

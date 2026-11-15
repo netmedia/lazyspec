@@ -105,6 +105,20 @@ try {
         Check ($h -match "@font-face \{ font-family: 'Georgia'" -and $r.Out -match 'document theme: ') 'the project''s theme (found from the file''s folder)' $r.Out
     }
 
+    # Pictures (![alt](path), relative to the Markdown file) and a pipe inside a table cell (\|).
+    $md4 = Join-Path $proj 'meetings\with pictures.md'
+    [void](New-Item -ItemType Directory -Force -Path (Join-Path $proj 'meetings\img'))
+    [IO.File]::WriteAllBytes((Join-Path $proj 'meetings\img\flow chart.png'), (Get-Png 300 150 'SteelBlue'))
+    Write-Md $md4 "# Pictures`n`nText.`n`n![The flow, step by step](img/flow%20chart.png)`n`n![Gone](img/missing.png)`n`n| Option | Values |`n|---|---|`n| ``mode`` | ``ask \| always \| never`` |`n"
+    $r = Invoke-LazySpec $lazyspec $proj 'Html' @('-Markdown', $md4)
+    $b = Get-Body ([IO.File]::ReadAllText([IO.Path]::ChangeExtension($md4, 'html')))
+    Check ($r.Code -eq 0 -and $b -match '<div class="diagram"><img src="data:image/png;base64,[^"]+" width="300" height="150" alt="The flow, step by step"><p class="caption">The flow, step by step</p></div>') 'a picture: inside the document, its alt text under it (no "Diagram:")' $r.Out
+    Check ($r.Out -match 'picture not found: img/missing\.png' -and $b -match '<p>Gone</p>') 'a missing picture: a note, its alt text in its place' $r.Out
+    Check ($b -match '<td><code>ask \| always \| never</code></td>' -and ([regex]::Matches($b, '<td>')).Count -eq 2) 'a table cell with an escaped pipe (\|): one cell, the pipe kept'
+    $r = Invoke-LazySpec $lazyspec $proj 'Word' @('-Markdown', $md4)
+    $w = Read-Docx ([IO.Path]::ChangeExtension($md4, 'docx'))
+    Check ($r.Code -eq 0 -and @($w.Keys | Where-Object { $_ -like 'word/media/*' }).Count -eq 1 -and $w['word/document.xml'] -match '<w:drawing>') 'Word: the picture embedded' $r.Out
+
     # The title from the first "# " heading, else the file's name; cover: false.
     $md2 = Join-Path $proj 'meetings\no front matter.md'
     Write-Md $md2 "# Kick-off`n`nHello.`n`n## Next`n`nMore.`n"
