@@ -436,6 +436,6 @@ The `translation:` block is shared with the netmedia Claude Code plugin (`netmed
 | DeepL key refused | Key put in `config.yaml` | Use `setx DEEPL_AUTH_KEY "<key>"` and a new terminal |
 | Change shows as `spec-driven` with a warning | Its workflow schema can't be found | Check `openspec/schemas/<name>/schema.yaml` and `openspec schema validate` |
 
-This guide as a Word document: [`docs/developer-guide.docx`](developer-guide.docx), made from this file by LazySpec itself in Netmedia's document theme (the `templates/` folder of the AIToolbelt repository): `lazyspec -Export Word -Markdown docs\developer-guide.md -Theme <AIToolbelt>\templates\document-theme.yaml` (or `Pdf`).
+This guide as a Word document: [`docs/LazySpec-Developer-Guide.docx`](LazySpec-Developer-Guide.docx), made from this file by LazySpec itself in Netmedia's document theme (the `templates/` folder of the AIToolbelt repository): `lazyspec -Export Word -Markdown docs\developer-guide.md -Theme <AIToolbelt>\templates\document-theme.yaml -Out docs\LazySpec-Developer-Guide.docx` (or `Pdf`).
 
 **Where to get help:** `-Help` on any script, `?` in the UI, [`tools/lazyspec/LAZYSPEC.md`](../tools/lazyspec/LAZYSPEC.md) for the full reference, or the LazySpec repo ([github.com/netmedia/lazyspec](https://github.com/netmedia/lazyspec)).
