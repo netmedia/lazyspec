@@ -1,0 +1,18 @@
+schema: spec-driven
+
+context: |
+  Acme Portal: the online shop and customer portal of a made-up retailer.
+  A LazySpec demo project; nothing here is a real product or client.
+
+lazyspec:
+  name: Acme Portal
+  client: Acme d.o.o.
+  subtitle: Functional specification
+  titles:
+    user-accounts: User accounts
+    online-payments: Online payments
+    notifications: Notifications
+  bundles:
+    accounts-and-orders:
+      title: "Accounts and orders"
+      changes: 01-add-user-signup, 03-add-order-history
