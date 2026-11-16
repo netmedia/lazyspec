@@ -180,7 +180,11 @@ Step by step for developers, with diagrams and screenshots: [`docs/developer-gui
 | `tools/lazyspec/` | The kit, as it lands in a project (and what `install` runs) |
 | `tools/lazyspec/LAZYSPEC.md` | Everything about it |
 | `docs/developer-guide.md` | Developer guide: install, add to a project, every workflow, with diagrams and screenshots |
-| `docs/LazySpec-Developer-Guide.docx` | The same guide as a Word document, made from the Markdown by LazySpec (`-Markdown`, Netmedia's document theme) |
+| `docs/LazySpec-Developer-Guide.docx` / `.pdf` | The developer guide as Word and PDF |
+| `docs/LazySpec-Reference.docx` / `.pdf`, `docs/LazySpec-README.docx` / `.pdf` | `LAZYSPEC.md` and this README as Word and PDF |
+| `docs/examples/` | What a client gets: the demo project's specification with the plan, one change (PDF, Word), a saved bundle |
+| `docs/build-documents.ps1` | Makes all of the above with LazySpec itself, in a document theme (Netmedia's: the AIToolbelt repository's `templates/`) |
+| `examples/acme-portal/` | A made-up demo project (specs, changes, models): the guide's screenshots and `docs/examples/` come from it |
 | `examples/document-theme/` | An example document theme (every key explained) |
 | `tests/` | Tests of the export (Word template, document theme): `.\tests\Test-*.ps1` |
 
