@@ -2,7 +2,7 @@
   "name": "lazyspec",
   "displayName": "LazySpec - OpenSpec specs and changes",
   "description": "A project's OpenSpec in your editor: the specifications and the plan (by group), tasks to tick, requirements and scenarios to jump to, find, validate, archive, and exports for the client in the company look.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "netmedia",
   "author": { "name": "Netmedia", "email": "netmedia@netmedia.hr", "url": "https://netmedia.agency" },
   "license": "SEE LICENSE IN LICENSE",
@@ -116,6 +116,11 @@
           "items": { "type": "string" },
           "default": [],
           "markdownDescription": "Projects with an `openspec` folder deeper than the workspace's folders (paths relative to a workspace folder, e.g. `apps/portal`)."
+        },
+        "lazyspec.openOnStartup": {
+          "type": "boolean",
+          "default": true,
+          "description": "Opening a folder with an openspec folder (code . there) shows LazySpec's sidebar: the Plan, the Scope, the details."
         },
         "lazyspec.showArchived": { "type": "boolean", "default": false, "description": "The plan shows archived changes too." },
         "lazyspec.grouped": { "type": "boolean", "default": true, "description": "The plan by group (in projects that group their changes)." }

@@ -433,6 +433,13 @@ export function activate(context: vscode.ExtensionContext): Api {
     vscode.workspace.onDidChangeWorkspaceFolders(() => { projects = findProjects(); watch(); reload(); }),
   );
   reload();
+  // A folder with openspec/ opened (code . there): LazySpec's sidebar shown, the Plan's first group or change selected.
+  if (projects.length && vscode.workspace.getConfiguration('lazyspec').get<boolean>('openOnStartup', true)) {
+    void vscode.commands.executeCommand('workbench.view.extension.lazyspec').then(() => {
+      const first = plan.getChildren()[0];
+      if (first) { void planView.reveal(first, { select: true, focus: false }).then(undefined, () => undefined); select(first); }
+    }, () => undefined);
+  }
   return { projects: () => projects, plan, scope, details, reload };
 }
 

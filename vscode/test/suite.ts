@@ -22,6 +22,11 @@ export async function run(): Promise<void> {
     assert.strictEqual(api.projects().length, 1);
     assert.strictEqual(api.projects()[0].name, 'Acme Portal');
   });
+  await check('opened in a folder with openspec/: the sidebar shown, the first item details', async () => {
+    await new Promise(r => setTimeout(r, 500));
+    const sel = api.details.current();
+    assert.ok(sel && sel.kind === 'group' && sel.id === '1', JSON.stringify(sel && sel.kind));
+  });
   await check('its commands are there', async () => {
     const all = await vscode.commands.getCommands(true);
     for (const c of ['lazyspec.find', 'lazyspec.export', 'lazyspec.exportGroups', 'lazyspec.newChange', 'lazyspec.validate', 'lazyspec.archive', 'lazyspec.openTui', 'lazyspec.openFile']) {
