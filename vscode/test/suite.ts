@@ -146,7 +146,7 @@ export async function run(): Promise<void> {
   });
   await check('out of date: a delta spec changed after the tasks - ! in the plan, the details say what', async () => {
     const spec = path.join(work, 'openspec', 'changes', '01-add-user-signup', 'specs', 'user-accounts', 'spec.md');
-    fs.writeFileSync(spec, fs.readFileSync(spec, 'utf8') + '\n### Requirement: Nickname\nThe system SHALL keep a nickname.\n');
+    fs.writeFileSync(spec, fs.readFileSync(spec, 'utf8') + '\n### Requirement: Nickname\nThe system SHALL keep a nickname.\n\n#### Scenario: Set\n- **WHEN** the customer sets it\n- **THEN** it is kept\n');
     api.reload();
     const item = api.plan.getTreeItem(api.plan.getChildren(api.plan.getChildren()[0])[0]);
     assert.ok(String(item.description).startsWith('! '), String(item.description));
@@ -159,6 +159,30 @@ export async function run(): Promise<void> {
     assert.ok(labels.some(l => l.endsWith('tasks.md')) && labels.some(l => l.endsWith('user-accounts/spec.md')), labels.join(', '));
     const tasks = files.find(f => String(api.undo.getTreeItem(f).label).endsWith('tasks.md'))!;
     assert.strictEqual(api.undo.getTreeItem(api.undo.getChildren(tasks)[0]).label, '1.4 Nightly removal of unverified accounts');
+  });
+  await check('the agent\'s sync in the background: exit 1 - not marked; exit 0 - validated, marked (a document it left: in sync)', async () => {
+    const { completeSync } = require('../src/agent');
+    const ops = require('../src/ops');
+    const p = api.projects()[0];
+    const ch = path.join(work, 'openspec', 'changes', '01-add-user-signup');
+    ops.setInSync(p, p.changes.find(c => c.name === '01-add-user-signup'));
+    fs.appendFileSync(path.join(ch, 'proposal.md'), '\nA late note.\n');
+    api.reload();
+    const c = p.changes.find(x => x.name === '01-add-user-signup')!;
+    const docs = ops.syncState(p).get(c.name);
+    assert.deepStrictEqual(docs.map((d: { doc: { id: string } }) => d.doc.id).sort(), ['design', 'specs']);
+    const file = ops.saveSyncSnapshot(p, c, docs, ops.savePrompt(p, 'sync-01-add-user-signup', ops.syncPrompt(p, c, docs)));
+    fs.appendFileSync(path.join(ch, 'design.md'), '\nUpdated by the agent.\n');
+    await completeSync(p, file, 1);
+    assert.ok(fs.existsSync(file), 'exit code 1: not marked (the snapshot kept)');
+    api.reload();
+    assert.ok(String(api.plan.getTreeItem(api.plan.getChildren(api.plan.getChildren()[0])[0]).description).startsWith('! '), 'still out of date');
+    await completeSync(p, file, 0);
+    await new Promise(r => setTimeout(r, 300));
+    assert.ok(!fs.existsSync(file), 'exit code 0, validated: marked (the snapshot used up)');
+    api.reload();
+    const item = api.plan.getTreeItem(api.plan.getChildren(api.plan.getChildren()[0])[0]);
+    assert.ok(!String(item.description).startsWith('! '), `in sync: ${item.description}`);
   });
   await check('the bundled lazyspec.ps1 is in the extension', () => {
     assert.ok(fs.existsSync(path.join(vscode.extensions.getExtension('netmedia.lazyspec')!.extensionPath, 'kit', 'lazyspec.ps1')));

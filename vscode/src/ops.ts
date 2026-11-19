@@ -302,13 +302,79 @@ export function syncState(p: Project): Map<string, StaleDoc[]> {
   if (changed) { writeState(p, state); }
   return stale;
 }
-/** A change's documents marked as in sync with what they're written from, as they are now. */
-export function setInSync(p: Project, c: Change) {
+/** A change's documents marked as in sync: each as it is now (self), against what it's written from - as that is
+ *  now, or ($snap: document id -> its snapshot, from a sync prompt) as it was when the agent got the prompt; then
+ *  only the snapshot's documents, the others as they were noted. (LazySpec's Set-InSync.) */
+export function setInSync(p: Project, c: Change, snap?: Record<string, Record<string, Snap>>) {
   const state = readState(p);
-  const rec: SyncState[string] = {};
-  for (const dep of changeDeps(c)) { rec[dep.doc.id] = { self: selfHash(dep.doc.files), up: snapshot(p, dep.ups) }; }
+  const rec: SyncState[string] = snap && state[c.name] ? state[c.name] : {};
+  for (const dep of changeDeps(c)) {
+    if (snap && !(dep.doc.id in snap)) { continue; }
+    rec[dep.doc.id] = { self: selfHash(dep.doc.files), up: snap ? snap[dep.doc.id] : snapshot(p, dep.ups) };
+  }
   state[c.name] = rec;
   writeState(p, state);
+}
+
+// A sync prompt's snapshot (<prompt>.sync.json, as LazySpec writes it): the change; each of its documents written
+// from others, with its own hash and what it's written from, both as they are now (stale: the out-of-date ones
+// the prompt names); asked: the files of those (what the agent is to update).
+interface SyncSnapshot { change: string; prompt: string; asked: string[]; docs: Record<string, { self: string; stale: boolean; up: Record<string, Snap> }> }
+export function saveSyncSnapshot(p: Project, c: Change, stale: StaleDoc[], promptRel: string): string {
+  const staleIds = stale.map(s => s.doc.id);
+  const docs: SyncSnapshot['docs'] = {};
+  const asked: string[] = [];
+  for (const dep of changeDeps(c)) {
+    const isStale = staleIds.includes(dep.doc.id);
+    docs[dep.doc.id] = { self: selfHash(dep.doc.files), stale: isStale, up: snapshot(p, dep.ups) };
+    if (isStale) { asked.push(...dep.doc.files.map(f => relPath(p.root, f))); }
+  }
+  const file = path.join(p.root, promptRel.replace(/\.md$/i, '.sync.json'));
+  write(file, JSON.stringify({ change: c.name, prompt: promptRel, asked, docs }, null, 2));
+  return file;
+}
+export function readSyncSnapshot(file: string): SyncSnapshot | null {
+  try { const s = JSON.parse(readText(file)); return s && s.change && s.docs ? s : null; } catch { return null; }
+}
+/** The agent done: its change marked as in sync against the prompt's snapshot - what each document is written
+ *  from as it was then, but the files the agent was to update as they are now (its own work doesn't put the
+ *  documents written from them out of date; a spec edited meanwhile does); the snapshot used up. Its name. */
+export function setInSyncFromFile(p: Project, file: string): string {
+  const s = readSyncSnapshot(file);
+  if (!s) { return ''; }
+  p.load();
+  const c = p.changes.find(x => x.name === s.change && !x.archived);
+  if (!c) { return ''; }
+  const asked = s.asked || [];
+  const snap: Record<string, Record<string, Snap>> = {};
+  for (const [id, d] of Object.entries(s.docs)) {
+    const up: Record<string, Snap> = {};
+    for (const [rel, v] of Object.entries(d.up || {})) {
+      if (asked.includes(rel)) { const f = path.join(p.root, rel); if (fs.existsSync(f)) { Object.assign(up, snapshot(p, [f])); } }
+      else { up[rel] = v; }
+    }
+    snap[id] = up;
+  }
+  setInSync(p, c, snap);
+  fs.rmSync(file, { force: true });
+  p.load();
+  return s.change;
+}
+/** Sync prompts saved for later (s) and given to the agent outside: a document they name changed since, and
+ *  the change still out of date (one it rightly left as it was) - the snapshot files to offer to mark. */
+export function doneSyncPrompts(p: Project, stale: Map<string, StaleDoc[]>): string[] {
+  const dir = path.join(p.root, '.lazyspec', 'prompts');
+  let files: string[] = [];
+  try { files = fs.readdirSync(dir).filter(f => f.endsWith('.sync.json')).sort().map(f => path.join(dir, f)); } catch { return []; }
+  return files.filter(f => {
+    const s = readSyncSnapshot(f);
+    const c = s && p.changes.find(x => x.name === s.change && !x.archived);
+    if (!s || !c || !stale.has(s.change)) { return false; }
+    return Object.entries(s.docs).some(([id, d]) => {
+      const doc = c.docs.find(x => x.id === id);
+      return d.stale && doc && selfHash(doc.files) !== d.self;
+    });
+  });
 }
 export function syncPrompt(p: Project, c: Change, stale: StaleDoc[]): string {
   let sb = `# LazySpec: bring documents of the change ${c.name} up to date\n\nProject root: the current folder. The change: openspec/changes/${c.name}/.\n\n`;

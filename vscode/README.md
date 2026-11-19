@@ -80,6 +80,16 @@ document was written from in `.lazyspec/sync.json`, and the extension reads and 
 - The first time it happens, you are asked whether to watch for it (`lazyspec: syncCheck:`).
 - **Sync Out-of-Date Documents** (the warning button on the change) either has the agent update them (it
   gets what changed, before and now) or marks them as in sync.
+- When the agent is done, the change is **marked as in sync by itself**, as in LazySpec:
+  - **In the background**: when Claude Code ends with exit code 0 and `openspec validate <change> --strict`
+    passes. Otherwise it isn't marked, and a message says why.
+  - **Here**: Claude Code runs as the terminal itself. When it ends with 0 you are asked *mark as in sync?*
+    (`/exit` also ends with 0 when you stopped it halfway).
+  - **Save the prompt**: nothing is marked. Once the agent has changed a document the prompt names and the
+    change is still out of date, you are offered to mark it.
+- It marks against what the agent was given (`<prompt>.sync.json` next to the prompt, the same file LazySpec
+  writes and reads). A document the agent rightly left unchanged is in sync too. A spec someone edited during
+  the run still shows as out of date.
 
 ## Find
 

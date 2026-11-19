@@ -10,8 +10,9 @@ import * as path from 'path';
 import { test } from 'node:test';
 import { Entry, Project, searchIndex } from '../src/model';
 import {
-  blockEnd, hunkSummary, itemBlock, newModifyChange, removeEntries, revisionPrompt, setConfigBundle, setConfigValue,
-  setInSync, setTaskText, syncPrompt, syncState, undoFile, undoHunk, undoRows, writeItemEdit,
+  blockEnd, doneSyncPrompts, hunkSummary, itemBlock, newModifyChange, removeEntries, revisionPrompt, saveSyncSnapshot,
+  savePrompt, setConfigBundle, setConfigValue, setInSync, setInSyncFromFile, setTaskText, syncPrompt, syncState, undoFile,
+  undoHunk, undoRows, writeItemEdit,
 } from '../src/ops';
 
 const repo = path.resolve(__dirname, '..', '..', '..');
@@ -152,6 +153,73 @@ test('out of date: the same .lazyspec/sync.json as lazyspec.ps1 (its baseline: i
     assert.ok(written.includes('01-add-user-signup'), 'LazySpec noted the baseline');
     assert.strictEqual(syncState(load(dir)).size, 0, 'the extension reads it as in sync');
     assert.strictEqual(read(path.join(dir, '.lazyspec', 'sync.json')), written, 'and has nothing to add to it');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the agent\'s sync: marked against the prompt\'s snapshot - left unchanged: in sync; its own edits: no; a spec edited meanwhile: shows', () => {
+  const dir = copyDemo();
+  const ch = path.join(dir, 'openspec', 'changes', '01-add-user-signup');
+  const add = (f: string, t: string) => fs.appendFileSync(path.join(ch, f), `\n${t}\n`);
+  const sync = (p: Project) => {
+    const c = p.changes.find(x => x.name === '01-add-user-signup')!;
+    const docs = syncState(p).get(c.name)!;
+    const rel = savePrompt(p, 'sync-01-add-user-signup', syncPrompt(p, c, docs));
+    return { file: saveSyncSnapshot(p, c, docs, rel), docs };
+  };
+  try {
+    setConfigValue(load(dir), 'syncCheck', 'on');
+    syncState(load(dir));
+    // The proposal changed: the design and the delta specs out of date. The agent updates the design only.
+    add('proposal.md', 'A late note.');
+    let p = load(dir);
+    let s = sync(p);
+    assert.deepStrictEqual(s.docs.map(d => d.doc.id).sort(), ['design', 'specs']);
+    const snap = JSON.parse(read(s.file));
+    assert.deepStrictEqual(snap.asked.sort(), ['openspec/changes/01-add-user-signup/design.md', 'openspec/changes/01-add-user-signup/specs/notifications/spec.md', 'openspec/changes/01-add-user-signup/specs/user-accounts/spec.md']);
+    add('design.md', 'Updated by the agent.');
+    assert.strictEqual(setInSyncFromFile(p, s.file), '01-add-user-signup');
+    assert.strictEqual(syncState(load(dir)).size, 0, 'in sync: the specs it left, and the tasks (written from the design it updated)');
+    assert.ok(!fs.existsSync(s.file), 'the snapshot used up');
+    // A requirement added: the tasks out of date. The agent updates them; meanwhile another requirement.
+    add('specs/user-accounts/spec.md', '### Requirement: Nickname\nThe system SHALL keep a nickname.\n\n#### Scenario: Set\n- **WHEN** set\n- **THEN** kept');
+    p = load(dir);
+    s = sync(p);
+    add('tasks.md', '- [ ] 3.3 Updated by the agent');
+    add('specs/user-accounts/spec.md', '### Requirement: Avatar\nThe system SHALL keep an avatar.\n\n#### Scenario: Set\n- **WHEN** set\n- **THEN** kept');
+    setInSyncFromFile(p, s.file);
+    const st = syncState(load(dir)).get('01-add-user-signup')!;
+    assert.deepStrictEqual(st.flatMap(x => x.diffs.map(d => `${x.doc.id} ${d.mark} ${d.req}`)), ['tasks + Avatar'], 'out of date for the later edit only');
+    // A prompt saved for later: offered once a document it names changed (and the change is still out of date).
+    setInSync(load(dir), load(dir).changes.find(x => x.name === '01-add-user-signup')!);
+    add('proposal.md', 'Another note.');
+    p = load(dir);
+    s = sync(p);
+    assert.deepStrictEqual(doneSyncPrompts(load(dir), syncState(load(dir))), [], 'nothing done yet: not offered');
+    add('design.md', 'Updated outside.');
+    p = load(dir);
+    assert.deepStrictEqual(doneSyncPrompts(p, syncState(p)), [s.file], 'the design updated, the specs left: offered');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the agent\'s sync: a snapshot the extension saved is LazySpec\'s too (it offers it, marks it)', { skip: process.platform !== 'win32' }, () => {
+  const dir = copyDemo();
+  const ch = path.join(dir, 'openspec', 'changes', '01-add-user-signup');
+  try {
+    setConfigValue(load(dir), 'syncCheck', 'on');
+    syncState(load(dir));
+    fs.appendFileSync(path.join(ch, 'proposal.md'), '\nA late note.\n');
+    const p = load(dir);
+    const c = p.changes.find(x => x.name === '01-add-user-signup')!;
+    const docs = syncState(p).get(c.name)!;
+    const file = saveSyncSnapshot(p, c, docs, savePrompt(p, 'sync-01-add-user-signup', syncPrompt(p, c, docs)));
+    fs.appendFileSync(path.join(ch, 'design.md'), '\nUpdated outside.\n');
+    const frames = path.join(dir, 'frames.txt');
+    cp.execFileSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(repo, 'tools', 'lazyspec', 'lazyspec.ps1'), '-Root', dir, '-Width', '130', '-Keys', 'snap,y,snap', '-Frames', frames], { stdio: 'ignore', timeout: 120000 });
+    const f = read(frames);
+    assert.ok(f.includes('its documents changed since the saved sync prompt'), 'LazySpec offered it');
+    assert.ok(f.includes('marked as in sync'), 'y: marked');
+    assert.ok(!fs.existsSync(file));
+    assert.strictEqual(syncState(load(dir)).size, 0, 'in sync for the extension too');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
