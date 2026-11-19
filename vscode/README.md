@@ -117,6 +117,14 @@ document was written from in `.lazyspec/sync.json`, and the extension reads and 
   the `⚠` count in the status bar) lists every out-of-date change, all chosen. Untick the ones to leave, then
   update them (one agent run for all of them; each change validated and marked after) or mark them all as in
   sync. Selecting several changes in the Plan (`Ctrl`/`Shift`-click) and pressing `⚠` does the same for those.
+- **While the agent works in the background** you can see it:
+  - the **status bar** shows a spinner, `Claude Code: <what> · 1:23` (how long it has run), its last step
+    in the tooltip; click it for the output.
+  - in the **Plan**, the changes it is updating spin and say *updating...* until it's done.
+  - the **LazySpec: Claude Code** output shows each step as it happens: the files it reads and edits, the
+    commands it runs, what it says, then *done in N s*.
+  - the notification (bottom right, or under the bell) has **Cancel**; the Plan's `...` menu has **Show Claude
+    Code's Output** and **Stop Claude Code**.
 - When the agent is done, the change is **marked as in sync by itself**, as in LazySpec:
   - **In the background**: when Claude Code ends with exit code 0 and `openspec validate <change> --strict`
     passes. Otherwise it isn't marked, and a message says why.

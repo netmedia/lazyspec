@@ -30,6 +30,10 @@ function quote(a: string): string { return /^[\w./:=-]+$/.test(a) ? a : `"${a.re
 
 /** Snapshot files of runs started here (not offered again as saved prompts done outside). */
 export const runningSyncs = new Set<string>();
+/** The changes the agent is updating now (the Plan shows them as updating). */
+export function syncingChanges(): Set<string> {
+  return new Set([...runningSyncs].map(f => readSyncSnapshot(f)?.change || '').filter(n => n));
+}
 let afterSync: () => void = () => undefined;
 /** What to do after a change is marked as in sync (the views reloaded). */
 export function onSynced(fn: () => void) { afterSync = fn; }
@@ -45,7 +49,7 @@ export async function agentTask(p: Project, label: string, name: string, prompt:
   const pick = await vscode.window.showQuickPick(items, { placeHolder: `${label}: the agent (Claude Code)`, title: 'LazySpec' });
   if (!pick) { void vscode.window.showInformationMessage(`Prompt saved: ${rel}`); return; }
   if (p.config.values['agent'] !== pick.mode) { try { setConfigValue(p, 'agent', pick.mode); } catch { /* read-only */ } }
-  if (pick.mode !== 'prompt') { syncFiles.forEach(f => runningSyncs.add(f)); }
+  if (pick.mode !== 'prompt' && syncFiles.length) { syncFiles.forEach(f => runningSyncs.add(f)); afterSync(); }
   if (pick.mode === 'here') { here(p, label, rel, syncFiles); }
   else if (pick.mode === 'background') {
     const code = await background(p, label, ['-p', agentInstruction(rel) + ' Do not ask questions: where something is unclear, decide sensibly, and at the end list what you decided.', '--permission-mode', 'acceptEdits'], syncFiles.length > 0);
@@ -147,26 +151,81 @@ export async function offerDoneSync(p: Project, syncFile: string) {
   const ok = await vscode.window.showInformationMessage(`${name}: its documents changed since the saved sync prompt. Mark them as in sync?`, 'Yes, in Sync', 'No');
   if (ok === 'Yes, in Sync') { mark(p, syncFile, 'marked as in sync (against the saved prompt\'s specs)'); }
 }
+let status: vscode.StatusBarItem | undefined;
+let running: cp.ChildProcess | undefined;
+/** The run's output (the status bar's spinner, clicked). */
+export function showAgentOutput() { (channel ||= vscode.window.createOutputChannel('LazySpec: Claude Code')).show(); }
+/** The run in the background stopped (the notification's Cancel, or LazySpec: Stop Claude Code). */
+export function stopAgent() { if (running && running.exitCode === null) { running.kill(); channel?.appendLine('! stopped'); } }
+/** One line of Claude Code's stream (--output-format stream-json): what it does, said as it does it. */
+function streamLine(line: string, step: (s: string) => void) {
+  let o: { type?: string; subtype?: string; model?: string; message?: { content?: { type: string; text?: string; name?: string; input?: Record<string, unknown> }[] }; is_error?: boolean; duration_ms?: number; num_turns?: number; result?: string };
+  try { o = JSON.parse(line); } catch { if (line.trim()) { channel!.appendLine(line); } return; }
+  if (o.type === 'system' && o.subtype === 'init') { channel!.appendLine(`› started${o.model ? ` (${o.model})` : ''}`); return; }
+  if (o.type === 'assistant') {
+    for (const c of o.message?.content || []) {
+      if (c.type === 'text' && c.text?.trim()) { channel!.appendLine(c.text.trim()); }
+      if (c.type === 'tool_use') {
+        const i = c.input || {};
+        const what = String(i.file_path || i.path || i.command || i.pattern || i.description || i.url || '').replace(/\\/g, '/');
+        const short = what.length > 110 ? what.slice(0, 107) + '...' : what;
+        channel!.appendLine(`  › ${c.name}${short ? ` ${short}` : ''}`);
+        step(`${c.name}${short ? ` ${short.split('/').pop()}` : ''}`);
+      }
+    }
+    return;
+  }
+  if (o.type === 'result') {
+    const secs = o.duration_ms ? Math.round(o.duration_ms / 1000) : 0;
+    channel!.appendLine(`${o.is_error ? '! ended with an error' : '✓ done'}${secs ? ` in ${secs} s` : ''}${o.num_turns ? `, ${o.num_turns} turns` : ''}`);
+  }
+}
 async function background(p: Project, label: string, args: string[], quiet = false): Promise<number> {
   const tool = agentTool();
   if (!tool) { void vscode.window.showWarningMessage('Claude Code (claude) is not installed: npm install -g @anthropic-ai/claude-code'); return -1; }
   channel ||= vscode.window.createOutputChannel('LazySpec: Claude Code');
   channel.show(true);
+  // Its steps as they happen (claude -p prints only its answer at the end): --output-format stream-json.
+  const streamArgs = process.env.LAZYSPEC_AGENT ? args : [...args, '--output-format', 'stream-json', '--verbose'];
   channel.appendLine(`\n> claude ${args.map(quote).join(' ')}`);
   lastRoot = p.root;
-  const code = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Claude Code: ${label}`, cancellable: true }, (_progress, token) =>
+  // While it runs: a spinner in the status bar - the time, its last step; a click shows its output.
+  status ||= vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 49);
+  status.command = 'lazyspec.agentOutput';
+  const started = Date.now();
+  let last = 'starting';
+  const tick = () => {
+    const s = Math.round((Date.now() - started) / 1000);
+    status!.text = `$(sync~spin) Claude Code: ${label} · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    status!.tooltip = `LazySpec: Claude Code is working in the background - ${last}. Click: its output.`;
+  };
+  tick();
+  status.show();
+  const timer = setInterval(tick, 1000);
+  const code = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: `Claude Code: ${label}`, cancellable: true }, (progress, token) =>
     new Promise<number>(resolve => {
       // npm's claude.cmd runs through cmd.exe; the native claude.exe directly.
       const viaCmd = /\.(cmd|bat)$/i.test(tool);
       const child = viaCmd
-        ? cp.spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${[quote(tool), ...args.map(quote)].join(' ')}"`], { cwd: p.root, windowsVerbatimArguments: true, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
-        : cp.spawn(tool, args, { cwd: p.root, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+        ? cp.spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `"${[quote(tool), ...streamArgs.map(quote)].join(' ')}"`], { cwd: p.root, windowsVerbatimArguments: true, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+        : cp.spawn(tool, streamArgs, { cwd: p.root, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+      running = child;
       token.onCancellationRequested(() => child.kill());
-      child.stdout.on('data', b => channel!.append(b.toString('utf8')));
+      let buf = '';
+      const step = (s: string) => { last = s; progress.report({ message: s.slice(0, 80) }); tick(); };
+      child.stdout.on('data', b => {
+        buf += b.toString('utf8');
+        const lines = buf.split(/\r?\n/);
+        buf = lines.pop() || '';
+        for (const l of lines) { streamLine(l, step); }
+      });
       child.stderr.on('data', b => channel!.append(b.toString('utf8')));
       child.on('error', e => { channel!.appendLine(e.message); resolve(-1); });
-      child.on('close', c => resolve(c ?? -1));
+      child.on('close', c => { if (buf.trim()) { streamLine(buf, step); } resolve(c ?? -1); });
     }));
+  clearInterval(timer);
+  status.hide();
+  running = undefined;
   // A sync goes on (validated, marked): what to do next is said after it.
   if (quiet && code === 0) { return code; }
   void vscode.window.showInformationMessage(code === 0 ? `Claude Code done: ${label}.` : `Claude Code ended with exit code ${code}: ${label}.`, 'Answer It', 'What It Changed', 'Show Output').then(async pick => {

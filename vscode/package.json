@@ -2,7 +2,7 @@
   "name": "lazyspec",
   "displayName": "LazySpec - OpenSpec specs and changes",
   "description": "A project's OpenSpec in your editor: the specifications and the plan (by group), formatted reading, tasks, requirements, scenarios and sections to edit, tick, delete or hand to the agent, find, out-of-date documents, undo, validate, archive, and exports for the client in the company look.",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "publisher": "netmedia",
   "author": {
     "name": "Netmedia",
@@ -336,6 +336,18 @@
         "command": "lazyspec.focusEditor",
         "title": "Go to the Open Document",
         "category": "LazySpec"
+      },
+      {
+        "command": "lazyspec.agentOutput",
+        "title": "Show Claude Code's Output (Background Run)",
+        "category": "LazySpec",
+        "icon": "$(output)"
+      },
+      {
+        "command": "lazyspec.agentStop",
+        "title": "Stop Claude Code (Background Run)",
+        "category": "LazySpec",
+        "icon": "$(debug-stop)"
       }
     ],
     "menus": {
@@ -439,6 +451,16 @@
           "command": "lazyspec.help",
           "when": "view == lazyspec.scope || view == lazyspec.undo",
           "group": "6_open@3"
+        },
+        {
+          "command": "lazyspec.agentOutput",
+          "when": "view == lazyspec.plan",
+          "group": "5_agent@2"
+        },
+        {
+          "command": "lazyspec.agentStop",
+          "when": "view == lazyspec.plan",
+          "group": "5_agent@3"
         }
       ],
       "view/item/context": [

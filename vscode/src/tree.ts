@@ -25,7 +25,7 @@ export type Node =
   | { kind: 'sec'; project: Project; owner: Owner; file: string; section: Section };
 
 export interface Settings { grouped: boolean; showArchived: boolean; sort: 'name' | 'name-desc' | 'recent'; documents: 'formatted' | 'preview' | 'source' }
-export interface Hooks { stale(p: Project, c: Change): boolean }
+export interface Hooks { stale(p: Project, c: Change): boolean; syncing(p: Project, c: Change): boolean }
 
 /** An item clicked: its document opened at it - in the formatted editor (scrolled to it, marked) or the source. */
 export function openCommand(file: string, line = 0, text = ''): vscode.Command {
@@ -127,9 +127,12 @@ abstract class BaseTree implements vscode.TreeDataProvider<Node> {
       case 'change': {
         const c = n.change;
         const stale = !c.archived && this.hooks.stale(n.project, c);
+        const syncing = !c.archived && this.hooks.syncing(n.project, c);
         const t = new vscode.TreeItem(itemTitle(c), C.Collapsed);
         t.description = (stale ? '! ' : '') + (c.total ? `${c.done}/${c.total}` : c.stage.toLowerCase());
         t.iconPath = stageIcon(c, stale);
+        // The agent updating it now.
+        if (syncing) { t.description = `updating...  ${c.total ? `${c.done}/${c.total}` : ''}`; t.iconPath = new vscode.ThemeIcon('sync~spin', new vscode.ThemeColor('charts.blue')); }
         const md = new vscode.MarkdownString(`**${itemTitle(c)}**  \n${c.stage}, ${c.done} of ${c.total} tasks  \n\`openspec/changes/${c.archived ? 'archive/' : ''}${c.name}/\``);
         if (c.group && n.project.grouping) { md.appendMarkdown(`  \n${n.project.groupTitle(c.group)}`); }
         if (stale) { md.appendMarkdown('  \n**Out of date**: documents older than what they are written from (Sync Out-of-Date Documents)'); }
