@@ -258,16 +258,19 @@ function Show-Usage {
     & $d '    v validate all   a archive the change   n new change   e edit   s sort changes'
     & $d '    m changes as one (mark them with Space, Enter: a title, then read them; x there: export)'
     & $d '    t find: a task (1.3, 01 1.3, words), a requirement, a scenario; Enter: Read, at it'
-    & $d '      from any screen: t (where nothing is typed) or Ctrl+F; Esc comes back'
+    & $d '      from any screen: t where nothing is typed, Ctrl+T anywhere; Esc comes back; Tab its kind (sections'
+    & $d '      too), Shift+Tab the document it is in (proposal, specs, design, tasks, models ...)'
     & $d '      Right: mark them (Space, a all, g its group); Del delete; Enter: delete, change, redo them'
     & $d '    y out of date (! in the plan): the agent updates the documents, or mark them as in sync'
     & $d '    u undo: the changes since the last commit, piece by piece (needs git)'
+    & $d '    t u y: the letter where nothing is typed, Ctrl+T Ctrl+U Ctrl+Y on any screen (also while typing)'
     & $d '    h show/hide archived   / filter   r refresh   ? help   q quit'
     & $y '  Read'
-    & $d '    Up/Down a task, requirement or scenario (where there are; else scroll)   PgUp/PgDn Home/End scroll'
+    & $d '    Up/Down a task, requirement, scenario or section (## Why ...; else scroll)   PgUp/PgDn Home/End'
     & $d '    Enter edit the picked item in a window (Ctrl+S save, Esc cancel)   Space a task done/not'
     & $d '    Del delete it (asked first)   a the agent: change it or write it again'
-    & $d '    Left/Right document   e the whole file in your editor   x export   t find   Esc back'
+    & $d '    Left/Right document   e the whole file in your editor   x export   t find   u undo   y out of date'
+    & $d '    Esc back'
     & $y '  Run'
     & $d '    PgUp/PgDn Home/End scroll   Esc stop (asked first); when done: Enter or Esc back'
     Write-Host ''
@@ -5510,7 +5513,10 @@ function Draw-Read([int]$W, [int]$H) {
     $pos = 'all'
     if ($max -gt 0) { $pos = "$([int][Math]::Round(100 * $script:readScroll / $max))%" }
     $rows = New-Object Collections.ArrayList
-    [void]$rows.Add((Border-Top $W "$projectName $($g.mid) $title" "$($doc.Count) lines $($g.mid) $pos" 0))
+    $right = "$($doc.Count) lines $($g.mid) $pos"
+    $stale = @(@($item) + @($item.PSObject.Properties['Members'] | ForEach-Object { $_.Value }) | Where-Object { $_ -and $_.Type -eq 'change' -and (Test-Stale $_) })
+    if ($stale.Count) { $right = "! out of date: y $($g.mid) $right" }
+    [void]$rows.Add((Border-Top $W "$projectName $($g.mid) $title" $right 0))
     foreach ($r in (Full-Rows ($H - 3 - $bottom.Count) $W $lines)) { [void]$rows.Add($r) }
     foreach ($r in $bottom) { [void]$rows.Add($r) }
     [void]$rows.Add((Border-Line $W $g.lt $g.h $g.rt 0 ''))
@@ -5711,7 +5717,7 @@ function Use-Pick([string]$Then, [string]$Names, [string]$Title, [string]$Id) {
 
 # Find (t on Home): the tasks of the plan's changes, and the requirements and scenarios of the specs and of
 # the changes' delta specs. A task number (1.3), words, a change's name or number; Enter: Read, at it.
-function Add-SpecSearchEntries($List, $Item, [string]$Path, [string]$Cap, [string]$Where) {
+function Add-SpecSearchEntries($List, $Item, [string]$Path, [string]$Cap, [string]$Where, [string]$Art) {
     if (-not (Test-Path -LiteralPath $Path)) { return }
     $req = ''
     $lines = (Read-Text $Path).Replace("`r", '').Split("`n")
@@ -5725,7 +5731,30 @@ function Add-SpecSearchEntries($List, $Item, [string]$Path, [string]$Cap, [strin
         if ($kind -eq 'scn') { $context = $req }
         [void]$List.Add([pscustomobject]@{
                 Kind = $kind; Item = $Item; Where = $Where; Cap = $Cap; Group = $context; Num = ''; Text = $text; Done = $false; Path = $Path; Line = $i + 1
-                After = $Cap; Needle = $text; Hay = "$($Item.Name) $Where $Cap $context $text".ToLower()
+                After = $Cap; Needle = $text; Hay = "$($Item.Name) $Where $Cap $context $text".ToLower(); Art = $Art
+            })
+    }
+}
+# A document's sections (## Why, ## Decisions, ### ADR-001 ...; not the requirements' and scenarios' own, nor
+# "## ADDED Requirements" and the like): their heading, found by the words of their text too.
+function Add-SectionEntries($List, $Item, [string]$Path, [string]$Where, [string]$Art) {
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    $lines = (Read-Text $Path).Replace("`r", '').Split("`n")
+    $fence = $false
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $l = $lines[$i]
+        if ($l.Trim().StartsWith('```')) { $fence = -not $fence; continue }
+        if ($fence -or $l -notmatch '^(#{2,6})\s+(.+?)\s*#*$') { continue }
+        $h = $Matches[2]
+        if ($h -match '^(Requirement|Zahtjev|Anforderung|Scenario|Scenarij|Szenario):' -or $h -match '(?i)^(\w+\s+)?Requirements$') { continue }
+        $text = Plain-Inline $h
+        $end = Get-BlockEnd $lines $i 'sec'
+        $body = ''
+        if ($end -gt $i + 1) { $body = Plain-Inline ((@($lines[($i + 1)..($end - 1)])) -join ' ') }
+        if ($body.Length -gt 3000) { $body = $body.Substring(0, 3000) }
+        [void]$List.Add([pscustomobject]@{
+                Kind = 'sec'; Item = $Item; Where = $Where; Cap = ''; Group = ''; Num = ''; Text = $text; Done = $false; Path = $Path; Line = $i + 1
+                After = ''; Needle = $text; Hay = "$($Item.Name) $Where $Art $text $body".ToLower(); Art = $Art
             })
     }
 }
@@ -5739,6 +5768,8 @@ function Get-SearchIndex {
         # Its tasks: the file its workflow tracks (tasks.md by default).
         $tracked = @($c.Docs | Where-Object { $c.Workflow.Tracks -and $_.Generates -eq $c.Workflow.Tracks -and $_.Files.Count })
         if (-not $tracked.Count) { $tracked = @($c.Docs | Where-Object { $_.Id -eq 'tasks' -and $_.Files.Count }) }
+        $tasksArt = 'Tasks'
+        if ($tracked.Count) { $tasksArt = $tracked[0].Title }
         foreach ($f in @($tracked | ForEach-Object { $_.Files })) {
             $group = ''
             $lines = (Read-Text $f).Replace("`r", '').Split("`n")
@@ -5752,21 +5783,28 @@ function Get-SearchIndex {
                 if ($text -match '^(\d+(?:\.\d+)+)\.?\s') { $num = $Matches[1] }
                 [void]$list.Add([pscustomobject]@{
                         Kind = 'task'; Item = $c; Where = $where; Cap = ''; Group = $group; Num = $num; Text = $text; Done = $done; Path = $f; Line = $i + 1
-                        After = $group; Needle = $text; Hay = "$($c.Name) $where $group $text".ToLower()
+                        After = $group; Needle = $text; Hay = "$($c.Name) $where $group $text".ToLower(); Art = $tasksArt
                     })
             }
         }
-        foreach ($cap in $c.Caps) { Add-SpecSearchEntries $list $c $cap.Path $cap.Name $where }
+        foreach ($cap in $c.Caps) { Add-SpecSearchEntries $list $c $cap.Path $cap.Name $where 'Specs' }
+        # Every document's sections (the proposal's Why, the design's decisions, the models' ...).
+        foreach ($d in $c.Docs) {
+            if ($d.IsSpecs) { foreach ($cap in $c.Caps) { Add-SectionEntries $list $c $cap.Path $where 'Specs' }; continue }
+            foreach ($f in @($d.Files)) { Add-SectionEntries $list $c $f $where $d.Title }
+        }
     }
-    foreach ($sp in $script:specs) { Add-SpecSearchEntries $list $sp $sp.Path '' (Get-ItemTitle $sp) }
+    foreach ($sp in $script:specs) { Add-SpecSearchEntries $list $sp $sp.Path '' (Get-ItemTitle $sp) 'Spec'; Add-SectionEntries $list $sp $sp.Path (Get-ItemTitle $sp) 'Spec' }
+    # In each file in its order (sections and tasks, requirements, scenarios interleaved).
+    $list = @($list | Sort-Object @{ Expression = { $_.Path } }, @{ Expression = { $_.Line } })
     $script:searchIndex = @($list)
     $script:searchKey = $key
     return $script:searchIndex
 }
-$searchKinds = @('all', 'tasks', 'open tasks', 'requirements', 'scenarios')
+$searchKinds = @('all', 'tasks', 'open tasks', 'requirements', 'scenarios', 'sections')
 # Every token must match: a task number (1.3; also its sub-tasks 1.3.1) a task's, any other word a part of
 # its change's or spec's name or title, its group, its requirement or its own text.
-function Find-Search([string]$Query, [string]$Kind) {
+function Find-Search([string]$Query, [string]$Kind, [string]$Art = 'all') {
     $toks = @($Query.ToLower().Split(' ', [StringSplitOptions]::RemoveEmptyEntries))
     if (-not $toks.Count) { return @() }
     $out = New-Object Collections.ArrayList
@@ -5775,6 +5813,8 @@ function Find-Search([string]$Query, [string]$Kind) {
         if ($Kind -eq 'open tasks' -and ($e.Kind -ne 'task' -or $e.Done)) { continue }
         if ($Kind -eq 'requirements' -and $e.Kind -ne 'req') { continue }
         if ($Kind -eq 'scenarios' -and $e.Kind -ne 'scn') { continue }
+        if ($Kind -eq 'sections' -and $e.Kind -ne 'sec') { continue }
+        if ($Art -and $Art -ne 'all' -and $e.Art -ne $Art) { continue }
         $ok = $true
         foreach ($t in $toks) {
             if ($t -match '^\d+(\.\d+)+\.?$') {
@@ -5785,10 +5825,18 @@ function Find-Search([string]$Query, [string]$Kind) {
         }
         if ($ok) { [void]$out.Add($e) }
     }
-    return @($out)
+    # Found by its own words (its name, heading, group, change) first; by a section's text only, after.
+    $first = New-Object Collections.ArrayList; $then = New-Object Collections.ArrayList
+    foreach ($e in $out) {
+        $own = "$($e.Item.Name) $($e.Where) $($e.Cap) $($e.Group) $($e.Text) $($e.Art)".ToLower()
+        $all = $true
+        foreach ($t in $toks) { if ($t -notmatch '^\d+(\.\d+)+\.?$' -and -not $own.Contains($t)) { $all = $false; break } }
+        if ($all) { [void]$first.Add($e) } else { [void]$then.Add($e) }
+    }
+    return @($first) + @($then)
 }
 function Start-Search {
-    if (-not $script:search) { $script:search = [pscustomobject]@{ Query = ''; Kind = 'all'; Index = 0; Focus = 'type'; Marked = [ordered]@{} } }
+    if (-not $script:search) { $script:search = [pscustomobject]@{ Query = ''; Kind = 'all'; Art = 'all'; Index = 0; Focus = 'type'; Marked = [ordered]@{} } }
     $script:search.Focus = 'type'
     if ($script:screen -ne 'search') { $script:search | Add-Member -NotePropertyName Back -NotePropertyValue $script:screen -Force }
     $script:search.Index = 0
@@ -5797,7 +5845,7 @@ function Start-Search {
 }
 function Draw-Search([int]$W, [int]$H) {
     $s = $script:search
-    $res = @(Find-Search $s.Query $s.Kind)
+    $res = @(Find-Search $s.Query $s.Kind $s.Art)
     if ($s.Index -ge $res.Count) { $s.Index = [Math]::Max(0, $res.Count - 1) }
     $lines = New-Object Collections.ArrayList
     [void]$lines.Add(@())
@@ -5805,11 +5853,13 @@ function Draw-Search([int]$W, [int]$H) {
     if ($s.Kind -ne 'all') { $chip = $st.chipOn }
     $cur = ''
     if ($s.Focus -eq 'type') { $cur = $g.cursor }
-    [void]$lines.Add(@((S '  find ' $st.title), (S "$($s.Query)$cur" $st.accent), (S '   '), (S " $($s.Kind) " $chip)))
+    $artChip = $st.chip
+    if ($s.Art -ne 'all') { $artChip = $st.chipOn }
+    [void]$lines.Add(@((S '  find ' $st.title), (S "$($s.Query)$cur" $st.accent), (S '   '), (S " $($s.Kind) " $chip), (S ' '), (S " in: $($s.Art) " $artChip)))
     [void]$lines.Add(@())
     $bodyRows = $H - 4
     if (-not $s.Query.Trim()) {
-        foreach ($l in (Wrap 'Type a task number (1.3), a change and a number (01 1.3, signup 1.3), or words: the tasks of the plan, and the requirements and scenarios of the specs and of the changes, that contain them all. Tab: all, tasks, open tasks, requirements, scenarios. Enter opens it in Read, at it.' ($W - 8))) { [void]$lines.Add(@(S "  $l" $st.muted)) }
+        foreach ($l in (Wrap 'Type a task number (1.3), a change and a number (01 1.3, signup 1.3), or words: the tasks, requirements, scenarios and sections (with their text) of the specs and the changes that contain them all. Tab: all, tasks, open tasks, requirements, scenarios, sections. Shift+Tab: in which document (proposal, specs, design, tasks, models ...). Enter opens it in Read, at it.' ($W - 8))) { [void]$lines.Add(@(S "  $l" $st.muted)) }
     }
     elseif (-not $res.Count) { [void]$lines.Add(@(S '  nothing found' $st.faint)) }
     else {
@@ -5826,19 +5876,22 @@ function Draw-Search([int]$W, [int]$H) {
             switch ($e.Kind) {
                 'task' { if ($e.Done) { $glyph = S "$($g.check) " $st.ok } else { $glyph = S "$($g.ring) " $st.faint } }
                 'req' { $glyph = S "$($g.diamond) " $st.accent }
+                'sec' { $glyph = S '# ' $st.muted }
                 default { $glyph = S "$($g.tri) " $st.shared }
             }
             $where = $e.Where
             if ($e.Cap) { $where = "$where $($g.mid) $($e.Cap)" }
-            $row = @((S "  $mark" $st.accent), $box, $glyph, (S (Pad (Short $where $ww) $ww) $st.muted), (S '  '))
-            $tw = [Math]::Max(10, $W - $ww - 12)
+            # Where it was found: the document (proposal, specs, design, tasks, models ...).
+            $aw = 11
+            $row = @((S "  $mark" $st.accent), $box, $glyph, (S (Pad (Short $e.Art ($aw - 1)) $aw) $st.accent), (S (Pad (Short $where $ww) $ww) $st.muted), (S '  '))
+            $tw = [Math]::Max(10, $W - $ww - $aw - 12)
             if ($e.Kind -eq 'scn' -and $e.Group) { $row += (S (Short $e.Text $tw) $style); $row += (S "  $($g.mid) $($e.Group)" $st.faint) }
             elseif ($e.Kind -eq 'task' -and $e.Group) { $row += (S (Short $e.Text $tw) $style); $row += (S "  $($g.mid) $($e.Group)" $st.faint) }
             else { $row += (S (Short $e.Text $tw) $style) }
             [void]$lines.Add($row)
         }
     }
-    $status = 'tasks, requirements, scenarios'
+    $status = 'tasks, requirements, scenarios, sections'
     if ($s.Query.Trim()) { $status = "$($res.Count) found" }
     if ($s.Marked.Count) { $status = "$($s.Marked.Count) marked $($g.mid) $status" }
     $rows = New-Object Collections.ArrayList
@@ -5852,7 +5905,7 @@ function Draw-Search([int]$W, [int]$H) {
         if ($s.Marked.Count) { $hints += , @('Enter', 'the marked: delete, change, redo') } else { $hints += , @('Enter', 'open, to edit') }
         $hints += , @("$([string][char]0x2190) Esc", 'type')
     }
-    else { $hints = @(@('type', 'find'), @("$($g.up)$($g.down)", 'select'), @("$([string][char]0x2192)", 'mark, revise'), @('Tab', "kind: $($s.Kind)"), @('Enter', 'open'), @('Esc', 'back')) }
+    else { $hints = @(@('type', 'find'), @("$($g.up)$($g.down)", 'select'), @("$([string][char]0x2192)", 'mark, revise'), @('Tab', "kind: $($s.Kind)"), @('Shift+Tab', "in: $($s.Art)"), @('Enter', 'open'), @('Ctrl+U', 'undo'), @('Ctrl+Y', 'sync'), @('Esc', 'back')) }
     [void]$rows.Add((Border-Bottom $W $hints 0))
     return , $rows
 }
@@ -5860,10 +5913,11 @@ function On-SearchKey($K) {
     $s = $script:search
     $name = $K.Name; $ch = $K.Char
     if ($s.Focus -eq 'list') { On-SearchListKey $K; return }
-    if ($name -eq 'Right') { if (@(Find-Search $s.Query $s.Kind).Count) { $s.Focus = 'list' }; return }
+    if ($name -eq 'Right') { if (@(Find-Search $s.Query $s.Kind $s.Art).Count) { $s.Focus = 'list' }; return }
     if ($name -eq 'Esc') { $script:screen = 'home'; if ($s.PSObject.Properties['Back'] -and $s.Back) { $script:screen = $s.Back }; return }
     if ($name -eq 'Back') { if ($s.Query.Length) { $s.Query = $s.Query.Substring(0, $s.Query.Length - 1) }; $s.Index = 0; return }
     if ($name -eq 'Tab') { $s.Kind = $searchKinds[([array]::IndexOf($searchKinds, $s.Kind) + 1) % $searchKinds.Count]; $s.Index = 0; return }
+    if ($name -eq 'ShiftTab') { Switch-SearchArt; return }
     if ($name -eq 'Up') { $s.Index = [Math]::Max(0, $s.Index - 1); return }
     if ($name -eq 'Down') { $s.Index++; return }
     if ($name -eq 'PgUp') { $s.Index = [Math]::Max(0, $s.Index - 10); return }
@@ -5871,12 +5925,20 @@ function On-SearchKey($K) {
     if ($name -eq 'Home') { $s.Index = 0; return }
     if ($name -eq 'End') { $s.Index = 1000000; return }
     if ($name -eq 'Enter') {
-        $res = @(Find-Search $s.Query $s.Kind)
+        $res = @(Find-Search $s.Query $s.Kind $s.Art)
         if ($res.Count) { Open-SearchResult $res[[Math]::Min($s.Index, $res.Count - 1)] }
         return
     }
     if ($name -eq 'Space' -or [string]$ch -eq ' ') { $s.Query += ' '; $s.Index = 0; return }
     if ($ch -and [int][char]$ch -ge 32) { $s.Query += [string]$ch; $s.Index = 0 }
+}
+# Shift+Tab: the next document to look in (all, then each kind there is: proposal, specs, design, tasks ...).
+function Switch-SearchArt {
+    $s = $script:search
+    $arts = @('all') + @(Get-SearchIndex | ForEach-Object { $_.Art } | Where-Object { $_ } | Select-Object -Unique)
+    $i = [array]::IndexOf($arts, $s.Art)
+    $s.Art = $arts[($i + 1) % $arts.Count]
+    $s.Index = 0
 }
 # The results' focus (Right): letters are commands. Space marks one (the marks stay across searches), a all of
 # them, g its group (a task's group, a requirement's or scenario's capability: every item of it in that file);
@@ -5884,10 +5946,11 @@ function On-SearchKey($K) {
 function On-SearchListKey($K) {
     $s = $script:search
     $name = $K.Name; $ch = [string]$K.Char
-    $res = @(Find-Search $s.Query $s.Kind)
+    $res = @(Find-Search $s.Query $s.Kind $s.Art)
     $cur = $null
     if ($res.Count) { $cur = $res[[Math]::Min($s.Index, $res.Count - 1)] }
     if ($name -eq 'Left' -or $name -eq 'Esc' -or $name -eq 'Back') { $s.Focus = 'type'; return }
+    if ($name -eq 'ShiftTab') { Switch-SearchArt; return }
     if ($name -eq 'Up') { $s.Index = [Math]::Max(0, $s.Index - 1); return }
     if ($name -eq 'Down') { $s.Index = [Math]::Min([Math]::Max(0, $res.Count - 1), $s.Index + 1); return }
     if ($name -eq 'PgUp') { $s.Index = [Math]::Max(0, $s.Index - 10); return }
@@ -6006,6 +6069,19 @@ function Get-BlockEnd($Lines, [int]$At, [string]$Kind) {
     }
     $stop = '^#{1,3}\s'
     if ($Kind -eq 'scn') { $stop = '^#{1,4}\s' }
+    if ($Kind -eq 'sec') {
+        $lvl = 2
+        if ($Lines[$At] -match '^(#{1,6})\s') { $lvl = $Matches[1].Length }
+        $stop = '^#{1,' + $lvl + '}\s'
+        # Not a heading inside a code block.
+        $fence = $false
+        while ($j -lt $Lines.Count) {
+            if ($Lines[$j].Trim().StartsWith('```')) { $fence = -not $fence }
+            elseif (-not $fence -and $Lines[$j] -match $stop) { break }
+            $j++
+        }
+        return $j
+    }
     while ($j -lt $Lines.Count -and $Lines[$j] -notmatch $stop) { $j++ }
     return $j
 }
@@ -6024,8 +6100,8 @@ function Write-Lines([string]$Path, $Lines) {
 # removed scenarios) delta specs. What it did, as lines.
 function Remove-Entries($Entries) {
     $report = New-Object Collections.ArrayList
-    $direct = @($Entries | Where-Object { $_.Item.Type -ne 'spec' })
-    $main = @($Entries | Where-Object { $_.Item.Type -eq 'spec' })
+    $direct = @($Entries | Where-Object { $_.Item.Type -ne 'spec' -or $_.Kind -eq 'sec' })
+    $main = @($Entries | Where-Object { $_.Item.Type -eq 'spec' -and $_.Kind -ne 'sec' })
     foreach ($grp in @($direct | Group-Object Path)) {
         $path = $grp.Name
         if (-not (Test-Path -LiteralPath $path)) { continue }
@@ -6044,7 +6120,7 @@ function Remove-Entries($Entries) {
             }
             $end = Get-BlockEnd $lines $at $e.Kind
             $lines.RemoveRange($at, $end - $at)
-            [void]$report.Add("- $(@{ task = 'task'; req = 'requirement'; scn = 'scenario' }[$e.Kind]) $($e.Text) ($($e.Where))")
+            [void]$report.Add("- $(@{ task = 'task'; req = 'requirement'; scn = 'scenario'; sec = 'section' }[$e.Kind]) $($e.Text) ($($e.Where))")
         }
         $isDelta = $path.Replace('\', '/') -match '/changes/.+/specs/'
         if ($isDelta) {
@@ -6135,7 +6211,7 @@ function Get-RevisionPrompt($Entries, [string]$Action, [string]$Note) {
         $lines = Read-Lines $e.Path
         $at = [Math]::Min($e.Line - 1, $lines.Count - 1)
         $end = Get-BlockEnd $lines $at $e.Kind
-        $kind = @{ task = 'task'; req = 'requirement'; scn = 'scenario' }[$e.Kind]
+        $kind = @{ task = 'task'; req = 'requirement'; scn = 'scenario'; sec = 'section' }[$e.Kind]
         [void]$sb.Append("`n### $i. $kind ""$($e.Text)""`n`n- File: $rel (line $($e.Line))`n- In: $($e.Where)")
         if ($e.Cap) { [void]$sb.Append(", capability $($e.Cap)") }
         if ($e.Group) { [void]$sb.Append(", $(@{ task = 'group'; scn = 'requirement' }[$e.Kind]) $($e.Group)") }
@@ -6203,8 +6279,8 @@ function Start-RemoveItems($Items, [bool]$Validate) {
     $n = @{ task = 0; req = 0; scn = 0 }
     foreach ($e in $items) { $n[$e.Kind]++ }
     $what = (@(@("$($n.task) task(s)", "$($n.req) requirement(s)", "$($n.scn) scenario(s)") | Where-Object { $_ -notmatch '^0 ' })) -join ', '
-    if ($items.Count -eq 1) { $what = "the $(@{ task = 'task'; req = 'requirement'; scn = 'scenario' }[$items[0].Kind]) ""$(Short $items[0].Text 50)""" }
-    $main = @($items | Where-Object { $_.Item.Type -eq 'spec' }).Count
+    if ($items.Count -eq 1) { $what = "the $(@{ task = 'task'; req = 'requirement'; scn = 'scenario'; sec = 'section' }[$items[0].Kind]) ""$(Short $items[0].Text 50)""" }
+    $main = @($items | Where-Object { $_.Item.Type -eq 'spec' -and $_.Kind -ne 'sec' }).Count
     $text = "Delete $($what)?"
     if ($main) { $text = "Delete $($what)? (in the main specs: through a new change)" }
     $script:confirm = [pscustomobject]@{ Text = $text; Choice = 1; Items = $items; Validate = $Validate; Do = {
@@ -6254,11 +6330,11 @@ function Start-ItemEdit($E) {
 function Draw-Edit([int]$W, [int]$H) {
     $ed = $script:editor
     $e = $ed.Entry
-    $kind = @{ task = 'task'; req = 'requirement'; scn = 'scenario' }[$e.Kind]
+    $kind = @{ task = 'task'; req = 'requirement'; scn = 'scenario'; sec = 'section' }[$e.Kind]
     $lines = New-Object Collections.ArrayList
     [void]$lines.Add(@())
     $note = "$kind in $(Get-RelPath $e.Path), line $($e.Line)"
-    if ($e.Item.Type -eq 'spec') { $note += '  (a main spec: Ctrl+S asks - directly, or through a change)' }
+    if ($e.Item.Type -eq 'spec' -and $e.Kind -ne 'sec') { $note += '  (a main spec: Ctrl+S asks - directly, or through a change)' }
     [void]$lines.Add(@(S "  $note" $st.muted))
     [void]$lines.Add(@())
     $bottom = Bottom-Line $W 0
@@ -6342,7 +6418,7 @@ function On-EditKey($K) {
 function Save-ItemEdit {
     $ed = $script:editor
     if (($ed.Lines -join "`n") -eq ($ed.Orig -join "`n")) { $script:screen = $ed.Back; $script:editor = $null; return }
-    if ($ed.Entry.Item.Type -eq 'spec') {
+    if ($ed.Entry.Item.Type -eq 'spec' -and $ed.Entry.Kind -ne 'sec') {
         $script:choose = [pscustomobject]@{ Text = 'A main spec:'; Options = @('Through a change (MODIFIED)', 'Edit it directly'); Short = @('a change', 'directly'); Keys = @('c', 'd'); Choice = 0; Do = {
                 param($k, $c)
                 try {
@@ -6550,7 +6626,14 @@ function Get-SyncPrompt($C) {
     return $sb.ToString()
 }
 function Start-Sync {
-    $sel = Get-Selected
+    # The change being read (in Read; several as one: the first out of date), else the selected one.
+    $sel = $null
+    if ($script:screen -eq 'read' -and $script:readItem) {
+        $it = $script:readItem
+        if ($it.Type -eq 'change') { $sel = $it }
+        elseif ($it.Type -eq 'bundle') { $sel = @($it.Members | Where-Object { Test-Stale $_ } | Select-Object -First 1); if ($sel.Count) { $sel = $sel[0] } else { $sel = $it.Members[0] } }
+    }
+    if (-not $sel) { $sel = Get-Selected }
     if (-not $sel -or $sel.Type -ne 'change') { $script:message = 'Select a change (Tab to the plan).'; return }
     if (-not (Test-Stale $sel)) { $script:message = "$($sel.Name): its documents are up to date."; return }
     $docs = (@($script:stale[$sel.Name] | ForEach-Object { $_.Doc.Title })) -join ', '
@@ -6668,7 +6751,7 @@ function Start-Undo {
         $top = Invoke-Git @('rev-parse', '--show-toplevel')
         if ($top.Code -ne 0) { $script:message = 'Undo needs git: this project is not a git repository.'; return }
     }
-    $script:undo = [pscustomobject]@{ Rows = (Get-UndoRows); Index = 0; Head = ((Invoke-Git @('log', '-1', '--format=%h %s')).Out.Trim()) }
+    $script:undo = [pscustomobject]@{ Rows = (Get-UndoRows); Index = 0; Head = ((Invoke-Git @('log', '-1', '--format=%h %s')).Out.Trim()); Back = $script:screen }
     if ($null -eq $script:undo.Rows) { $script:undo = $null; $script:message = "Undo needs git (it isn't installed, or this isn't a repository)."; return }
     # The first piece selected (else the first file).
     for ($i = 0; $i -lt $script:undo.Rows.Count; $i++) { if ($script:undo.Rows[$i].Type -eq 'hunk') { $script:undo.Index = $i; break } }
@@ -6725,7 +6808,13 @@ function On-UndoKey($K) {
     $name = $K.Name; $ch = [string]$K.Char
     $n = @($u.Rows).Count
     $script:message = ''
-    if ($name -eq 'Esc' -or $ch -eq 'q') { $script:screen = 'home'; $script:undo = $null; return }
+    if ($name -eq 'Esc' -or $ch -eq 'q') {
+        $back = $u.Back
+        if (-not $back -or $back -eq 'undo') { $back = 'home' }
+        $script:screen = $back; $script:undo = $null
+        if ($back -eq 'read') { Update-ReadItem }
+        return
+    }
     if ($name -eq 'Up' -or $ch -eq 'k') { $u.Index = [Math]::Max(0, $u.Index - 1); return }
     if ($name -eq 'Down' -or $ch -eq 'j') { $u.Index = [Math]::Min([Math]::Max(0, $n - 1), $u.Index + 1); return }
     if ($name -eq 'PgUp') { $u.Index = [Math]::Max(0, $u.Index - 10); return }
@@ -7016,10 +7105,11 @@ function Draw-Help([int]$W, [int]$H) {
         @('x', 'export the specification for the client: PDF, Word or HTML (openspec\exports\; opens it)'),
         @('m', 'changes as one: mark the ones that go to the client as one whole, read them together (x there: export)'),
         @('t', 'find: tasks (1.3, 01 1.3, words), requirements and scenarios; Enter opens it in Read, at it'),
-        @('  Ctrl+F', 'find from any screen (t too, where nothing is typed); Esc comes back there'),
+        @('  Ctrl+T', 'find from any screen, also while typing (t where nothing is typed); Esc comes back there'),
         @('  ' + [string][char]0x2192, 'in find: mark (Space, a all, g its group); Del deletes; Enter: the marked - delete, change, redo'),
         @('y', 'a change out of date (! in the plan): its documents updated by the agent, or marked as in sync'),
         @('u', 'undo: what changed in openspec/ since the last commit, piece by piece (git; a commit empties it)'),
+        @('  Ctrl+U Ctrl+Y', 'undo, out of date: the same from any screen, also while typing (u, y where nothing is typed)'),
         @('e', 'edit: open the spec or the proposal in your editor'),
         @('s', 'sort changes: name A-Z, name Z-A, recently modified'), @('h', 'show or hide archived changes'),
         @('/', 'filter specs and changes by name (Enter keeps it, Esc clears it)'), @('r', 'refresh (it also refreshes by itself when files change)'),
@@ -7028,7 +7118,7 @@ function Draw-Help([int]$W, [int]$H) {
         @("$($g.up) $($g.down)", 'scroll a line'), @('PgUp PgDn', 'scroll a page'), @('Home End', 'top, end'),
         @("$([string][char]0x2190) $([string][char]0x2192)", 'the change''s documents (its workflow''s: proposal, delta specs, design, tasks...)'),
         @("$($g.up) $($g.down)", 'with tasks, requirements, scenarios: pick one (PgUp PgDn scroll)'),
-        @('Enter', 'edit the picked item in a window (Ctrl+S save, Esc cancel)'), @('Space', 'a task: done / not done'),
+        @('Enter', 'edit the picked item - a task, requirement, scenario or section (## Why ...) - in a window (Ctrl+S save, Esc cancel)'), @('Space', 'a task: done / not done'),
         @('Del', 'delete the picked item (asked first)'), @('a', 'the agent: change it (your note) or write it again'),
         @('x', 'export this spec, change or changes as one: PDF, Word or HTML'), @('e', 'edit the whole file in your editor'), @('Esc', 'back'))
     & $section 'RUN' @(@('PgUp PgDn', 'scroll the output (Home, End: top, bottom)'), @('Esc', 'stop (asked first); when done: back'))
@@ -7182,14 +7272,22 @@ function On-Key($K) {
         if ($script:screen -eq 'run' -and -not $script:run.Done) { $script:run.ConfirmStop = $true; return }
         $script:quit = $true; return
     }
-    # Find, from any screen: t where letters aren't typed, Ctrl+F anywhere but the editor (its changes would
-    # be left). Not while a question or a text is asked. Esc there comes back here.
-    if (-not ($script:confirm -or $script:choose -or $script:input -or $script:filtering) -and $script:screen -notin @('search', 'edit', 'none')) {
-        $tScreens = @('home', 'read', 'pick', 'undo', 'help')
+    # The same keys everywhere: t find, u undo, y out of date - the letter where nothing is typed, Ctrl+ the
+    # letter on any screen (also while typing). Not while a question is asked; in the editor: save or leave
+    # first (its changes would be lost). Esc there comes back here.
+    $ctrlAct = @{ CtrlT = 't'; CtrlU = 'u'; CtrlY = 'y' }[[string]$name]
+    if ($ctrlAct -and $script:screen -eq 'edit' -and -not ($script:confirm -or $script:choose)) { $script:message = 'Save it first (Ctrl+S), or leave it (Esc).'; return }
+    if (-not ($script:confirm -or $script:choose -or $script:input -or $script:filtering) -and $script:screen -notin @('edit', 'none')) {
+        $letterScreens = @('home', 'read', 'pick', 'undo', 'help')
         $runDone = $script:screen -eq 'run' -and $script:run -and $script:run.Done
-        if ($name -eq 'CtrlF' -or ([string]$ch -eq 't' -and ($tScreens -contains $script:screen -or $runDone))) {
-            if ($script:screen -eq 'run' -and -not $runDone) { return }
-            Start-Search
+        $act = $ctrlAct
+        if (-not $act -and @('t', 'u', 'y') -contains [string]$ch -and ($letterScreens -contains $script:screen -or $runDone)) { $act = [string]$ch }
+        if ($act -and -not ($script:screen -eq 'run' -and -not $runDone)) {
+            switch ($act) {
+                't' { if ($script:screen -ne 'search') { Start-Search } }
+                'u' { if ($script:screen -ne 'undo') { Start-Undo } }
+                'y' { Start-Sync }
+            }
             return
         }
     }
@@ -7367,7 +7465,9 @@ function Read-Keys {
         $k = [Console]::ReadKey($true)
         if ($k.Key -eq 'C' -and ($k.Modifiers -band [ConsoleModifiers]::Control)) { $out += [pscustomobject]@{ Name = 'CtrlC'; Char = $null }; continue }
         if ($k.Key -eq 'S' -and ($k.Modifiers -band [ConsoleModifiers]::Control)) { $out += [pscustomobject]@{ Name = 'CtrlS'; Char = $null }; continue }
-        if ($k.Key -eq 'F' -and ($k.Modifiers -band [ConsoleModifiers]::Control)) { $out += [pscustomobject]@{ Name = 'CtrlF'; Char = $null }; continue }
+        # Ctrl+T find, Ctrl+U undo, Ctrl+Y out of date: on any screen, also where letters are typed.
+        if (@('T', 'U', 'Y') -contains $k.Key.ToString() -and ($k.Modifiers -band [ConsoleModifiers]::Control)) { $out += [pscustomobject]@{ Name = "Ctrl$($k.Key)"; Char = $null }; continue }
+        if ($k.Key -eq 'Tab' -and ($k.Modifiers -band [ConsoleModifiers]::Shift)) { $out += [pscustomobject]@{ Name = 'ShiftTab'; Char = $null }; continue }
         $name = $keyNames[$k.Key.ToString()]
         if ($k.Key -eq 'Spacebar') { $name = 'Space' }
         $char = $null
@@ -7435,7 +7535,7 @@ function Next-TestKey {
     [void]$queue.Dequeue()
     if ($k -eq 'snap') { Save-Frame "snap $($script:screen)"; return $null }
     if ($k.StartsWith('text:')) { foreach ($c in $k.Substring(5).ToCharArray()) { On-Key ([pscustomobject]@{ Name = $null; Char = $c }) }; return $null }
-    $names = @('Up', 'Down', 'Left', 'Right', 'Enter', 'Esc', 'Tab', 'PgUp', 'PgDn', 'Home', 'End', 'Back', 'Space', 'CtrlC', 'Del', 'CtrlS', 'CtrlF')
+    $names = @('Up', 'Down', 'Left', 'Right', 'Enter', 'Esc', 'Tab', 'PgUp', 'PgDn', 'Home', 'End', 'Back', 'Space', 'CtrlC', 'Del', 'CtrlS', 'CtrlT', 'CtrlU', 'CtrlY', 'ShiftTab')
     if ($names -contains $k) { return [pscustomobject]@{ Name = $k; Char = $null } }
     return [pscustomobject]@{ Name = $null; Char = $k[0] }
 }

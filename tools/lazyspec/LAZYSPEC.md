@@ -57,19 +57,26 @@ The project is the nearest folder with `openspec\` above the current folder (els
 **Read** (`Enter`) — the whole page: the spec, or the change's documents as its workflow names them (proposal, delta specs, design, tasks ...; `←` `→`), formatted:
 headings, lists, checkboxes, tables, code, requirements (`◆`), scenarios (`▸`) with WHEN / THEN.
 
-**Find** (`t` on any screen where nothing is typed, `Ctrl+F` on any but the editor; `Esc` comes back there) — a
-task, a requirement or a scenario anywhere in the project, as you type: a task's number
-(`1.3`: that task in every change; `01 1.3` or `signup 1.3`: that change's), or words (all of them in the
-task, its group, its change's name or title; a requirement or scenario of the specs or of the changes' delta
-specs, with its capability and requirement). `Tab` narrows it: all, tasks, open tasks, requirements,
-scenarios. `Enter` opens it in Read, on its document's tab, scrolled to it and marked `▸`; `Esc` there goes
-back to the results. Archived changes only with `h`, as on Home.
+**The same keys everywhere** — `t` find, `u` undo, `y` out of date: the letter on every screen where nothing is
+typed (Home, Read, changes as one, undo, help, a finished run), and `Ctrl+T`, `Ctrl+U`, `Ctrl+Y` on every screen,
+also while typing (in Find, in a question's text). In the item editor they wait: save it (`Ctrl+S`) or leave it
+(`Esc`) first. `Esc` in what they open comes back to where you were.
 
-**One item in Read** — on a tab with tasks, requirements or scenarios, `↑` `↓` pick one (marked `▸`; `PgUp`
-`PgDn` scroll):
+**Find** (`t`, `Ctrl+T`) — a task, a requirement, a scenario or a section (`## Why`, `### ADR-001` ...) anywhere
+in the project, as you type: a task's number (`1.3`: that task in every change; `01 1.3` or `signup 1.3`: that
+change's), or words (all of them in the item, its group, its capability, its change's name or title - or, for a
+section, in its text too; those found by their name or heading come first). Each result says **which document**
+it is in (Proposal, Specs, Design, Tasks, Models ..., as the workflow names them; Spec for the main specs).
+`Tab` narrows it by kind: all, tasks, open tasks, requirements, scenarios, sections; `Shift+Tab` by document.
+`Enter` opens it in Read, on its document's tab, scrolled to it and marked `▸`; `Esc` there goes back to the
+results. Archived changes only with `h`, as on Home.
 
-- `Enter` **edits it** in a window: only its own lines (a task's line, a requirement or a scenario), not the
-  whole document; `Ctrl+S` saves them into its file, `Esc` cancels (asked when changed). A main spec's: asked
+**One item in Read** — on a tab with tasks, requirements, scenarios or sections (`## Why`, `## Decisions`, a task
+group ...), `↑` `↓` pick one (marked `▸`; `PgUp` `PgDn` scroll). `u` and `y` work here too, for the change being
+read:
+
+- `Enter` **edits it** in a window: only its own lines (a task's line, a requirement, a scenario, or a section
+  with everything under it up to the next heading of its level), not the whole document; `Ctrl+S` saves them into its file, `Esc` cancels (asked when changed). A main spec's: asked
   whether directly or through a change (`modify-specs-<date>`, the whole requirement under `## MODIFIED
   Requirements`).
 - `Space` a task: done / not done. `Del` **deletes it** (asked first). `a` the agent: change it (your note) or
@@ -124,10 +131,10 @@ It refreshes by itself when files under `openspec/` change (an editor, git, an a
 
 | Screen | Keys |
 |---|---|
-| Home | `↑` `↓` select · `Tab` scope ↔ plan · `→` into the details (`↑` `↓` scroll them), `←`/`Esc` back · `z` zoom the details to the whole width (again: the lists back) · `PgUp` `PgDn` `Home` `End` scroll the details · `Enter` read · `v` validate all · `a` archive the change · `n` new change · `x` export (PDF, Word, HTML) · `m` changes as one · `t` find · `y` out of date: update or mark in sync · `u` undo · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
-| Read | `↑` `↓` an item (a tab with tasks, requirements, scenarios; else scroll) · `Enter` edit it · `Space` a task done / not · `Del` delete it · `a` the agent · `PgUp` `PgDn` `Home` `End` scroll · `←` `→` document · `x` export this spec, change or changes as one · `e` the whole file in your editor · `Esc` back |
+| Home | `↑` `↓` select · `Tab` scope ↔ plan · `→` into the details (`↑` `↓` scroll them), `←`/`Esc` back · `z` zoom the details to the whole width (again: the lists back) · `PgUp` `PgDn` `Home` `End` scroll the details · `Enter` read · `v` validate all · `a` archive the change · `n` new change · `x` export (PDF, Word, HTML) · `m` changes as one · `t` find · `y` out of date: update or mark in sync · `u` undo (`Ctrl+T` `Ctrl+U` `Ctrl+Y` on any screen) · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
+| Read | `↑` `↓` an item (a task, requirement, scenario or section; else scroll) · `Enter` edit it · `Space` a task done / not · `Del` delete it · `a` the agent · `PgUp` `PgDn` `Home` `End` scroll · `←` `→` document · `x` export this spec, change or changes as one · `e` the whole file in your editor · `t` find · `u` undo · `y` out of date · `Esc` back |
 | Changes as one | `↑` `↓` select · `Space` mark (a saved whole: its changes) · `a` all, none · `Enter` go on (a saved whole: read it; else a title, save it?, then Read) · `d` remove a saved whole · `Esc` cancel |
-| Find | type the search · `↑` `↓` `PgUp` `PgDn` select · `Tab` all, tasks, open tasks, requirements, scenarios · `Enter` open in Read, at it · `→` into the results: `Space` mark · `a` all · `g` its group · `Del` delete · `Enter` the marked: delete, change, write again, unmark · `←`/`Esc` back to typing · `Esc` back |
+| Find | type the search · `↑` `↓` `PgUp` `PgDn` select · `Tab` all, tasks, open tasks, requirements, scenarios, sections · `Shift+Tab` the document (all, proposal, specs, design, tasks ...) · `Ctrl+U` undo · `Ctrl+Y` out of date · `Enter` open in Read, at it · `→` into the results: `Space` mark · `a` all · `g` its group · `Del` delete · `Enter` the marked: delete, change, write again, unmark · `←`/`Esc` back to typing · `Esc` back |
 | Edit (Enter on an item in Read) | type · `↑` `↓` `←` `→` `Home` `End` move · `Enter` new line · `Backspace` `Del` · `Ctrl+S` save · `Esc` cancel |
 | Undo | `↑` `↓` `PgUp` `PgDn` `Home` `End` select · `Enter` undo it (asked first) · `r` refresh · `Esc` back |
 | Run | `PgUp` `PgDn` `Home` `End` scroll · `Esc` stop (asked first); when done `Enter`/`Esc` back |
