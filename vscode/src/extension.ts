@@ -7,7 +7,7 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { answer, agentTask, offerDoneSync, onSynced, runningSyncs } from './agent';
+import { answer, agentTask, offerDoneSync, onSynced, runningSyncs, showAgentOutput, stopAgent, syncingChanges } from './agent';
 import { DetailsView, Selected } from './details';
 import { editItemFormatted, FormattedEditorProvider } from './formatted';
 import { showHelp } from './help';
@@ -618,7 +618,7 @@ export function activate(context: vscode.ExtensionContext): Api {
   ctx = context;
   output = vscode.window.createOutputChannel('LazySpec');
   projects = findProjects();
-  const hooks = { stale: (p: Project, c: Change) => !!staleOf(p, c)?.length };
+  const hooks = { stale: (p: Project, c: Change) => !!staleOf(p, c)?.length, syncing: (_p: Project, c: Change) => syncingChanges().has(c.name) };
   onSynced(() => reload());
   plan = new PlanTree(() => projects, settings, hooks);
   scope = new ScopeTree(() => projects, settings, hooks);
@@ -696,6 +696,8 @@ export function activate(context: vscode.ExtensionContext): Api {
   reg('lazyspec.syncAll', (arg?: { root?: string }) => syncCommand(arg, undefined, true));
   reg('lazyspec.markInSync', (arg?: unknown) => { const t = targetOf(arg); if (t?.change) { setInSync(t.project, t.change); reload(); } });
   reg('lazyspec.agentAnswer', () => answer());
+  reg('lazyspec.agentOutput', () => showAgentOutput());
+  reg('lazyspec.agentStop', () => stopAgent());
   reg('lazyspec.undoRefresh', () => reload());
   reg('lazyspec.undoShow', (n: UndoNode) => showUndo(n));
   reg('lazyspec.undoItem', async (n?: UndoNode) => { const x = n || undoView.selection[0]; if (x && await undo(x)) { reload(); } });

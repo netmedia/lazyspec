@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2
+
+- The agent in the background, visible: a spinner in the status bar (what, how long, its last step; a click:
+  its output), the changes it updates spinning in the Plan (updating...), its steps in the output as they
+  happen (Claude Code's stream); Show Claude Code's Output and Stop Claude Code in the Plan's menu.
+
 ## 0.5.1
 
 - Help and Keys (the ? in the Plan's title bar, the LazySpec menu of a document): every key, Windows / Linux and
