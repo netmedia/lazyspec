@@ -108,7 +108,7 @@ Both paths end on the same Home screen; a project's own kit always wins over the
 2. `cd D:\Development\Netmedia\MyProject`
 3. `openspec init` — creates `openspec\` (LazySpec never creates or touches it).
 4. `.\lazyspec.exe`
-5. Add `export/` to `.gitignore` (or decide to commit what was sent to the client).
+5. Add `.lazyspec/` to `.gitignore`, and `openspec/exports/` too (or decide to commit what was sent to the client).
 6. Commit `tools\lazyspec\` and `lazyspec.exe`.
 
 ### Scenario B: existing project that already uses OpenSpec
@@ -264,7 +264,7 @@ Scenarios 7 to 11 are all the same pipeline: the UI asks the options in order, t
 1. Home, `x`, pick format: `p` PDF, `w` Word, `h` HTML.
 2. With active changes: specs only, or with the plan (active changes after the specs).
 3. `c` for the client (scenarios as plain sentences, `MUST`-style keywords removed) or `t` technical (as written).
-4. The file lands in `export\<project>-specification-<date>.<ext>` and opens.
+4. The file lands in `openspec\exports\<project>-specification-<date>.<ext>` and opens (another folder: `lazyspec: exportDir:`).
 
 Every export has a cover and a contents; in PDF the contents shows page numbers with dot leaders, as Word's does (LazySpec prints the PDF twice for that). Tables get column widths from their content: short columns as wide as their longest word or identifier, the rest to the longest text, the same in PDF, HTML and Word.
 
@@ -277,7 +277,7 @@ Command line: `lazyspec -Export Pdf`, `lazyspec -Export Word -IncludeChanges -Cl
 **When:** sending a single feature proposal for approval.
 
 1. Open it (`Enter`), `x`, pick format and client/technical.
-2. Output: `export\<project>-<name>-<date>.<ext>`, a chapter per workflow document.
+2. Output: `openspec\exports\<project>-<name>-<date>.<ext>`, a chapter per workflow document.
 
 Command line: `lazyspec -Export Pdf -Item add-user-login`.
 
@@ -326,7 +326,7 @@ Command line: `lazyspec -Export Word -Item add-user-signup,add-online-payments -
 
 **When:** any project whose documents go to a client.
 
-- **Theme (recommended):** `documentTheme:` pointing to a YAML in the project, with `fonts/` and logos next to it. Same look in PDF, Word and HTML, no Word needed. Start from [`examples/document-theme/document-theme.yaml`](../examples/document-theme/document-theme.yaml).
+- **Theme (recommended):** `documentTheme:` pointing to a YAML in the project, with `fonts/` and logos next to it; not set, LazySpec uses `openspec/artifacts/document-theme.yaml` when it's there (the conventions' place). Same look in PDF, Word and HTML, no Word needed. Start from [`examples/document-theme/document-theme.yaml`](../examples/document-theme/document-theme.yaml).
 - **Word template:** `documentTemplate:` pointing to a `.docx`. Used for Word only; its styles, header, footer and logo are kept.
 - With both set, Word uses the template and PDF/HTML the theme. `-Theme` / `-Template` override for one export.
 
@@ -413,8 +413,9 @@ In `tools/lazyspec/lazyspec.json` (kit) or `lazyspec.json` in the project root (
 lazyspec:
   name: Acme – Portal i javni API              # cover title instead of the folder name
   client: Acme d.o.o.                          # also: subtitle, author, language
-  documentTheme: openspec_artifacts/theme/document-theme.yaml
-  documentTemplate: openspec_artifacts/Document template.docx
+  documentTheme: openspec/artifacts/document-theme.yaml
+  documentTemplate: openspec/artifacts/Document template.docx
+  exportDir: openspec/exports                  # where exports go (the default)
   figmaToken: <prefer FIGMA_TOKEN env var>
   titles:                                      # nicer capability titles in exports
     add-online-payments:

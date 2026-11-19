@@ -108,7 +108,7 @@ try {
     Check ($h -match '4 dokumenta, 1 funkcionalnost, 1 zadatak') 'counts in the language''s form (one)' ([regex]::Match($h, 'Opseg: [^<]*').Value)
 
     # 1. The file's name: the title without accents.
-    $exp = Join-Path $proj 'export'
+    $exp = Join-Path $proj 'openspec\exports'
     $r = Invoke-LazySpec $lazyspec $proj 'Html' @('-Item', 'add-alpha,add-gamma', '-Title', "Pla${cc}anja i ra${c}uni")
     $f = @(Get-ChildItem -LiteralPath $exp -Filter '*.html' | Where-Object { $_.Name -like 'proj-placanja-i-racuni-*' })
     Check ($r.Code -eq 0 -and $f.Count -eq 1) 'the file named by the title, without accents' (@(Get-ChildItem -LiteralPath $exp -Name) -join ', ')

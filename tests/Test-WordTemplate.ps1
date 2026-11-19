@@ -61,7 +61,7 @@ Write-Host ''
 $hasWord = Test-WordInstalled
 $hasPandoc = [bool](Get-Command pandoc -CommandType Application -ErrorAction SilentlyContinue)
 try {
-    $tplPath = Join-Path $work 'acme\openspec_artifacts\Company template.docx'
+    $tplPath = Join-Path $work 'acme\openspec\artifacts\Company template.docx'
     $proj = Join-Path $work 'acme'
     New-FixtureTemplate $tplPath 'ACME-HEADER-MARK'
     $other = Join-Path $work 'other templates\Other one.docx'
@@ -95,12 +95,12 @@ try {
     }
 
     # 2. + 3. With the template (spaces in its path, relative to the root; started in a subfolder).
-    New-FixtureProject $proj @('# documentTemplate: the Word template (.docx) every generated document uses', 'documentTemplate: openspec_artifacts/Company template.docx')
+    New-FixtureProject $proj @('# documentTemplate: the Word template (.docx) every generated document uses', 'documentTemplate: openspec/artifacts/Company template.docx')
     $outDoc = Join-Path $work 'with template.docx'
     $r = Invoke-LazySpec $lazyspec (Join-Path $proj 'src\deep') 'Word' @('-Out', $outDoc)
     Check ($r.Code -eq 0 -and (Test-Path -LiteralPath $outDoc)) 'path with spaces, relative to the project root (started in a subfolder)' $r.Out
     if ($r.Code -eq 0) {
-        Check ($r.Out -match [regex]::Escape("Word template: $tplPath")) 'the template resolved to <root>\openspec_artifacts\Company template.docx' $r.Out
+        Check ($r.Out -match [regex]::Escape("Word template: $tplPath")) 'the template resolved to <root>\openspec\artifacts\Company template.docx' $r.Out
         $p = Read-Docx $outDoc
         $doc = $p['word/document.xml']
         $hdr = @($p.Keys | Where-Object { $_ -match '^word/header\d*\.xml$' })
@@ -137,9 +137,9 @@ try {
 
     # 4. A missing template: an error naming the resolved path.
     $missing = Join-Path $work 'missing'
-    New-FixtureProject $missing @('documentTemplate: openspec_artifacts/No such template.docx')
+    New-FixtureProject $missing @('documentTemplate: openspec/artifacts/No such template.docx')
     $r = Invoke-LazySpec $lazyspec $missing 'Word' @('-Out', (Join-Path $work 'missing.docx'))
-    $resolved = Join-Path $missing 'openspec_artifacts\No such template.docx'
+    $resolved = Join-Path $missing 'openspec\artifacts\No such template.docx'
     Check ($r.Code -ne 0) 'missing template: a non-zero exit code' "exit code $($r.Code)"
     Check ($r.Out -match [regex]::Escape($resolved)) 'missing template: the error names the resolved path' $r.Out
     Check (-not (Test-Path -LiteralPath (Join-Path $work 'missing.docx'))) 'missing template: no document in the default look'

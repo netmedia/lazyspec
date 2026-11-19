@@ -59,11 +59,12 @@ client, then exits: Pdf (through Microsoft Edge or Google Chrome), Word (through
 pandoc) or Html. A cover page, the contents, a chapter per spec. The cover's texts: lazyspec.json "export".
 
 .PARAMETER Out
--Export: the file to write. Default: export\<project>-specification-<date>.<pdf|docx|html> in the project.
+-Export: the file to write. Default: openspec\exports\<project>-specification-<date>.<pdf|docx|html> in the
+project (another folder: lazyspec: exportDir: in openspec/config.yaml).
 
 .PARAMETER Item
 -Export: only this spec or change (its folder's name): the spec, or the change with every document of its
-workflow (proposal, delta specs, design, tasks ...). Default file: export\<project>-<item>-<date>.<ext>.
+workflow (proposal, delta specs, design, tasks ...). Default file: openspec\exports\<project>-<item>-<date>.<ext>.
 
 .PARAMETER IncludeChanges
 -Export: adds the plan, the active changes (their proposal and delta specs), after the specs.
@@ -289,7 +290,7 @@ function Show-Usage {
     & $d '  change''s part under its title; -Title on the cover (else the changes'' titles). m saves it as a'
     & $d '  named whole (lazyspec: bundles: in openspec\config.yaml): then -Item <its key>.'
     & $d '  One document: a cover, the contents, a chapter per spec (in the Scope order); with'
-    & $d '  -IncludeChanges the active changes too. Written to export\ in the project (-Out: elsewhere).'
+    & $d '  -IncludeChanges the active changes too. Written to openspec\exports\ (-Out: elsewhere; lazyspec: exportDir:).'
     & $d '  PDF: Edge or Chrome. Word: Microsoft Word, else pandoc. The cover: lazyspec.json "export".'
     & $d '  -ClientFriendly: scenarios as sentences (When x, then y.). In the workflow schema''s language:'
     & $d '  "language: hr" in schema.yaml translates the export''s texts and OpenSpec''s English headings.'
@@ -3695,6 +3696,11 @@ function Get-DocumentTheme {
     if ($Theme) { $raw = $Theme; $base = (Get-Location).ProviderPath; $from = '-Theme' }
     elseif ($hasRoot) { $raw = [string](Get-ProjectConfig).Values['documentTheme'] }
     $raw = $raw.Trim().Trim('"', "'")
+    # Not set: the conventions' place, openspec/artifacts/document-theme.yaml, when it's there.
+    if (-not $raw -and $hasRoot -and -not $Theme) {
+        $conv = Join-Path $osDir 'artifacts\document-theme.yaml'
+        if (Test-Path -LiteralPath $conv -PathType Leaf) { $raw = $conv; $from = 'the default: openspec/artifacts/document-theme.yaml' }
+    }
     if (-not $raw) { return $null }
     $path = ($raw -replace '[\\/]', [IO.Path]::DirectorySeparatorChar)
     if (-not [IO.Path]::IsPathRooted($path)) { $path = Join-Path $base $path }
@@ -4860,6 +4866,14 @@ function Export-WordOnBase([string]$Html, [string]$Target, [byte[]]$Base, [strin
     }
 }
 
+# Where exports go: lazyspec: exportDir: in openspec/config.yaml (relative to the project's root), else
+# openspec\exports\.
+function Get-ExportDir {
+    $d = [string](Get-ProjectConfig).Values['exportDir']
+    if (-not $d) { return (Join-Path $osDir 'exports') }
+    if ([IO.Path]::IsPathRooted($d)) { return $d }
+    return (Join-Path $Root $d.Replace('/', '\'))
+}
 function Invoke-Export([string]$Format, [string]$Target, [bool]$WithChanges, [bool]$OpenIt, [string]$ItemName, [bool]$Friendly, [string]$MarkdownPath, [string]$ItemTitle) {
     # A Markdown document (-Markdown): in the project's look when it's in one; else the specification.
     $mdDoc = $null
@@ -4909,7 +4923,7 @@ function Invoke-Export([string]$Format, [string]$Target, [bool]$WithChanges, [bo
             if ($doc.Item.Id) { $t = Get-Slug $doc.Item.Id } elseif ($ItemTitle) { $t = Get-Slug $ItemTitle }
             if ($t) { $part = $t }
         }
-        $Target = Join-Path $Root "export\$slug-$part-$(Get-Date -Format 'yyyy-MM-dd').$ext"
+        $Target = Join-Path (Get-ExportDir) "$slug-$part-$(Get-Date -Format 'yyyy-MM-dd').$ext"
     }
     $Target = [IO.Path]::GetFullPath($Target)
     [void](New-Item -ItemType Directory -Force -Path (Split-Path $Target -Parent))
@@ -6567,7 +6581,8 @@ function Invoke-Git([string[]]$GitArgs) {
 # The changes: a row per file (its status) and per piece of it (a hunk of git's diff against HEAD).
 function Get-UndoRows {
     $rows = New-Object Collections.ArrayList
-    $st = Invoke-Git @('status', '--porcelain=v1', '--untracked-files=all', '--', 'openspec')
+    # Not the exports (a new PDF isn't a change to undo).
+    $st = Invoke-Git @('status', '--porcelain=v1', '--untracked-files=all', '--', 'openspec', ':(exclude)openspec/exports')
     if ($st.Code -ne 0) { return $null }
     foreach ($line in ($st.Out.Replace("`r", '').Split("`n") | Where-Object { $_.Length -gt 3 })) {
         $code = $line.Substring(0, 2); $rel = $line.Substring(3).Trim('"')
@@ -6992,7 +7007,7 @@ function Draw-Help([int]$W, [int]$H) {
         @('PgUp PgDn', 'scroll the details a page (Home, End: top, end)'), @('Enter', 'read it in full'), @('v', 'validate all (openspec validate --all --strict)'),
         @('a', 'archive the selected change (asked first; merges its delta specs into openspec/specs)'),
         @('n', 'new change (asks its name: kebab-case, e.g. add-user-login)'),
-        @('x', 'export the specification for the client: PDF, Word or HTML (export\ in the project; opens it)'),
+        @('x', 'export the specification for the client: PDF, Word or HTML (openspec\exports\; opens it)'),
         @('m', 'changes as one: mark the ones that go to the client as one whole, read them together (x there: export)'),
         @('t', 'find: tasks (1.3, 01 1.3, words), requirements and scenarios; Enter opens it in Read, at it'),
         @('  Ctrl+F', 'find from any screen (t too, where nothing is typed); Esc comes back there'),

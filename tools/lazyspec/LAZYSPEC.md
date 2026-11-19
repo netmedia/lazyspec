@@ -194,14 +194,14 @@ one's proposal and delta specs).
 
 **One spec or change** (`-Item <name>`, or `x` while reading it): a spec alone, or a change with every
 document of its [workflow](#the-workflow-schema), a chapter each in its order (proposal, specifications,
-design, ... tasks). Works with no specs in `openspec/specs` yet. Written to `export\<project>-<name>-<date>.<ext>`.
+design, ... tasks). Works with no specs in `openspec/specs` yet. Written to `openspec\exports\<project>-<name>-<date>.<ext>`.
 
 **Several changes as one** (`-Item a,b,c`, or `m` / `x` *chosen changes* in the UI): changes that reach the
 client as one whole, in one document. A chapter per kind of document, in the workflows' order (proposal,
 specifications, models, design, ... tasks; the documents no workflow names last), each change's part under
 its title; the specifications chapter has one contents of all their capabilities, each change's diagram
 before its own. `-Title` is the cover's subtitle (else the changes' titles, comma-separated) and names the
-file: `export\<project>-<title>-<date>.<ext>` (without accents). Changes only; an archived one by its name
+file: `openspec\exports\<project>-<title>-<date>.<ext>` (without accents). Changes only; an archived one by its name
 too (its folder `<date>-<name>`).
 
 **Saved wholes** (`m` asks to save one; or by hand, in `openspec/config.yaml`):
@@ -284,7 +284,8 @@ Tests: `.\tests\Test-Translation.ps1` (no network: `LAZYSPEC_DEEPL_FAKE`, `LAZYS
 | Word (`.docx`) | Microsoft Word, else pandoc; with a [document template](#word-document-template): LazySpec itself | Word's own table of contents (with page numbers) and page numbering; editable |
 | HTML | LazySpec itself | one file, the styles inside |
 
-Written to `export\<project>-specification-<date>.<ext>` in the project (add `export/` to `.gitignore`, or
+Written to `openspec\exports\<project>-specification-<date>.<ext>` (another folder: `lazyspec: exportDir: <path>` in
+`openspec/config.yaml`, relative to the project's root; add it to `.gitignore`, or
 commit what was sent); `-Out` writes elsewhere, `-Open` opens it. In the UI (`x`) it runs in the run screen
 and opens the document when it's done.
 
@@ -332,11 +333,13 @@ Tests: `.\tests\Test-MarkdownDocument.ps1` (in the LazySpec repository).
 One look for every document LazySpec makes, **in all three formats** (PDF, Word, HTML), with no Word or other
 program needed: `documentTheme:` under `lazyspec:` in `openspec/config.yaml`, a YAML file relative to the
 project's root (spaces are fine); `-Theme <path>` (relative to the current folder) wins over it for one export.
+Not set: `openspec/artifacts/document-theme.yaml` when it's there (where `netmedia:openspec-init` puts Netmedia's
+theme). A Word template is never taken by default: only `documentTemplate:` (else Word would leave the theme).
 
 ```yaml
 lazyspec:
   # documentTheme: the look of every generated document - export, meeting notes, summaries.
-  documentTheme: openspec_artifacts/theme/document-theme.yaml
+  documentTheme: openspec/artifacts/document-theme.yaml
 ```
 
 The theme sets the page (size, margins), colours, the styles (the cover's title and subtitle, headings 1-6,
@@ -378,7 +381,7 @@ the current folder) wins over it for one export.
 ```yaml
 lazyspec:
   # documentTemplate: the Word template (.docx) every generated document uses - export, meeting notes, summaries.
-  documentTemplate: openspec_artifacts/Document template.docx
+  documentTemplate: openspec/artifacts/Document template.docx
 ```
 
 Every Word document LazySpec makes is then built on that template:
@@ -424,8 +427,9 @@ it), the export's settings that belong to the specification; they win over `lazy
 lazyspec:
   name: Acme – Portal i javni API          # on the cover, instead of the folder's name
   client: Acme d.o.o.                      # also: subtitle, author, language
-  documentTemplate: openspec_artifacts/Document template.docx   # Word documents on it (see Export)
-  documentTheme: openspec_artifacts/theme/document-theme.yaml    # PDF, Word and HTML in that look (see Export)
+  documentTemplate: openspec/artifacts/Document template.docx   # Word documents on it (see Export)
+  documentTheme: openspec/artifacts/document-theme.yaml    # PDF, Word and HTML in that look (see Export)
+  exportDir: openspec/exports              # where exports go (the default; relative to the project's root)
   titles:                                  # a capability's (or spec's) title in the export
     add-online-payments:                   # a group per change (its folder's name): for that change
       payment-checkout: Naplata narudžbe

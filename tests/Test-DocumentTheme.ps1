@@ -222,6 +222,16 @@ try {
     $r = Invoke-LazySpec $lazyspec $themeDir 'Html' @('-Root', $missing, '-Out', (Join-Path $work 'override.html'), '-Theme', 'document-theme.yaml')
     Check ($r.Code -eq 0 -and ([IO.File]::ReadAllText((Join-Path $work 'override.html')) -match '#C2185B')) '-Theme overrides the config''s documentTheme (relative to the current folder)' $r.Out
 
+    # Not set: the conventions' place, openspec/artifacts/document-theme.yaml; a Word template next to it unused.
+    $conv = Join-Path $work 'conventions'
+    New-FixtureProject $conv @()
+    New-FixtureTheme (Join-Path $conv 'openspec\artifacts') $themeYaml
+    [IO.File]::WriteAllBytes((Join-Path $conv 'openspec\artifacts\Document template.docx'), [byte[]](1, 2, 3))
+    $r = Invoke-LazySpec $lazyspec $conv 'Html' @('-Out', (Join-Path $work 'conventions.html'))
+    Check ($r.Code -eq 0 -and $r.Out -match 'document theme: .+openspec.artifacts.document-theme\.yaml' -and ([IO.File]::ReadAllText((Join-Path $work 'conventions.html')) -match '#C2185B')) 'not set: openspec/artifacts/document-theme.yaml (the conventions)' $r.Out
+    $r = Invoke-LazySpec $lazyspec $conv 'Word' @('-Out', (Join-Path $work 'conventions.docx'))
+    Check ($r.Code -eq 0 -and $r.Out -notmatch 'Word template') 'not set: a Word template next to it isn''t taken' $r.Out
+
     # 8. A template and a theme.
     $both = Join-Path $work 'both'
     New-FixtureTemplate (Join-Path $both 'template.docx') 'TEMPLATE-HEADER-MARK'
