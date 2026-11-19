@@ -2,7 +2,7 @@
   "name": "lazyspec",
   "displayName": "LazySpec - OpenSpec specs and changes",
   "description": "A project's OpenSpec in your editor: the specifications and the plan (by group), formatted reading, tasks, requirements, scenarios and sections to edit, tick, delete or hand to the agent, find, out-of-date documents, undo, validate, archive, and exports for the client in the company look.",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "publisher": "netmedia",
   "author": {
     "name": "Netmedia",
@@ -57,22 +57,22 @@
     "views": {
       "lazyspec": [
         {
-          "id": "lazyspec.plan",
-          "name": "Plan"
-        },
-        {
           "id": "lazyspec.scope",
           "name": "Scope"
         },
         {
-          "id": "lazyspec.details",
-          "name": "Details",
-          "type": "webview"
+          "id": "lazyspec.plan",
+          "name": "Plan"
         },
         {
           "id": "lazyspec.undo",
           "name": "Undo (since the last commit)",
           "visibility": "collapsed"
+        },
+        {
+          "id": "lazyspec.details",
+          "name": "Details",
+          "type": "webview"
         }
       ]
     },
@@ -790,6 +790,36 @@
         "key": "ctrl+alt+y",
         "mac": "ctrl+alt+y",
         "when": "(focusedView == lazyspec.plan || focusedView == lazyspec.scope)"
+      },
+      {
+        "command": "lazyspec.focusPlan",
+        "key": "tab",
+        "when": "focusedView == lazyspec.scope"
+      },
+      {
+        "command": "lazyspec.focusDetails",
+        "key": "shift+tab",
+        "when": "focusedView == lazyspec.scope"
+      },
+      {
+        "command": "lazyspec.focusUndo",
+        "key": "tab",
+        "when": "focusedView == lazyspec.plan"
+      },
+      {
+        "command": "lazyspec.focusScope",
+        "key": "shift+tab",
+        "when": "focusedView == lazyspec.plan"
+      },
+      {
+        "command": "lazyspec.focusDetails",
+        "key": "tab",
+        "when": "focusedView == lazyspec.undo"
+      },
+      {
+        "command": "lazyspec.focusPlan",
+        "key": "shift+tab",
+        "when": "focusedView == lazyspec.undo"
       }
     ],
     "configuration": {

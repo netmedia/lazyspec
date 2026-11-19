@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1
+
+- Tab / Shift+Tab: the next / previous pane - the Scope, the Plan, Undo, the Details, as in the terminal UI; the
+  side bar's views in that order.
+
 ## 0.6.0
 
 - The same letters as LazySpec in the terminal: Ctrl+Alt+R refresh (was Read), Ctrl+Alt+Enter Read, Ctrl+Alt+Y

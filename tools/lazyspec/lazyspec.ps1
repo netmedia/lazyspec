@@ -28,7 +28,8 @@ Self-contained: Windows PowerShell 5.1 or PowerShell 7, no modules. A terminal w
 characters (Windows Terminal; the Windows console since Windows 10).
 
 Keys (? shows them in the UI too)
-  Home   up/down item, Tab specs <-> changes, right: into the details (up/down scroll them), left/Esc back,
+  Home   up/down item, Tab / Shift+Tab the next / previous pane (scope, plan, undo, details), right: into the
+         details (up/down scroll them), left/Esc back,
          z zoom the details (whole width; z again: the lists back), Enter read it, PgUp/PgDn scroll the details,
          p / s / d the plan, the scope, the details, h back to the document last read,
          v validate all, A archive the change, n new change, e edit (open in the editor),
@@ -262,7 +263,8 @@ function Show-Usage {
     Write-Host ''
     & $b 'KEYS'
     & $y '  Home'
-    & $d '    Up/Down item, Tab specs <-> changes, Right into the details (Up/Down scroll), Left back'
+    & $d '    Up/Down item, Tab / Shift+Tab the next / previous pane (scope, plan, undo, details), Right into the'
+    & $d '    details (Up/Down scroll), Left back'
     & $d '    z zoom the details to the whole width (z again: the lists back)'
     & $d '    Enter read it, PgUp/PgDn/Home/End scroll the details'
     & $d '    p s d the plan, the scope, the details   h back to the document last read'
@@ -7427,6 +7429,8 @@ function On-UndoKey($K) {
     $name = $K.Name; $ch = [string]$K.Char
     $n = @($u.Rows).Count
     $script:message = ''
+    # Tab / Shift+Tab: on to the details, back to the plan (the panes' order: scope, plan, undo, details).
+    if ($name -eq 'Tab' -or $name -eq 'ShiftTab') { Move-Pane 'undo' ($name -eq 'ShiftTab'); return }
     if ($name -eq 'Esc' -or $ch -eq 'q') {
         $back = $u.Back
         if (-not $back -or $back -eq 'undo') { $back = 'home' }
@@ -7732,7 +7736,7 @@ function Draw-Help([int]$W, [int]$H) {
         [void]$lines.Add(@())
     }
     & $section 'HOME' @(
-        @("$($g.up) $($g.down)", 'select a spec or a change (in the details: scroll)'), @('Tab', 'scope (specifications) <-> plan (changes)'),
+        @("$($g.up) $($g.down)", 'select a spec or a change (in the details: scroll)'), @('Tab Shift+Tab', 'the next, the previous pane: the scope, the plan, undo, the details'),
         @('p s d', 'the plan, the scope, the details (the same letters as Ctrl+Alt+P / S / D in VS Code)'),
         @('h', 'back to the document last read'),
         @("$([string][char]0x2192) l", 'into the details (then up/down scroll them)'), @("$([string][char]0x2190) Esc", 'back to the lists'),
@@ -7811,6 +7815,27 @@ function Draw-None([int]$W, [int]$H) {
 
 # --- keys ----------------------------------------------------------------------------------------------
 
+# The panes in Tab's order: the scope, the plan, undo (its screen), the details; from $At the next (or the
+# previous, $Back).
+function Move-Pane([string]$At, [bool]$Back) {
+    $order = @('scope', 'plan', 'undo', 'details')
+    $step = 1
+    if ($Back) { $step = 3 }
+    $to = $order[([array]::IndexOf($order, $At) + $step) % 4]
+    $script:detailScroll = 0
+    if ($to -eq 'undo') {
+        Start-Undo
+        if ($script:screen -eq 'undo') { $script:undo.Back = 'home'; return }
+        # No git here (no undo): on to the next one.
+        $to = $order[([array]::IndexOf($order, 'undo') + $step) % 4]
+    }
+    $script:screen = 'home'; $script:undo = $null
+    switch ($to) {
+        'scope' { $script:focus = 'specs'; $script:pane = 'list' }
+        'plan' { $script:focus = 'changes'; $script:pane = 'list' }
+        'details' { $script:focus = 'changes'; $script:pane = 'details' }
+    }
+}
 function Move-Selection([int]$Delta) {
     if ($script:focus -eq 'specs') {
         $n = @(Get-VisibleSpecs).Count
@@ -8039,10 +8064,14 @@ function On-Key($K) {
         $inDetails = $script:zoom -or $script:pane -eq 'details'
         if ($name -eq 'Up') { if ($inDetails) { $script:detailScroll = [Math]::Max(0, $script:detailScroll - 1) } else { Move-Selection -1 }; return }
         if ($name -eq 'Down') { if ($inDetails) { $script:detailScroll++ } else { Move-Selection 1 }; return }
-        if ($name -eq 'Tab') {
+        # Tab: the next pane - the scope, the plan, undo, the details (of the plan's selection); Shift+Tab: back.
+        # (VS Code: Tab and Shift+Tab around its views in the same order.)
+        if ($name -eq 'Tab' -or $name -eq 'ShiftTab') {
             if ($script:zoom) { return }
-            if ($script:focus -eq 'specs') { $script:focus = 'changes' } else { $script:focus = 'specs' }
-            $script:pane = 'list'; $script:detailScroll = 0; return
+            $at = 'scope'
+            if ($script:pane -eq 'details') { $at = 'details' } elseif ($script:focus -eq 'changes') { $at = 'plan' }
+            Move-Pane $at ($name -eq 'ShiftTab')
+            return
         }
         if ($name -eq 'Right') { if (-not $script:zoom) { $script:pane = 'details' }; return }
         if ($name -eq 'Left') { if ($script:zoom) { $script:zoom = $false }; $script:pane = 'list'; return }

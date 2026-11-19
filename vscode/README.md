@@ -152,6 +152,7 @@ and `PgDn` work right away; the Plan keeps its selection.
 | `Ctrl+Alt+S` | `⌃⌥S` | the Scope |
 | `Ctrl+Alt+D` | `⌃⌥D` | the Details |
 | `Ctrl+Alt+U` | `⌃⌥U` | Undo |
+| `Tab` / `Shift+Tab` | `Tab` / `⇧Tab` | the next / the previous pane: the Scope, the Plan, Undo, the Details (and round) |
 | `Ctrl+Alt+H` | `⌃⌥H` | here: the open document (the formatted editor: its text) |
 
 | Windows, Linux | Mac | In the Plan and the Scope |
