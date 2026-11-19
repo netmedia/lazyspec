@@ -42,6 +42,8 @@ export class DetailsView implements vscode.WebviewViewProvider {
     view.webview.onDidReceiveMessage(m => {
       if (m.open) { void vscode.commands.executeCommand('lazyspec.openAt', m.open, m.line || 0, m.text || ''); }
       if (m.run) { void vscode.commands.executeCommand(m.run, ...(m.args || [])); }
+      // Tab / Shift+Tab here: the next pane (round to the Scope), the previous one (Undo).
+      if (m.pane) { void vscode.commands.executeCommand(m.pane === 'prev' ? 'lazyspec.focusUndo' : 'lazyspec.focusScope'); }
     });
     this.render();
   }
@@ -92,6 +94,7 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-run]');
   if (b) { vscode.postMessage({ run: b.dataset.run, args: JSON.parse(b.dataset.args) }); }
 });
+document.addEventListener('keydown', e => { if (e.key === 'Tab') { e.preventDefault(); vscode.postMessage({ pane: e.shiftKey ? 'prev' : 'next' }); } });
 </script></body></html>`;
   }
 

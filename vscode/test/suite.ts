@@ -242,7 +242,7 @@ export async function run(): Promise<void> {
   });
   await check('the panes: Ctrl+Alt (Mac Control+Option) and P, S, D, U, H - none of VS Code\'s own keys', async () => {
     const pkg = vscode.extensions.getExtension('netmedia.lazyspec')!.packageJSON;
-    const keys = Object.fromEntries(pkg.contributes.keybindings.map((k: { command: string; key: string }) => [k.command, k.key]));
+    const keys = Object.fromEntries(pkg.contributes.keybindings.filter((k: { key: string }) => k.key.startsWith('ctrl+alt+')).map((k: { command: string; key: string }) => [k.command, k.key]));
     assert.deepStrictEqual(['lazyspec.focusPlan', 'lazyspec.focusScope', 'lazyspec.focusDetails', 'lazyspec.focusUndo', 'lazyspec.focusEditor'].map(c => keys[c]), ['ctrl+alt+p', 'ctrl+alt+s', 'ctrl+alt+d', 'ctrl+alt+u', 'ctrl+alt+h']);
     // VS Code's default keys (this platform's): none of LazySpec's global ones among them.
     const text = (await vscode.workspace.openTextDocument(vscode.Uri.parse('vscode://defaultsettings/keybindings.json'))).getText();
@@ -258,7 +258,7 @@ export async function run(): Promise<void> {
     await new Promise(r => setTimeout(r, 500));
     assert.ok(vscode.window.tabGroups.all.flatMap(g => g.tabs).some(t => t.label === 'LazySpec: Help'));
     const pkg = vscode.extensions.getExtension('netmedia.lazyspec')!.packageJSON;
-    const same = ['f2', 'space', 'ctrl+alt+enter'];
+    const same = ['f2', 'space', 'ctrl+alt+enter', 'tab', 'shift+tab'];
     for (const k of pkg.contributes.keybindings) { assert.ok(k.mac || same.includes(k.key), `${k.command}: no Mac key`); }
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
   });

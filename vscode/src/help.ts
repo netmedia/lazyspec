@@ -12,6 +12,7 @@ const KEYS: { title: string; note?: string; rows: [string, string, string][] }[]
       ['The Scope', 'Ctrl+Alt+S', '⌃⌥S'],
       ['The Details', 'Ctrl+Alt+D', '⌃⌥D'],
       ['Undo', 'Ctrl+Alt+U', '⌃⌥U'],
+      ['The next / the previous pane (Scope, Plan, Undo, Details)', 'Tab / Shift+Tab', 'Tab / ⇧Tab'],
       ['Here: the open document (its text)', 'Ctrl+Alt+H', '⌃⌥H'],
     ],
   },
