@@ -109,7 +109,7 @@ In another language: `lazyspec -Export Pdf -Language en` translates the document
 `openspec/config.yaml`, the key in `DEEPL_AUTH_KEY`; `-Beta` for DeepL beta languages such as Croatian; an export into
 Croatian is checked by Hasek/ispravi.me); `lazyspec -AddLanguage it` adds LazySpec's texts for a new language. See
 [Export in another language](tools/lazyspec/LAZYSPEC.md#export-in-another-language-deepl).
-Tests: `.\tests\Test-WordTemplate.ps1`, `.\tests\Test-DocumentTheme.ps1`, `.\tests\Test-MarkdownDocument.ps1`, `.\tests\Test-Translation.ps1`
+Tests: `.\tests\Test-WordTemplate.ps1`, `.\tests\Test-DocumentTheme.ps1`, `.\tests\Test-MarkdownDocument.ps1`, `.\tests\Test-Translation.ps1`, `.\tests\Test-Search.ps1`
 (macOS: `pwsh tests/Test-WordTemplate.ps1` and so on). They use the system's Georgia, which Windows and macOS both have.
 
 ### 1. Installed on the PC (not in the project)
@@ -183,7 +183,7 @@ Step by step for developers, with diagrams and screenshots: [`docs/developer-gui
 | `docs/LazySpec-Developer-Guide.docx` / `.pdf` | The developer guide as Word and PDF |
 | `docs/LazySpec-Reference.docx` / `.pdf`, `docs/LazySpec-README.docx` / `.pdf` | `LAZYSPEC.md` and this README as Word and PDF |
 | `docs/examples/` | What a client gets: the demo project's specification with the plan, one change (PDF, Word), a saved bundle |
-| `docs/build-documents.ps1` | Makes all of the above with LazySpec itself, in a document theme (Netmedia's: the AIToolbelt repository's `templates/`) |
+| `docs/build-documents.ps1` | Makes all of the above with LazySpec itself, in a document theme (Netmedia's: the AIToolbelt repository's `plugins/netmedia-document/theme/`) |
 | `examples/acme-portal/` | A made-up demo project (specs, changes, models): the guide's screenshots and `docs/examples/` come from it |
 | `examples/document-theme/` | An example document theme (every key explained) |
 | `tests/` | Tests of the export (Word template, document theme): `.\tests\Test-*.ps1` |

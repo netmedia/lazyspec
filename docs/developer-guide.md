@@ -148,6 +148,7 @@ LazySpec has five screens; Home is where you start and `?` always shows the keys
 | Home | Start | Left: **Scope** (specs) and **Plan** (changes). Right: a summary of the selected item |
 | Read | `Enter` | The whole spec, or a change's documents as tabs (proposal, delta specs, models, design, tasks ...) |
 | Changes as one | `m` | Saved bundles on top, active changes below; mark changes that go to the client together |
+| Find | `t` | Tasks, requirements and scenarios matching what you type; `Enter` opens one in Read, at it |
 | Run | `v`, `a`, `n`, `x` | OpenSpec CLI or export output, coloured (✓ passed, ✗ failed, ⚠ warnings) |
 | Help | `?` | Keys and credits |
 
@@ -179,9 +180,10 @@ The screenshots below come from LazySpec itself, run on a made-up demo project (
 
 | Screen | Keys |
 | --- | --- |
-| Home | `↑` `↓` select · `Tab` Scope ↔ Plan · `→` into details, `←`/`Esc` back · `z` zoom details · `PgUp` `PgDn` `Home` `End` scroll details · `Enter` read · `v` validate all · `a` archive change · `n` new change · `x` export · `m` changes as one · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
+| Home | `↑` `↓` select · `Tab` Scope ↔ Plan · `→` into details, `←`/`Esc` back · `z` zoom details · `PgUp` `PgDn` `Home` `End` scroll details · `Enter` read · `v` validate all · `a` archive change · `n` new change · `x` export · `m` changes as one · `t` find · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
 | Read | `↑` `↓` `PgUp` `PgDn` `Home` `End` scroll · `←` `→` previous/next document · `x` export this item · `e` edit · `Esc` back |
 | Changes as one | `↑` `↓` select · `Space` mark · `a` all/none · `Enter` continue · `d` remove saved bundle · `Esc` cancel |
+| Find | type · `↑` `↓` select · `Tab` all / tasks / open tasks / requirements / scenarios · `Enter` open in Read · `Esc` back |
 | Run | `PgUp` `PgDn` `Home` `End` scroll · `Esc` stop (asked first); when done `Enter`/`Esc` back |
 
 The screen refreshes by itself when files under `openspec/` change, whether from your editor, git or an agent.
@@ -342,6 +344,15 @@ Command line: `lazyspec -Export Word -Item add-user-signup,add-online-payments -
 - A `models.md` artifact gets its own tab and export chapter; tables whose first column is *Change* / *Promjena* colour `+` `~` `-` rows, and the export draws a models diagram from ``### `Name` `` headings and `**Relations:**` / `**Veze:**` lines.
 - The schema's `language:` sets the export language (`hr`, `en`, `de`, `nl`).
 
+### 16. Find a task, a requirement or a scenario
+
+**When:** "where is task 1.3?", "which change handles refunds?", a standup, a question from the client.
+
+1. Home, `t`, and type: a task number (`1.3`: in every change), a change and a number (`01 1.3`, `signup 1.3`), or words (`verification`, `refund e-mail`): every task, requirement and scenario that contains them all.
+2. `Tab` narrows it: all, tasks, open tasks, requirements, scenarios.
+3. `Enter` opens it in Read, on the tasks or the specs tab, scrolled to it and marked `▸`; `Esc` returns to the results, `Esc` again to Home.
+4. Archived changes are searched only when shown on Home (`h`).
+
 ## Configuration and integrations
 
 Settings live in two places: `lazyspec.json` for the UI and export defaults, and a `lazyspec:` block in `openspec/config.yaml` for everything that belongs to the specification. The `config.yaml` values win; the OpenSpec CLI ignores the block.
@@ -436,6 +447,6 @@ The `translation:` block is shared with the netmedia Claude Code plugin (`netmed
 | DeepL key refused | Key put in `config.yaml` | Use `setx DEEPL_AUTH_KEY "<key>"` and a new terminal |
 | Change shows as `spec-driven` with a warning | Its workflow schema can't be found | Check `openspec/schemas/<name>/schema.yaml` and `openspec schema validate` |
 
-This guide as Word and PDF: [`docs/LazySpec-Developer-Guide.docx`](LazySpec-Developer-Guide.docx), [`.pdf`](LazySpec-Developer-Guide.pdf); the reference and the README too, and in [`docs/examples/`](examples/) what a client gets, exported from the demo project [`examples/acme-portal`](../examples/acme-portal/) (try every workflow on it: `cd examples\acme-portal`, `lazyspec`). All made by LazySpec itself in Netmedia's document theme (the AIToolbelt repository's `templates/`): `.\docs\build-documents.ps1` after changing the Markdown.
+This guide as Word and PDF: [`docs/LazySpec-Developer-Guide.docx`](LazySpec-Developer-Guide.docx), [`.pdf`](LazySpec-Developer-Guide.pdf); the reference and the README too, and in [`docs/examples/`](examples/) what a client gets, exported from the demo project [`examples/acme-portal`](../examples/acme-portal/) (try every workflow on it: `cd examples\acme-portal`, `lazyspec`). All made by LazySpec itself in Netmedia's document theme (the AIToolbelt repository's `plugins/netmedia-document/theme/`): `.\docs\build-documents.ps1` after changing the Markdown.
 
 **Where to get help:** `-Help` on any script, `?` in the UI, [`tools/lazyspec/LAZYSPEC.md`](../tools/lazyspec/LAZYSPEC.md) for the full reference, or the LazySpec repo ([github.com/netmedia/lazyspec](https://github.com/netmedia/lazyspec)).

@@ -13,7 +13,7 @@
 <#
 .SYNOPSIS
     Makes the documents in docs\ from the repository's Markdown and the demo project, in a document theme
-    (Netmedia's: the templates\ folder of the AIToolbelt repository).
+    (Netmedia's: plugins\netmedia-document\theme\ in the AIToolbelt repository).
 
 .DESCRIPTION
     - docs\LazySpec-Developer-Guide.docx / .pdf   from docs\developer-guide.md
@@ -26,11 +26,12 @@
     next to them (removed afterwards): the Markdown files stay as GitHub shows them.
 
 .PARAMETER Theme
-    The document theme (.yaml). Default: ..\AIToolbelt\templates\document-theme.yaml next to this repository.
+    The document theme (.yaml). Default: the AIToolbelt repository next to this one,
+    plugins\netmedia-document\theme\document-theme.yaml (else its older place, templates\document-theme.yaml).
 
 .EXAMPLE
     .\docs\build-documents.ps1
-    .\docs\build-documents.ps1 -Theme D:\Development\Netmedia\AIToolbelt\templates\document-theme.yaml
+    .\docs\build-documents.ps1 -Theme D:\Development\Netmedia\AIToolbelt\plugins\netmedia-document\theme\document-theme.yaml
 #>
 [CmdletBinding()]
 param([string]$Theme)
@@ -38,7 +39,11 @@ param([string]$Theme)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 $lazyspec = Join-Path $repo 'tools\lazyspec\lazyspec.ps1'
-if (-not $Theme) { $Theme = Join-Path (Split-Path $repo -Parent) 'AIToolbelt\templates\document-theme.yaml' }
+if (-not $Theme) {
+    $toolbelt = Join-Path (Split-Path $repo -Parent) 'AIToolbelt'
+    $Theme = Join-Path $toolbelt 'plugins\netmedia-document\theme\document-theme.yaml'
+    if (-not (Test-Path -LiteralPath $Theme)) { $Theme = Join-Path $toolbelt 'templates\document-theme.yaml' }
+}
 if (-not (Test-Path -LiteralPath $Theme)) { throw "The document theme isn't there: $Theme (-Theme <path>)" }
 $Theme = (Resolve-Path -LiteralPath $Theme).Path
 $docs = Join-Path $repo 'docs'

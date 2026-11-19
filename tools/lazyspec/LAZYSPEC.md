@@ -57,6 +57,13 @@ The project is the nearest folder with `openspec\` above the current folder (els
 **Read** (`Enter`) — the whole page: the spec, or the change's documents as its workflow names them (proposal, delta specs, design, tasks ...; `←` `→`), formatted:
 headings, lists, checkboxes, tables, code, requirements (`◆`), scenarios (`▸`) with WHEN / THEN.
 
+**Find** (`t`) — a task, a requirement or a scenario anywhere in the project, as you type: a task's number
+(`1.3`: that task in every change; `01 1.3` or `signup 1.3`: that change's), or words (all of them in the
+task, its group, its change's name or title; a requirement or scenario of the specs or of the changes' delta
+specs, with its capability and requirement). `Tab` narrows it: all, tasks, open tasks, requirements,
+scenarios. `Enter` opens it in Read, on its document's tab, scrolled to it and marked `▸`; `Esc` there goes
+back to the results. Archived changes only with `h`, as on Home.
+
 **Changes as one** (`m`) — the changes that go to the client as one whole. On top, the **saved wholes**
 (`lazyspec: bundles:` in `openspec/config.yaml`): `Enter` reads one, `Space` marks its changes (to change
 them), `d` removes it (asked first). Below, the active changes: `Space` marks them (`a` all or none), `Enter`
@@ -75,9 +82,10 @@ It refreshes by itself when files under `openspec/` change (an editor, git, an a
 
 | Screen | Keys |
 |---|---|
-| Home | `↑` `↓` select · `Tab` scope ↔ plan · `→` into the details (`↑` `↓` scroll them), `←`/`Esc` back · `z` zoom the details to the whole width (again: the lists back) · `PgUp` `PgDn` `Home` `End` scroll the details · `Enter` read · `v` validate all · `a` archive the change · `n` new change · `x` export (PDF, Word, HTML) · `m` changes as one · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
+| Home | `↑` `↓` select · `Tab` scope ↔ plan · `→` into the details (`↑` `↓` scroll them), `←`/`Esc` back · `z` zoom the details to the whole width (again: the lists back) · `PgUp` `PgDn` `Home` `End` scroll the details · `Enter` read · `v` validate all · `a` archive the change · `n` new change · `x` export (PDF, Word, HTML) · `m` changes as one · `t` find · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
 | Read | `↑` `↓` `PgUp` `PgDn` `Home` `End` scroll · `←` `→` document · `x` export this spec, change or changes as one · `e` edit · `Esc` back |
 | Changes as one | `↑` `↓` select · `Space` mark (a saved whole: its changes) · `a` all, none · `Enter` go on (a saved whole: read it; else a title, save it?, then Read) · `d` remove a saved whole · `Esc` cancel |
+| Find | type the search · `↑` `↓` `PgUp` `PgDn` select · `Tab` all, tasks, open tasks, requirements, scenarios · `Enter` open in Read, at it · `Backspace` · `Esc` back |
 | Run | `PgUp` `PgDn` `Home` `End` scroll · `Esc` stop (asked first); when done `Enter`/`Esc` back |
 
 ## What the actions run
