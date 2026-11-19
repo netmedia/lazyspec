@@ -30,6 +30,12 @@ A project's **OpenSpec** specifications and changes in **one terminal screen** â
 - **Documents for the client**: PDF, Word, HTML in the company look (a theme), one spec or change, several
   changes as one, any Markdown file; written to `openspec/exports/`.
 
+**In VS Code** (and Cursor, Windsurf): the [LazySpec extension](vscode/README.md) shows the same project in the
+editor's sidebar: the Plan by group with each change's documents, tasks with checkboxes, requirements and
+scenarios to jump to; the Scope; the selected item's details; find; validate, new change, archive; the same
+exports for the client. Install `vscode/lazyspec.vsix` (Extensions: Install from VSIX..., or
+`code --install-extension vscode/lazyspec.vsix`).
+
 In a project's `.gitignore`: `.lazyspec/` (LazySpec's own notes and the agent's prompts) and, unless you commit
 what went to the client, `openspec/exports/`. The Netmedia conventions keep the document theme in
 `openspec/artifacts/` (`document-theme.yaml`, used when `documentTheme:` isn't set).
@@ -209,6 +215,7 @@ Step by step for developers, with diagrams and screenshots: [`docs/developer-gui
 | `docs/build-documents.ps1` | Makes all of the above with LazySpec itself, in a document theme (Netmedia's: the AIToolbelt repository's `plugins/netmedia-document/theme/`) |
 | `examples/acme-portal/` | A made-up demo project (specs, changes, models): the guide's screenshots and `docs/examples/` come from it |
 | `examples/document-theme/` | An example document theme (every key explained) |
+| `vscode/` | The VS Code extension (TypeScript): `npm install`, `npm test`, `npm run test:vscode`, `npm run package` |
 | `tests/` | Tests of the export (Word template, document theme): `.\tests\Test-*.ps1` |
 
 ---

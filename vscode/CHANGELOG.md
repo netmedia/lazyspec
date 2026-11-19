@@ -1,0 +1,12 @@
+# Changelog
+
+## 0.1.0
+
+- The Plan (by group, or flat) and the Scope as trees: changes with their documents, tasks with checkboxes,
+  delta specs down to scenarios; specs with their requirements and scenarios.
+- Details of the selected change, group or spec.
+- Find: task numbers, words, a kind, one group.
+- Validate, new change and archive through the OpenSpec CLI.
+- Export for the client (PDF, Word, HTML): the specification, a change, chosen changes, groups, saved bundles,
+  any Markdown file; through LazySpec's lazyspec.ps1 (the project's or the one built in).
+- LazySpec's terminal UI in an editor tab.

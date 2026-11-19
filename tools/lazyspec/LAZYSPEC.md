@@ -176,6 +176,10 @@ with them (`+`); `Enter` reads the chosen ones as one, `x` exports them, `Esc` u
 
 It refreshes by itself when files under `openspec/` change (an editor, git, an agent).
 
+**In VS Code** (and Cursor, Windsurf): the extension in `vscode/` of the LazySpec repository shows the Plan (by
+group), the Scope and the details in the editor's sidebar, with tasks to tick, find, validate, new change,
+archive and the same exports; see [vscode/README.md](../../vscode/README.md).
+
 ## Keys
 
 | Screen | Keys |

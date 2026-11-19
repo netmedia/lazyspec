@@ -413,6 +413,19 @@ Your answer is the default next time (`lazyspec: agent:`). Add `.lazyspec/` to `
 2. `Enter` undoes the piece (asked first); on a file's row, the whole file back as committed, or a new file deleted.
 3. A commit empties the list. It needs the project in git.
 
+### 20. Work in VS Code, Cursor or Windsurf
+
+**When:** you'd rather stay in your editor than switch to a terminal.
+
+1. Install the extension once: **Extensions: Install from VSIX...** with `vscode/lazyspec.vsix` from the LazySpec repository (or `code --install-extension vscode/lazyspec.vsix`; `cursor --install-extension ...` for Cursor). A `git pull` and installing it again updates it.
+2. Open the project's folder. The checklist icon in the activity bar opens the **Plan** (by group when the project has groups), the **Scope** and the **Details** of what you select.
+3. Expand a change to see its documents. Click a document to edit it in the editor. Tick tasks in the tree; the box is written into `tasks.md`. Expand **Specs** down to a requirement or scenario to jump to it.
+4. `Ctrl+Alt+T` (Mac `Cmd+Alt+T`) is Find: task numbers, words, `g1` for one group, and the filter button for the kind.
+5. The views' title bars hold New Change, Find, Export and Refresh; the `...` menu holds Validate, archived changes, Export Groups and the terminal UI. Right-click a change to archive or export it. Right-click any `.md` in the Explorer to export it as a document.
+6. Export uses the project's own `tools/lazyspec/lazyspec.ps1` when it has one, else the copy built into the extension; on macOS install PowerShell 7 (`brew install powershell`).
+
+For undo, out-of-date documents and the agent, use **Open LazySpec (Terminal UI)**: the full LazySpec in an editor tab.
+
 ## Configuration and integrations
 
 Settings live in two places: `lazyspec.json` for the UI and export defaults, and a `lazyspec:` block in `openspec/config.yaml` for everything that belongs to the specification. The `config.yaml` values win; the OpenSpec CLI ignores the block.
