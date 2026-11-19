@@ -257,7 +257,7 @@ function Show-Usage {
     & $d '    v validate all   a archive the change   n new change   e edit   s sort changes'
     & $d '    m changes as one (mark them with Space, Enter: a title, then read them; x there: export)'
     & $d '    t find: a task (1.3, 01 1.3, words), a requirement, a scenario; Enter: Read, at it'
-    & $d '      Right: mark them (Space, a all, g its group); x remove, c change, r redo (the agent)'
+    & $d '      Right: mark them (Space, a all, g its group); Del delete; Enter: delete, change, redo them'
     & $d '    y out of date (! in the plan): the agent updates the documents, or mark them as in sync'
     & $d '    u undo: the changes since the last commit, piece by piece (needs git)'
     & $d '    h show/hide archived   / filter   r refresh   ? help   q quit'
@@ -986,6 +986,11 @@ $script:stale = @{}
 $script:syncAsked = $false
 $script:pendingAsk = $null
 $script:undo = $null
+$script:readSel = 0
+$script:readSelKey = ''
+$script:readFollow = $false
+$script:readItemsCache = @{}
+$script:editor = $null
 $script:lastPickTitle = ''
 $script:run = $null
 $script:quit = $false
@@ -5361,7 +5366,7 @@ function Draw-Home([int]$W, [int]$H) {
 
 # The read screen: a spec (its spec.md) or a change (proposal, design, tasks, delta specs) in full.
 function Get-ReadTabs($Item) {
-    if ($Item.Type -eq 'spec') { return @([pscustomobject]@{ Title = 'Spec'; Path = $Item.Path; Text = $Item.Text }) }
+    if ($Item.Type -eq 'spec') { return @([pscustomobject]@{ Title = 'Spec'; Path = $Item.Path; Text = $Item.Text; Files = @($Item.Path) }) }
     if ($Item.Type -eq 'bundle') { return Get-BundleReadTabs $Item }
     # One tab per document of the change's workflow, in its order (then the other .md files in its folder).
     $tabs = @()
@@ -5375,11 +5380,11 @@ function Get-ReadTabs($Item) {
                 [void]$sb.AppendLine((Read-Text $c.Path))
                 [void]$sb.AppendLine('')
             }
-            $tabs += [pscustomobject]@{ Title = "Specs ($($Item.Caps.Count))"; Path = $Item.Caps[0].Path; Text = $sb.ToString() }
+            $tabs += [pscustomobject]@{ Title = "Specs ($($Item.Caps.Count))"; Path = $Item.Caps[0].Path; Text = $sb.ToString(); Files = @($Item.Caps | ForEach-Object { $_.Path }) }
             continue
         }
         if (-not $d.Files.Count) { continue }
-        if ($d.Files.Count -eq 1) { $tabs += [pscustomobject]@{ Title = $d.Title; Path = $d.Files[0]; Text = (Read-Text $d.Files[0]) }; continue }
+        if ($d.Files.Count -eq 1) { $tabs += [pscustomobject]@{ Title = $d.Title; Path = $d.Files[0]; Text = (Read-Text $d.Files[0]); Files = @($d.Files) }; continue }
         # A glob with several files: one after the other, each under its name.
         $sb = New-Object Text.StringBuilder
         foreach ($f in $d.Files) {
@@ -5388,7 +5393,7 @@ function Get-ReadTabs($Item) {
             [void]$sb.AppendLine((Read-Text $f))
             [void]$sb.AppendLine('')
         }
-        $tabs += [pscustomobject]@{ Title = "$($d.Title) ($($d.Files.Count))"; Path = $d.Files[0]; Text = $sb.ToString() }
+        $tabs += [pscustomobject]@{ Title = "$($d.Title) ($($d.Files.Count))"; Path = $d.Files[0]; Text = $sb.ToString(); Files = @($d.Files) }
     }
     if (-not $tabs.Count) { $tabs += [pscustomobject]@{ Title = 'Empty'; Path = $Item.Dir; Text = "This change has none of its workflow's documents yet ($(@($Item.Docs | ForEach-Object { $_.Generates }) -join ', '))." } }
     return $tabs
@@ -5398,7 +5403,7 @@ function Get-BundleReadTabs($Item) {
     $tabs = @()
     foreach ($d in $Item.Docs) {
         $sb = New-Object Text.StringBuilder
-        $count = 0; $path = ''
+        $count = 0; $path = ''; $tabFiles = @()
         foreach ($m in $Item.Members) {
             if ($d.IsSpecs) {
                 foreach ($c in $m.Caps) {
@@ -5407,6 +5412,7 @@ function Get-BundleReadTabs($Item) {
                     [void]$sb.AppendLine((Remove-DocTitle (Read-Text $c.Path)))
                     [void]$sb.AppendLine('')
                     if (-not $path) { $path = $c.Path }
+                    $tabFiles += $c.Path
                     $count++
                 }
                 continue
@@ -5421,13 +5427,14 @@ function Get-BundleReadTabs($Item) {
                 [void]$sb.AppendLine((Remove-DocTitle (Read-Text $f)))
                 [void]$sb.AppendLine('')
                 if (-not $path) { $path = $f }
+                $tabFiles += $f
             }
             $count++
         }
         if (-not $count) { continue }
         $t = $d.Title
         if ($d.IsSpecs) { $t = 'Specs' }
-        $tabs += [pscustomobject]@{ Title = "$t ($count)"; Path = $path; Text = $sb.ToString() }
+        $tabs += [pscustomobject]@{ Title = "$t ($count)"; Path = $path; Text = $sb.ToString(); Files = $tabFiles }
     }
     if (-not $tabs.Count) { $tabs += [pscustomobject]@{ Title = 'Empty'; Path = $Item.Dir; Text = 'None of these changes has its workflow''s documents yet.' } }
     return $tabs
@@ -5440,6 +5447,15 @@ function Draw-Read([int]$W, [int]$H) {
     $key = "$($item.Name)/$($script:readTab)/$W/$($item.Modified.Ticks)"
     if (-not $script:readCache.ContainsKey($key)) { $script:readCache[$key] = Render-Markdown $tab.Text ($W - 6) }
     $doc = $script:readCache[$key]
+    # Its tasks, requirements and scenarios: one selected (Up, Down), marked.
+    $items = @(Get-ReadItems $tab $doc $key)
+    if ($script:readSelKey) {
+        for ($i = 0; $i -lt $items.Count; $i++) { if ("$($items[$i].Path)|$($items[$i].Line)" -eq $script:readSelKey) { $script:readSel = $i } }
+        $script:readSelKey = ''
+    }
+    if ($script:readSel -ge $items.Count) { $script:readSel = [Math]::Max(0, $items.Count - 1) }
+    $selLine = -1
+    if ($items.Count) { $selLine = $items[$script:readSel].RLine }
     $head = New-Object Collections.ArrayList
     $chips = @(S ' ')
     for ($i = 0; $i -lt $tabs.Count; $i++) {
@@ -5458,11 +5474,15 @@ function Draw-Read([int]$W, [int]$H) {
     if ($script:readScroll -gt $max) { $script:readScroll = $max }
     $lines = New-Object Collections.ArrayList
     foreach ($l in $head) { [void]$lines.Add($l) }
-    # A found line (t): marked.
-    $mk = $script:readMark
+    # The selected item in view; marked.
+    if ($selLine -ge 0 -and $script:readFollow) {
+        if ($selLine -lt $script:readScroll + 1) { $script:readScroll = [Math]::Max(0, $selLine - 2) }
+        elseif ($selLine -gt $script:readScroll + $bodyRows - 3) { $script:readScroll = [Math]::Min($max, $selLine - $bodyRows + 4) }
+        $script:readFollow = $false
+    }
     for ($i = $script:readScroll; $i -lt [Math]::Min($doc.Count, $script:readScroll + $bodyRows); $i++) {
         $pre = S '  '
-        if ($mk -and $mk.Name -eq $item.Name -and $mk.Tab -eq $script:readTab -and $mk.Line -eq $i) { $pre = S "$($g.tri) " $st.accent }
+        if ($i -eq $selLine) { $pre = S "$($g.tri) " $st.accent }
         [void]$lines.Add(@($pre) + @($doc[$i]))
     }
     $title = Get-ItemTitle $item
@@ -5473,7 +5493,14 @@ function Draw-Read([int]$W, [int]$H) {
     foreach ($r in (Full-Rows ($H - 3 - $bottom.Count) $W $lines)) { [void]$rows.Add($r) }
     foreach ($r in $bottom) { [void]$rows.Add($r) }
     [void]$rows.Add((Border-Line $W $g.lt $g.h $g.rt 0 ''))
-    if ($script:choose) { $hints = Home-Hints }
+    if ($script:choose -or $script:confirm -or $script:input) { $hints = Home-Hints }
+    elseif ($items.Count) {
+        $hints = @(@("$($g.up)$($g.down)", 'item'), @('Enter', 'edit it'))
+        if ($items[$script:readSel].Kind -eq 'task') { $hints += , @('Space', 'done') }
+        $hints += , @('Del', 'delete'); $hints += , @('a', 'agent'); $hints += , @('PgUp PgDn', 'scroll')
+        if ($tabs.Count -gt 1) { $hints += , @("$([string][char]0x2190)$([string][char]0x2192)", 'document') }
+        $hints += , @('e', 'edit file'); $hints += , @('x', 'export'); $hints += , @('Esc', 'back')
+    }
     else {
         $hints = @(@("$($g.up)$($g.down) PgUp PgDn", 'scroll'), @('Home End', 'top, end'))
         if ($tabs.Count -gt 1) { $hints += , @("$([string][char]0x2190)$([string][char]0x2192)", 'document') }
@@ -5798,7 +5825,11 @@ function Draw-Search([int]$W, [int]$H) {
     foreach ($r in (Full-Rows ($H - 2 - @($bottom).Count) $W $lines)) { [void]$rows.Add($r) }
     foreach ($r in $bottom) { [void]$rows.Add($r) }
     if ($script:confirm -or $script:choose -or $script:input) { $hints = Home-Hints }
-    elseif ($s.Focus -eq 'list') { $hints = @(@("$($g.up)$($g.down)", 'select'), @('Space', 'mark'), @('a', 'all'), @('g', 'its group'), @('x', 'remove'), @('c', 'change'), @('r', 'redo'), @('Enter', 'open'), @("$([string][char]0x2190) Esc", 'type')) }
+    elseif ($s.Focus -eq 'list') {
+        $hints = @(@("$($g.up)$($g.down)", 'select'), @('Space', 'mark'), @('a', 'all'), @('g', 'its group'), @('Del', 'delete'))
+        if ($s.Marked.Count) { $hints += , @('Enter', 'the marked: delete, change, redo') } else { $hints += , @('Enter', 'open, to edit') }
+        $hints += , @("$([string][char]0x2190) Esc", 'type')
+    }
     else { $hints = @(@('type', 'find'), @("$($g.up)$($g.down)", 'select'), @("$([string][char]0x2192)", 'mark, revise'), @('Tab', "kind: $($s.Kind)"), @('Enter', 'open'), @('Esc', 'back')) }
     [void]$rows.Add((Border-Bottom $W $hints 0))
     return , $rows
@@ -5839,7 +5870,21 @@ function On-SearchListKey($K) {
     if ($name -eq 'Down') { $s.Index = [Math]::Min([Math]::Max(0, $res.Count - 1), $s.Index + 1); return }
     if ($name -eq 'PgUp') { $s.Index = [Math]::Max(0, $s.Index - 10); return }
     if ($name -eq 'PgDn') { $s.Index = [Math]::Min([Math]::Max(0, $res.Count - 1), $s.Index + 10); return }
-    if ($name -eq 'Enter') { if ($cur) { Open-SearchResult $cur }; return }
+    # Enter: with marks, what to do with them; else open the selected in Read (to edit it there).
+    if ($name -eq 'Enter') {
+        $items = @($s.Marked.Values)
+        if (-not $items.Count) { if ($cur) { Open-SearchResult $cur }; return }
+        $script:choose = [pscustomobject]@{ Text = "$($items.Count) marked:"; Options = @('Delete them', 'Change them (the agent)', 'Write them again (the agent)', 'Unmark them'); Short = @('delete', 'change', 'redo', 'unmark'); Keys = @('d', 'c', 'r', 'u'); Choice = 0; Items = $items; Do = {
+                param($k, $c)
+                switch ($k) {
+                    0 { Start-RemoveItems $c.Items $true }
+                    1 { Start-ChangeItems $c.Items }
+                    2 { $script:search.Marked = [ordered]@{}; Start-AgentTask "Redo $(@($c.Items).Count) item(s)" 'redo' (Get-RevisionPrompt $c.Items 'redo' '') }
+                    3 { $script:search.Marked = [ordered]@{} }
+                }
+            } }
+        return
+    }
     if ($name -eq 'Space' -or $ch -eq ' ') {
         if ($cur) { $key = "$($cur.Path)|$($cur.Line)"; if ($s.Marked.Contains($key)) { $s.Marked.Remove($key) } else { $s.Marked[$key] = $cur } }
         return
@@ -5855,40 +5900,10 @@ function On-SearchListKey($K) {
         $script:message = ''
         return
     }
-    if (@('x', 'c', 'r') -contains $ch) {
+    if ($name -eq 'Del') {
         $items = @($s.Marked.Values)
         if (-not $items.Count -and $cur) { $items = @($cur) }
-        if (-not $items.Count) { return }
-        $n = @{ task = 0; req = 0; scn = 0 }
-        foreach ($e in $items) { $n[$e.Kind]++ }
-        $what = (@(@("$($n.task) task(s)", "$($n.req) requirement(s)", "$($n.scn) scenario(s)") | Where-Object { $_ -notmatch '^0 ' })) -join ', '
-        if ($ch -eq 'x') {
-            $main = @($items | Where-Object { $_.Item.Type -eq 'spec' }).Count
-            $text = "Remove $($what)?"
-            if ($main) { $text = "Remove $($what)? ($main in the main specs: through a new change)" }
-            $script:confirm = [pscustomobject]@{ Text = $text; Choice = 1; Items = $items; Do = {
-                    param($c)
-                    $report = Remove-Entries $c.Items
-                    $script:search.Marked = [ordered]@{}
-                    Reload
-                    # What it did, then the validation of it all.
-                    Start-Cli 'Remove, then validate' @('validate', '--all', '--strict', '--no-interactive')
-                    foreach ($l in $report) { Add-RunLog $l $st.muted }
-                    Add-RunLog '' ''
-                } }
-            return
-        }
-        if ($ch -eq 'c') {
-            $script:input = [pscustomobject]@{ Label = "Change $($what):"; Value = ''; Hint = 'what to change (the agent does it)'; Free = $true; Items = $items; Do = {
-                    param($v, $i)
-                    if (-not $v) { $script:message = 'Nothing to change: no note.'; return }
-                    $script:search.Marked = [ordered]@{}
-                    Start-AgentTask "Change $(@($i.Items).Count) item(s)" 'change' (Get-RevisionPrompt $i.Items 'change' $v)
-                } }
-            return
-        }
-        $s.Marked = [ordered]@{}
-        Start-AgentTask "Redo $(@($items).Count) item(s)" 'redo' (Get-RevisionPrompt $items 'redo' '')
+        if ($items.Count) { Start-RemoveItems $items $true }
     }
 }
 # A result in Read: its document's tab (the tasks, or the delta specs), scrolled to it and marked.
@@ -5910,6 +5925,7 @@ function Open-SearchResult($E) {
     for ($i = $start; $i -lt $plain.Count; $i++) { if ($plain[$i].Contains($needle)) { $at = $i; break } }
     if ($at -lt 0) { for ($i = 0; $i -lt $plain.Count; $i++) { if ($plain[$i].Contains($needle)) { $at = $i; break } } }
     $script:readItem = $item; $script:readTab = $ti; $script:readScroll = [Math]::Max(0, $at - 3)
+    $script:readSel = 0; $script:readSelKey = "$($E.Path)|$($E.Line)" 
     $script:readMark = $null
     if ($at -ge 0) { $script:readMark = [pscustomobject]@{ Name = $item.Name; Tab = $ti; Line = $at } }
     $script:readBack = 'search'
@@ -6104,6 +6120,261 @@ function Get-RevisionPrompt($Entries, [string]$Action, [string]$Note) {
         [void]$sb.Append("`n`nNow:`n`n``````markdown`n$((@($lines[$at..($end - 1)]) -join "`n").TrimEnd())`n```````n")
     }
     return $sb.ToString()
+}
+
+# --- the selected item: edit, tick, delete, the agent -----------------------------------------------------
+# A Read tab's tasks, requirements and scenarios, in the tab's order, each with its line in the rendered text.
+function Get-ReadItems($Tab, $Doc, [string]$Key) {
+    if (-not $Tab -or -not $Tab.PSObject.Properties['Files'] -or -not @($Tab.Files).Count) { return @() }
+    $ck = "$Key|$(@($Tab.Files) -join '|')"
+    if ($Key -and $script:readItemsCache.ContainsKey($ck)) { return $script:readItemsCache[$ck] }
+    if (-not $Doc) {
+        $W = (Get-Size)[0]
+        $Doc = Render-Markdown $Tab.Text ($W - 6)
+    }
+    $plain = @($Doc | ForEach-Object { (To-Plain $_).ToLower() })
+    $index = @(Get-SearchIndex)
+    $out = New-Object Collections.ArrayList
+    $pos = 0
+    foreach ($f in @($Tab.Files)) {
+        foreach ($e in @($index | Where-Object { $_.Path -eq $f } | Sort-Object Line)) {
+            $needle = $e.Needle.ToLower()
+            if ($needle.Length -gt 30) { $needle = $needle.Substring(0, 30) }
+            for ($i = $pos; $i -lt $plain.Count; $i++) {
+                if ($plain[$i].Contains($needle)) {
+                    [void]$out.Add([pscustomobject]@{ Kind = $e.Kind; Item = $e.Item; Where = $e.Where; Cap = $e.Cap; Group = $e.Group; Num = $e.Num; Text = $e.Text; Done = $e.Done; Path = $e.Path; Line = $e.Line; After = $e.After; Needle = $e.Needle; Hay = $e.Hay; RLine = $i })
+                    $pos = $i + 1
+                    break
+                }
+            }
+        }
+    }
+    $res = @($out)
+    if ($Key) { $script:readItemsCache[$ck] = $res }
+    return $res
+}
+# After a file changed: the read item again (its documents, its date), the caches empty.
+function Update-ReadItem {
+    $script:searchIndex = $null
+    $script:readItemsCache = @{}
+    Reload
+    $it = $script:readItem
+    if (-not $it) { return }
+    if ($it.Type -eq 'spec') { $n = @($script:specs | Where-Object { $_.Name -eq $it.Name }); if ($n.Count) { $script:readItem = $n[0] } }
+    elseif ($it.Type -eq 'bundle') { $m = @(foreach ($x in $it.Members) { Find-Change $x.Name $script:changes }); if ($m.Count) { $script:readItem = Get-ChangeBundle $m $it.Title $it.Id } }
+    else { $n = @($script:changes | Where-Object { $_.Name -eq $it.Name }); if ($n.Count) { $script:readItem = $n[0] } }
+}
+function Switch-TaskDone($E) {
+    $lines = New-Object Collections.Generic.List[string]
+    $lines.AddRange([string[]](Read-Lines $E.Path))
+    $at = $E.Line - 1
+    if ($at -ge $lines.Count -or $lines[$at] -notmatch '^(\s*[-*]\s+\[)([ xX])(\].*)$') { $script:message = 'This task is not there any more.'; return }
+    $mark = 'x'
+    if ($Matches[2] -ne ' ') { $mark = ' ' }
+    $lines[$at] = $Matches[1] + $mark + $Matches[3]
+    Write-Lines $E.Path $lines
+    Update-ReadItem
+}
+# Delete: asked first; $Validate: then openspec validate (several from Find), else a word (one from Read).
+function Start-RemoveItems($Items, [bool]$Validate) {
+    $items = @($Items)
+    $n = @{ task = 0; req = 0; scn = 0 }
+    foreach ($e in $items) { $n[$e.Kind]++ }
+    $what = (@(@("$($n.task) task(s)", "$($n.req) requirement(s)", "$($n.scn) scenario(s)") | Where-Object { $_ -notmatch '^0 ' })) -join ', '
+    if ($items.Count -eq 1) { $what = "the $(@{ task = 'task'; req = 'requirement'; scn = 'scenario' }[$items[0].Kind]) ""$(Short $items[0].Text 50)""" }
+    $main = @($items | Where-Object { $_.Item.Type -eq 'spec' }).Count
+    $text = "Delete $($what)?"
+    if ($main) { $text = "Delete $($what)? (in the main specs: through a new change)" }
+    $script:confirm = [pscustomobject]@{ Text = $text; Choice = 1; Items = $items; Validate = $Validate; Do = {
+            param($c)
+            $report = Remove-Entries $c.Items
+            if ($script:search) { $script:search.Marked = [ordered]@{} }
+            Update-ReadItem
+            if ($c.Validate) {
+                Start-Cli 'Delete, then validate' @('validate', '--all', '--strict', '--no-interactive')
+                foreach ($l in $report) { Add-RunLog $l $st.muted }
+                Add-RunLog '' ''
+            }
+            else { $script:message = "Deleted ($((@($report) -join '; ') -replace '^- ', '')). u: undo" }
+        } }
+}
+function Start-ChangeItems($Items) {
+    $items = @($Items)
+    $script:input = [pscustomobject]@{ Label = "Change $(if ($items.Count -eq 1) { 'it' } else { "$($items.Count) items" }):"; Value = ''; Hint = 'what to change (the agent does it)'; Free = $true; Items = $items; Do = {
+            param($v, $i)
+            if (-not $v) { $script:message = 'Nothing to change: no note.'; return }
+            if ($script:search) { $script:search.Marked = [ordered]@{} }
+            Start-AgentTask "Change $(@($i.Items).Count) item(s)" 'change' (Get-RevisionPrompt $i.Items 'change' $v)
+        } }
+}
+function Start-AgentMenu($Items) {
+    $script:choose = [pscustomobject]@{ Text = 'The agent:'; Options = @('Change it (your note)', 'Write it again (from the specs)'); Short = @('change', 'redo'); Keys = @('c', 'r'); Choice = 0; Items = @($Items); Do = {
+            param($k, $c)
+            if ($k -eq 0) { Start-ChangeItems $c.Items } else { Start-AgentTask "Redo $(@($c.Items).Count) item(s)" 'redo' (Get-RevisionPrompt $c.Items 'redo' '') }
+        } }
+}
+
+# The editor (Enter on an item in Read): the item's own lines only - a task's line (and the lines under it), a
+# requirement, a scenario - in a window; Ctrl+S saves them into its file (a main spec's: directly, or through a
+# change as MODIFIED, asked), Esc cancels (asked when changed).
+function Start-ItemEdit($E) {
+    $lines = Read-Lines $E.Path
+    $at = $E.Line - 1
+    if ($at -ge $lines.Count) { $script:message = 'This item is not there any more.'; return }
+    $end = Get-BlockEnd $lines $at $E.Kind
+    while ($end - 1 -gt $at -and -not $lines[$end - 1].Trim()) { $end-- }
+    $block = New-Object Collections.Generic.List[string]
+    for ($i = $at; $i -lt $end; $i++) { $block.Add($lines[$i]) }
+    $script:editor = [pscustomobject]@{ Entry = $E; Lines = $block; Orig = @($block); Row = 0; Col = 0; Top = 0; Back = $script:screen }
+    $script:message = ''
+    $script:screen = 'edit'
+}
+function Draw-Edit([int]$W, [int]$H) {
+    $ed = $script:editor
+    $e = $ed.Entry
+    $kind = @{ task = 'task'; req = 'requirement'; scn = 'scenario' }[$e.Kind]
+    $lines = New-Object Collections.ArrayList
+    [void]$lines.Add(@())
+    $note = "$kind in $(Get-RelPath $e.Path), line $($e.Line)"
+    if ($e.Item.Type -eq 'spec') { $note += '  (a main spec: Ctrl+S asks - directly, or through a change)' }
+    [void]$lines.Add(@(S "  $note" $st.muted))
+    [void]$lines.Add(@())
+    $bottom = Bottom-Line $W 0
+    $bodyRows = $H - 2 - @($bottom).Count - $lines.Count
+    if ($ed.Row -lt $ed.Top) { $ed.Top = $ed.Row }
+    if ($ed.Row -ge $ed.Top + $bodyRows) { $ed.Top = $ed.Row - $bodyRows + 1 }
+    $tw = $W - 8
+    for ($i = $ed.Top; $i -lt [Math]::Min($ed.Lines.Count, $ed.Top + $bodyRows); $i++) {
+        $t = $ed.Lines[$i]
+        # A long line: the part around the cursor.
+        $off = 0
+        if ($i -eq $ed.Row -and $ed.Col -ge $tw) { $off = $ed.Col - $tw + 1 }
+        $vis = $t.Substring([Math]::Min($off, $t.Length))
+        if ($vis.Length -gt $tw) { $vis = $vis.Substring(0, $tw) }
+        $gutter = S (PadL "$($i + 1) " 5) $st.faint
+        if ($i -ne $ed.Row) { [void]$lines.Add(@($gutter, (S $vis $st.text))); continue }
+        $c = $ed.Col - $off
+        $before = $vis.Substring(0, [Math]::Min($c, $vis.Length))
+        $at = ' '
+        if ($c -lt $vis.Length) { $at = $vis.Substring($c, 1) }
+        $after = ''
+        if ($c + 1 -lt $vis.Length) { $after = $vis.Substring($c + 1) }
+        [void]$lines.Add(@($gutter, (S $before $st.bold), (S $at '7'), (S $after $st.bold)))
+    }
+    $dirty = (($ed.Lines -join "`n") -ne ($ed.Orig -join "`n"))
+    $status = 'unchanged'
+    if ($dirty) { $status = 'changed' }
+    $rows = New-Object Collections.ArrayList
+    [void]$rows.Add((Border-Top $W "$projectName $($g.mid) edit $($g.mid) $(Short $e.Text 40)" $status 0))
+    foreach ($r in (Full-Rows ($H - 2 - @($bottom).Count) $W $lines)) { [void]$rows.Add($r) }
+    foreach ($r in $bottom) { [void]$rows.Add($r) }
+    if ($script:confirm -or $script:choose) { $hints = Home-Hints } else { $hints = @(@('Ctrl+S', 'save'), @('Esc', 'cancel'), @("$($g.up)$($g.down)$([string][char]0x2190)$([string][char]0x2192) Home End", 'move'), @('Enter', 'new line')) }
+    [void]$rows.Add((Border-Bottom $W $hints 0))
+    return , $rows
+}
+function On-EditKey($K) {
+    $ed = $script:editor
+    $name = $K.Name; $ch = $K.Char
+    $L = $ed.Lines
+    $script:message = ''
+    $line = $L[$ed.Row]
+    if ($ed.Col -gt $line.Length) { $ed.Col = $line.Length }
+    switch ($name) {
+        'CtrlS' { Save-ItemEdit; return }
+        'Esc' {
+            if (($L -join "`n") -eq ($ed.Orig -join "`n")) { $script:screen = $ed.Back; $script:editor = $null; return }
+            $script:confirm = [pscustomobject]@{ Text = 'Throw the changes away?'; Choice = 1; Do = { param($c) $script:screen = $script:editor.Back; $script:editor = $null } }
+            return
+        }
+        'Left' { if ($ed.Col -gt 0) { $ed.Col-- } elseif ($ed.Row -gt 0) { $ed.Row--; $ed.Col = $L[$ed.Row].Length }; return }
+        'Right' { if ($ed.Col -lt $line.Length) { $ed.Col++ } elseif ($ed.Row -lt $L.Count - 1) { $ed.Row++; $ed.Col = 0 }; return }
+        'Up' { if ($ed.Row -gt 0) { $ed.Row-- }; return }
+        'Down' { if ($ed.Row -lt $L.Count - 1) { $ed.Row++ }; return }
+        'Home' { $ed.Col = 0; return }
+        'End' { $ed.Col = $line.Length; return }
+        'PgUp' { $ed.Row = [Math]::Max(0, $ed.Row - 10); return }
+        'PgDn' { $ed.Row = [Math]::Min($L.Count - 1, $ed.Row + 10); return }
+        'Enter' {
+            # A new line, indented as this one.
+            $ind = $line.Length - $line.TrimStart().Length
+            $L[$ed.Row] = $line.Substring(0, $ed.Col)
+            $L.Insert($ed.Row + 1, (' ' * $ind) + $line.Substring($ed.Col))
+            $ed.Row++; $ed.Col = $ind
+            return
+        }
+        'Back' {
+            if ($ed.Col -gt 0) { $L[$ed.Row] = $line.Remove($ed.Col - 1, 1); $ed.Col-- }
+            elseif ($ed.Row -gt 0) { $prev = $L[$ed.Row - 1]; $L[$ed.Row - 1] = $prev + $line; $L.RemoveAt($ed.Row); $ed.Row--; $ed.Col = $prev.Length }
+            return
+        }
+        'Del' {
+            if ($ed.Col -lt $line.Length) { $L[$ed.Row] = $line.Remove($ed.Col, 1) }
+            elseif ($ed.Row -lt $L.Count - 1) { $L[$ed.Row] = $line + $L[$ed.Row + 1]; $L.RemoveAt($ed.Row + 1) }
+            return
+        }
+        'Tab' { $L[$ed.Row] = $line.Insert($ed.Col, '  '); $ed.Col += 2; return }
+        'Space' { $L[$ed.Row] = $line.Insert($ed.Col, ' '); $ed.Col++; return }
+    }
+    if ($ch -and [int][char]$ch -ge 32) { $L[$ed.Row] = $line.Insert($ed.Col, [string]$ch); $ed.Col++ }
+}
+function Save-ItemEdit {
+    $ed = $script:editor
+    if (($ed.Lines -join "`n") -eq ($ed.Orig -join "`n")) { $script:screen = $ed.Back; $script:editor = $null; return }
+    if ($ed.Entry.Item.Type -eq 'spec') {
+        $script:choose = [pscustomobject]@{ Text = 'A main spec:'; Options = @('Through a change (MODIFIED)', 'Edit it directly'); Short = @('a change', 'directly'); Keys = @('c', 'd'); Choice = 0; Do = {
+                param($k, $c)
+                try {
+                    if ($k -eq 0) { $name = New-ModifyChange $script:editor; $script:message = "Saved in the change $name (MODIFIED); archive it to apply it. u: undo" }
+                    else { Write-ItemEdit $script:editor; $script:message = 'Saved in the spec. u: undo' }
+                    $script:screen = $script:editor.Back; $script:editor = $null; Update-ReadItem
+                } catch { $script:message = "Not saved: $($_.Exception.Message)" }
+            } }
+        return
+    }
+    try { Write-ItemEdit $ed; $script:message = 'Saved. u: undo' } catch { $script:message = "Not saved: $($_.Exception.Message)"; return }
+    $script:screen = $ed.Back; $script:editor = $null
+    Update-ReadItem
+}
+# The edited lines in place of the item's (where it was; else where its lines are now).
+function Write-ItemEdit($Ed) {
+    $path = $Ed.Entry.Path
+    $lines = New-Object Collections.Generic.List[string]
+    $lines.AddRange([string[]](Read-Lines $path))
+    $orig = @($Ed.Orig)
+    $match = { param($at) if ($at -lt 0 -or $at + $orig.Count -gt $lines.Count) { return $false }; for ($k = 0; $k -lt $orig.Count; $k++) { if ($lines[$at + $k] -ne $orig[$k]) { return $false } }; return $true }
+    $at = $Ed.Entry.Line - 1
+    if (-not (& $match $at)) { $at = -1; for ($i = 0; $i -lt $lines.Count; $i++) { if (& $match $i) { $at = $i; break } } }
+    if ($at -lt 0) { throw "$(Split-Path $path -Leaf) changed meanwhile: the item isn't there as it was" }
+    $lines.RemoveRange($at, $orig.Count)
+    $lines.InsertRange($at, [string[]]@($Ed.Lines))
+    Write-Lines $path $lines
+}
+# A main spec's requirement (or one of its scenarios) edited through a change: its whole requirement, as edited,
+# under MODIFIED Requirements in a new change modify-specs-<date>.
+function New-ModifyChange($Ed) {
+    $e = $Ed.Entry
+    $lines = Read-Lines $e.Path
+    $at = $e.Line - 1
+    $reqAt = $at
+    if ($e.Kind -eq 'scn') { for ($i = $at; $i -ge 0; $i--) { if ($lines[$i] -match '^###\s') { $reqAt = $i; break } } }
+    $reqEnd = Get-BlockEnd $lines $reqAt 'req'
+    $req = New-Object Collections.Generic.List[string]
+    for ($i = $reqAt; $i -lt $reqEnd; $i++) { $req.Add($lines[$i]) }
+    $k = $at - $reqAt
+    $req.RemoveRange($k, @($Ed.Orig).Count)
+    $req.InsertRange($k, [string[]]@($Ed.Lines))
+    $title = ($req[0] -replace '^###\s+(Requirement|Zahtjev|Anforderung):\s*', '').Trim()
+    $base = "modify-specs-$(Get-Date -Format 'yyyyMMdd')"
+    $name = $base; $n = 1
+    while (Test-Path -LiteralPath (Join-Path $osDir "changes\$name")) { $n++; $name = "$base-$n" }
+    $dir = Join-Path $osDir "changes\$name"
+    $utf8 = New-Object Text.UTF8Encoding $false
+    $f = Join-Path $dir "specs\$($e.Item.Name)\spec.md"
+    [void](New-Item -ItemType Directory -Force -Path (Split-Path $f))
+    [IO.File]::WriteAllText($f, "## MODIFIED Requirements`n`n$((@($req) -join "`n").TrimEnd())`n", $utf8)
+    [IO.File]::WriteAllText((Join-Path $dir 'proposal.md'), "# Proposal: Change the specs`n`n## Why`nA requirement of the specs edited in LazySpec on $(Get-Date -Format 'yyyy-MM-dd').`n`n## What Changes`n- **MODIFIED** ``$($e.Item.Name)``: $title`n`n## Impact`n- Specs: $($e.Item.Name).`n", $utf8)
+    [IO.File]::WriteAllText((Join-Path $dir 'tasks.md'), "# Tasks`n`n## 1. Change`n- [ ] 1.1 Make the code match the changed requirement $title`n", $utf8)
+    return $name
 }
 
 # --- out-of-date documents --------------------------------------------------------------------------------
@@ -6691,6 +6962,7 @@ function Draw([int]$W, [int]$H) {
         'pick' { return Draw-Pick $W $H }
         'search' { return Draw-Search $W $H }
         'undo' { return Draw-Undo $W $H }
+        'edit' { return Draw-Edit $W $H }
         'run' { return Draw-Run $W $H }
         default { return Draw-Home $W $H }
     }
@@ -6721,7 +6993,7 @@ function Draw-Help([int]$W, [int]$H) {
         @('x', 'export the specification for the client: PDF, Word or HTML (export\ in the project; opens it)'),
         @('m', 'changes as one: mark the ones that go to the client as one whole, read them together (x there: export)'),
         @('t', 'find: tasks (1.3, 01 1.3, words), requirements and scenarios; Enter opens it in Read, at it'),
-        @('  ' + [string][char]0x2192, 'in find: mark (Space, a all, g its group), then x remove, c change, r redo (the agent)'),
+        @('  ' + [string][char]0x2192, 'in find: mark (Space, a all, g its group); Del deletes; Enter: the marked - delete, change, redo'),
         @('y', 'a change out of date (! in the plan): its documents updated by the agent, or marked as in sync'),
         @('u', 'undo: what changed in openspec/ since the last commit, piece by piece (git; a commit empties it)'),
         @('e', 'edit: open the spec or the proposal in your editor'),
@@ -6730,7 +7002,11 @@ function Draw-Help([int]$W, [int]$H) {
         @('?', 'this help'), @('q', 'quit'))
     & $section 'READ' @(
         @("$($g.up) $($g.down)", 'scroll a line'), @('PgUp PgDn', 'scroll a page'), @('Home End', 'top, end'),
-        @("$([string][char]0x2190) $([string][char]0x2192)", 'the change''s documents (its workflow''s: proposal, delta specs, design, tasks...)'), @('x', 'export this spec, change or changes as one: PDF, Word or HTML'), @('e', 'edit this document'), @('Esc', 'back'))
+        @("$([string][char]0x2190) $([string][char]0x2192)", 'the change''s documents (its workflow''s: proposal, delta specs, design, tasks...)'),
+        @("$($g.up) $($g.down)", 'with tasks, requirements, scenarios: pick one (PgUp PgDn scroll)'),
+        @('Enter', 'edit the picked item in a window (Ctrl+S save, Esc cancel)'), @('Space', 'a task: done / not done'),
+        @('Del', 'delete the picked item (asked first)'), @('a', 'the agent: change it (your note) or write it again'),
+        @('x', 'export this spec, change or changes as one: PDF, Word or HTML'), @('e', 'edit the whole file in your editor'), @('Esc', 'back'))
     & $section 'RUN' @(@('PgUp PgDn', 'scroll the output (Home, End: top, bottom)'), @('Esc', 'stop (asked first); when done: back'))
     & $section 'LOOK' @(
         @("$($g.diamond) $($g.dot)", 'a platform page (platform-*: overview, costs...), a capability spec'),
@@ -6940,6 +7216,7 @@ function On-Key($K) {
     if ($script:screen -eq 'pick') { On-PickKey $K; return }
     if ($script:screen -eq 'search') { On-SearchKey $K; return }
     if ($script:screen -eq 'undo') { On-UndoKey $K; return }
+    if ($script:screen -eq 'edit') { On-EditKey $K; return }
     if ([string]$ch -eq '?' -and @('home', 'read') -contains $script:screen) { $script:helpBack = $script:screen; $script:helpScroll = 0; $script:screen = 'help'; return }
     if ($script:screen -eq 'home') {
         $script:message = ''
@@ -6959,7 +7236,7 @@ function On-Key($K) {
         if ($name -eq 'End') { $script:detailScroll = 1000000; return }
         if ($name -eq 'Enter') {
             $sel = Get-Selected
-            if ($sel) { $script:readItem = $sel; $script:readTab = 0; $script:readScroll = 0; $script:readMark = $null; $script:readBack = 'home'; $script:screen = 'read' }
+            if ($sel) { $script:readItem = $sel; $script:readTab = 0; $script:readScroll = 0; $script:readSel = 0; $script:readMark = $null; $script:readBack = 'home'; $script:screen = 'read' }
             return
         }
         if ($name -eq 'Esc') {
@@ -6993,17 +7270,33 @@ function On-Key($K) {
     if ($script:screen -eq 'read') {
         $tabs = @(Get-ReadTabs $script:readItem)
         $script:message = ''
-        if ($name -eq 'Down') { $script:readScroll++ }
+        # A tab with tasks, requirements, scenarios: Up, Down pick one; Enter edits it, Space ticks a task, Del
+        # deletes it, a hands it to the agent.
+        $items = @(Get-ReadItems $tabs[[Math]::Min($script:readTab, $tabs.Count - 1)] $null '')
+        # The item found (t) is the selected one even before the screen is drawn.
+        if ($script:readSelKey) {
+            for ($i = 0; $i -lt $items.Count; $i++) { if ("$($items[$i].Path)|$($items[$i].Line)" -eq $script:readSelKey) { $script:readSel = $i } }
+            $script:readSelKey = ''
+        }
+        $sel = $null
+        if ($items.Count) { $sel = $items[[Math]::Min($script:readSel, $items.Count - 1)] }
+        if ($sel -and $name -eq 'Down') { $script:readSel = [Math]::Min($items.Count - 1, $script:readSel + 1); $script:readFollow = $true }
+        elseif ($sel -and $name -eq 'Up') { $script:readSel = [Math]::Max(0, $script:readSel - 1); $script:readFollow = $true }
+        elseif ($sel -and $name -eq 'Enter') { Start-ItemEdit $sel }
+        elseif ($sel -and ($name -eq 'Space' -or [string]$ch -eq ' ') -and $sel.Kind -eq 'task') { Switch-TaskDone $sel }
+        elseif ($sel -and $name -eq 'Del') { Start-RemoveItems @($sel) $false }
+        elseif ($sel -and [string]$ch -eq 'a') { Start-AgentMenu @($sel) }
+        elseif ($name -eq 'Down') { $script:readScroll++ }
         elseif ($name -eq 'Up') { $script:readScroll = [Math]::Max(0, $script:readScroll - 1) }
         elseif ($name -eq 'PgDn' -or $name -eq 'Space') { $script:readScroll += 20 }
         elseif ($name -eq 'PgUp') { $script:readScroll = [Math]::Max(0, $script:readScroll - 20) }
         elseif ($name -eq 'Home') { $script:readScroll = 0 }
         elseif ($name -eq 'End') { $script:readScroll = 1000000 }
-        elseif ($name -eq 'Right' -or $name -eq 'Tab') { $script:readTab = ($script:readTab + 1) % $tabs.Count; $script:readScroll = 0 }
-        elseif ($name -eq 'Left') { $script:readTab = ($script:readTab - 1 + $tabs.Count) % $tabs.Count; $script:readScroll = 0 }
+        elseif ($name -eq 'Right' -or $name -eq 'Tab') { $script:readTab = ($script:readTab + 1) % $tabs.Count; $script:readScroll = 0; $script:readSel = 0 }
+        elseif ($name -eq 'Left') { $script:readTab = ($script:readTab - 1 + $tabs.Count) % $tabs.Count; $script:readScroll = 0; $script:readSel = 0 }
         elseif ([string]$ch -eq 'e') { Open-InEditor $tabs[[Math]::Min($script:readTab, $tabs.Count - 1)].Path }
         elseif ([string]$ch -eq 'x') { Start-ItemExportMenu $script:readItem }
-        elseif ($name -eq 'Esc' -or $name -eq 'Back' -or ([string]$ch) -in @('q', 'd')) { $script:screen = $script:readBack; $script:readBack = 'home'; $script:readMark = $null }
+        elseif ($name -eq 'Esc' -or $name -eq 'Back' -or ([string]$ch) -in @('q')) { $script:screen = $script:readBack; $script:readBack = 'home'; $script:readMark = $null }
         return
     }
     # The run.
@@ -7032,12 +7325,13 @@ function On-Key($K) {
     if ($name -eq 'Esc') { $run.ConfirmStop = $true }
 }
 
-$keyNames = @{ UpArrow = 'Up'; DownArrow = 'Down'; LeftArrow = 'Left'; RightArrow = 'Right'; Enter = 'Enter'; Escape = 'Esc'; Tab = 'Tab'; PageUp = 'PgUp'; PageDown = 'PgDn'; Home = 'Home'; End = 'End'; Backspace = 'Back' }
+$keyNames = @{ UpArrow = 'Up'; DownArrow = 'Down'; LeftArrow = 'Left'; RightArrow = 'Right'; Enter = 'Enter'; Escape = 'Esc'; Tab = 'Tab'; PageUp = 'PgUp'; PageDown = 'PgDn'; Home = 'Home'; End = 'End'; Backspace = 'Back'; Delete = 'Del' }
 function Read-Keys {
     $out = @()
     while ([Console]::KeyAvailable) {
         $k = [Console]::ReadKey($true)
         if ($k.Key -eq 'C' -and ($k.Modifiers -band [ConsoleModifiers]::Control)) { $out += [pscustomobject]@{ Name = 'CtrlC'; Char = $null }; continue }
+        if ($k.Key -eq 'S' -and ($k.Modifiers -band [ConsoleModifiers]::Control)) { $out += [pscustomobject]@{ Name = 'CtrlS'; Char = $null }; continue }
         $name = $keyNames[$k.Key.ToString()]
         if ($k.Key -eq 'Spacebar') { $name = 'Space' }
         $char = $null
@@ -7105,7 +7399,7 @@ function Next-TestKey {
     [void]$queue.Dequeue()
     if ($k -eq 'snap') { Save-Frame "snap $($script:screen)"; return $null }
     if ($k.StartsWith('text:')) { foreach ($c in $k.Substring(5).ToCharArray()) { On-Key ([pscustomobject]@{ Name = $null; Char = $c }) }; return $null }
-    $names = @('Up', 'Down', 'Left', 'Right', 'Enter', 'Esc', 'Tab', 'PgUp', 'PgDn', 'Home', 'End', 'Back', 'Space', 'CtrlC')
+    $names = @('Up', 'Down', 'Left', 'Right', 'Enter', 'Esc', 'Tab', 'PgUp', 'PgDn', 'Home', 'End', 'Back', 'Space', 'CtrlC', 'Del', 'CtrlS')
     if ($names -contains $k) { return [pscustomobject]@{ Name = $k; Char = $null } }
     return [pscustomobject]@{ Name = $null; Char = $k[0] }
 }
