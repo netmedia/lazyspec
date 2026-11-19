@@ -76,7 +76,8 @@ section, in its text too; those found by their name or heading come first). Each
 it is in (Proposal, Specs, Design, Tasks, Models ..., as the workflow names them; Spec for the main specs).
 `Tab` narrows it by kind: all, tasks, open tasks, requirements, scenarios, sections; `Shift+Tab` by document.
 `Enter` opens it in Read, on its document's tab, scrolled to it and marked `▸`; `Esc` there goes back to the
-results. Archived changes only with `h`, as on Home.
+results. Archived changes only with `h`, as on Home. In a project with [groups](#the-screens), `g1` or
+`group 1` (or the project's word: `phase 1`) with the words keeps one group's.
 
 **One item in Read** — on a tab with tasks, requirements, scenarios or sections (`## Why`, `## Decisions`, a task
 group ...), `↑` `↓` pick one (marked `▸`; `PgUp` `PgDn` scroll). `u` and `y` work here too, for the change being
@@ -137,6 +138,38 @@ to save it (`s` save, `n` not now) — its key is the title without accents (`On
 `online-placanja`). Then Read shows them together: a tab per kind of document (*Proposal (2)*, *Specs*,
 *Design (2)* ...), each change's part under its title. `x` there exports them as one document.
 
+**Groups** — the first level of a plan: a phase, a module, any package the client can choose on its own.
+The project lists them in `openspec/config.yaml`, at the top level (the OpenSpec CLI ignores these keys):
+
+```yaml
+groupLabel: "Phase"            # what the project calls a group in LazySpec and its documents (default Group)
+groupLabelPlural: "Phases"     # (default Groups)
+groups:
+  - id: 1
+    name: "Launch"
+    description: "Sign-up, ordering and payment live"
+    requires: []
+  - id: 2
+    name: "Loyalty"
+    requires: [1]              # the groups it can't be delivered without
+```
+
+A change's group, in this order: `x-group: <id>` in its `.openspec.yaml` (the CLI warns about keys that don't
+start with `x-`); else the line `<groupLabel>: <id> – <name>` right under the title of its first document
+(also `Group`, `Grupa`, `Gruppe`, `Groep`); else its folder's prefix `g<id>-` (`g2-add-gift-cards`); else
+*Ungrouped*. The plan is grouped when the change's schema has `grouping: [group]` (or `- group` as a list), or
+when changes have `x-group` anyway; else it stays flat. Shown, a change has no `g<id>-` in its number, nor its
+document's name (`Brief:`, `Proposal:`) or `G1 ·` in front of its title.
+
+On Home the plan then has a row per group (by id, *Ungrouped* last; archived changes after them): its
+name, its changes' count and tasks (`▾ Phase 1 – Launch (11)  0/124`), its changes under it. Selected, its
+details show its description, the groups it requires and the ones requiring it, its changes, the capabilities
+they touch and the changes that name a change of another group. `c` folds a group, `g` shows the plan flat (or
+grouped again), `e` opens `config.yaml`. `Space` chooses groups for the client: the groups they require come
+with them (`+`); `Enter` reads the chosen ones as one, `x` exports them, `Esc` unchooses them. `x` on a group
+(nothing chosen) exports that group alone. `t` finds in one group: `g1` or `group 1` (or the project's word:
+`phase 1`) with the words.
+
 **Run** — the OpenSpec CLI's output, coloured (`✓` passed, `✗` failed, `⚠` warnings).
 
 **Help** (`?`) — the keys and who made it.
@@ -147,7 +180,7 @@ It refreshes by itself when files under `openspec/` change (an editor, git, an a
 
 | Screen | Keys |
 |---|---|
-| Home | `↑` `↓` select · `Tab` scope ↔ plan · `→` into the details (`↑` `↓` scroll them), `←`/`Esc` back · `z` zoom the details to the whole width (again: the lists back) · `PgUp` `PgDn` `Home` `End` scroll the details · `Enter` read · `v` validate all · `a` archive the change · `n` new change · `x` export (PDF, Word, HTML) · `m` changes as one · `t` find · `y` out of date: update or mark in sync · `u` undo (`Ctrl+T` `Ctrl+U` `Ctrl+Y` on any screen) · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
+| Home | `↑` `↓` select · `Tab` scope ↔ plan · `→` into the details (`↑` `↓` scroll them), `←`/`Esc` back · `z` zoom the details to the whole width (again: the lists back) · `PgUp` `PgDn` `Home` `End` scroll the details · `Enter` read · `v` validate all · `a` archive the change · `n` new change · `x` export (PDF, Word, HTML) · `m` changes as one · `Space` choose a group · `c` fold a group · `g` the plan by group or flat · `t` find · `y` out of date: update or mark in sync · `u` undo (`Ctrl+T` `Ctrl+U` `Ctrl+Y` on any screen) · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
 | Read | `↑` `↓` an item (a task, requirement, scenario or section; else scroll) · `Enter` edit it · `Space` a task done / not · `Del` delete it · `a` the agent · `PgUp` `PgDn` `Home` `End` scroll · `←` `→` document · `x` export this spec, change or changes as one · `e` the whole file in your editor · `t` find · `u` undo · `y` out of date · `Esc` back |
 | Changes as one | `↑` `↓` select · `Space` mark (a saved whole: its changes) · `a` all, none · `Enter` go on (a saved whole: read it; else a title, save it?, then Read) · `d` remove a saved whole · `Esc` cancel |
 | Find | type the search · `↑` `↓` `PgUp` `PgDn` select · `Tab` all, tasks, open tasks, requirements, scenarios, sections · `Shift+Tab` the document (all, proposal, specs, design, tasks ...) · `Ctrl+U` undo · `Ctrl+Y` out of date · `Enter` open in Read, at it · `→` into the results: `Space` mark · `a` all · `g` its group · `Del` delete · `Enter` the marked: delete, change, write again, unmark · `←`/`Esc` back to typing · `Esc` back |
@@ -175,6 +208,8 @@ It refreshes by itself when files under `openspec/` change (an editor, git, an a
 - `openspec/changes/<name>/` — `proposal.md` (`## Why`, `## What Changes`, `## Impact`), `design.md`,
   `tasks.md` (`## 1. Group` + `- [ ]` / `- [x]`), `specs/<capability>/spec.md` (`## ADDED|MODIFIED|REMOVED|RENAMED Requirements`).
 - `openspec/changes/archive/<date>-<name>/` — archived changes.
+- `x-group: <id>` in a change's `.openspec.yaml`, `groups:` / `groupLabel` / `groupLabelPlural` in
+  `openspec/config.yaml`, a schema's `grouping: [group]` — groups of changes; see **Groups** under [The screens](#the-screens).
 - `models.md` (the v2 schemas' `models` artifact: a change's new and changed models and lookup lists) — a
   tab in Read and a chapter in the export (*Models*, *Modeli*, *Datenmodelle*). A table whose first column is
   *Change* / *Promjena* / *Änderung* is a table of changes: a row marked `+` is green, `~` yellow, `-` red
@@ -193,6 +228,8 @@ A change's documents come from its OpenSpec workflow, found as the CLI finds it:
 in `openspec/schemas/<name>/`, then `%LOCALAPPDATA%\openspec\schemas\<name>\` (or
 `$XDG_DATA_HOME\openspec\schemas`), then the CLI's built-in schemas.
 
+- **`grouping: [group]`** (or `- group` as a list; Netmedia's key, the CLI ignores it) groups the plan by the
+  changes' groups.
 - **Read** has one tab per artifact, in the schema's order (`open-questions` → *Open questions*); an
   artifact whose `generates` is a glob shows all its files; `specs/...` is the delta specs tab.
 - **Documents** (in the details) lists them as done `✓` or not yet `○`, and names the workflow when it isn't
@@ -213,6 +250,8 @@ one's proposal and delta specs).
 .\lazyspec.exe -Export Pdf -Out D:\Clients\AcmePortal.pdf
 .\lazyspec.exe -Export Pdf -Item add-user-login  # one spec or change alone (x in Read)
 .\lazyspec.exe -Export Word -Item add-user-signup,add-online-payments -Title "Online payments"
+.\lazyspec.exe -Export Pdf -Groups 1,3          # groups 1 and 3, and the groups they require
+.\lazyspec.exe -Export Pdf -Item group:2        # one group alone
 ```
 
 **One spec or change** (`-Item <name>`, or `x` while reading it): a spec alone, or a change with every
@@ -227,6 +266,12 @@ before its own. `-Title` is the cover's subtitle (else the changes' titles, comm
 file: `openspec\exports\<project>-<title>-<date>.<ext>` (without accents). Changes only; an archived one by its name
 too (its folder `<date>-<name>`).
 
+**Groups** (`-Groups 1,3` or `-Item groups:1,3`, or `Space` on groups and `x` in the UI): the chosen groups
+and the ones they require, in the groups' order, a part each - its name, description and what it requires
+on a page of its own, then its changes as one (a chapter per kind of document, each change under its title).
+The groups' names are the cover's subtitle; the file is `<project>-groups-1-2-3-<date>` (the project's word:
+`phases-1-3`). `-Item group:2` (or `x` on a group) is that group alone.
+
 **Saved wholes** (`m` asks to save one; or by hand, in `openspec/config.yaml`):
 
 ```yaml
@@ -235,6 +280,9 @@ lazyspec:
     online-placanja:                       # its key: -Item online-placanja, the file's name
       title: "Online plaćanja i korisnički račun"
       changes: add-user-signup, add-online-payments
+    phase-1:
+      title: "Phase 1"
+      groups: 1                            # groups instead of changes: theirs, and the groups they require
 ```
 
 `lazyspec -Export Word -Item online-placanja` exports it with its title (`-Title` wins). Saving and

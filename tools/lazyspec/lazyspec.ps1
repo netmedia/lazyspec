@@ -66,6 +66,11 @@ project (another folder: lazyspec: exportDir: in openspec/config.yaml).
 -Export: only this spec or change (its folder's name): the spec, or the change with every document of its
 workflow (proposal, delta specs, design, tasks ...). Default file: openspec\exports\<project>-<item>-<date>.<ext>.
 
+.PARAMETER Groups
+-Export: these groups of changes (their ids in openspec/config.yaml groups:; a change's x-group: <id>) as
+one document, with the groups they require: a part per group, its changes' documents under it, the groups'
+names on the cover. The same as -Item groups:1,3; -Item group:2 is that group alone.
+
 .PARAMETER IncludeChanges
 -Export: adds the plan, the active changes (their proposal and delta specs), after the specs.
 
@@ -155,6 +160,9 @@ lazyspec -Export Word -Markdown "openspec_meetings\2026-11-04 meeting.md"
 .EXAMPLE
 .\lazyspec.exe -Export Pdf -Item add-user-login -Open
 
+.EXAMPLE
+.\lazyspec.exe -Export Pdf -Groups 1,3 -ClientFriendly
+
 .NOTES
 LazySpec is a Netmedia product: https://netmedia.agency, netmedia@netmedia.hr,
 https://github.com/netmedia/lazyspec.
@@ -173,6 +181,7 @@ param(
     [string]$Export,
     [string]$Out,
     [string[]]$Item,
+    [string[]]$Groups,
     [string]$Title,
     [switch]$IncludeChanges,
     [switch]$ClientFriendly,
@@ -257,7 +266,10 @@ function Show-Usage {
     & $d '    Enter read it, PgUp/PgDn/Home/End scroll the details'
     & $d '    v validate all   a archive the change   n new change   e edit   s sort changes'
     & $d '    m changes as one (mark them with Space, Enter: a title, then read them; x there: export)'
-    & $d '    t find: a task (1.3, 01 1.3, words), a requirement, a scenario; Enter: Read, at it'
+    & $d '    Groups (a schema with grouping: [group], or x-group: <id> in a change''s .openspec.yaml): the plan'
+    & $d '      by group, a row each (its changes, tasks); g flat or grouped, c fold a group, Space choose'
+    & $d '      groups (the ones they require come too: +), Enter read them, x export them, Esc unchoose'
+    & $d '    t find: a task (1.3, 01 1.3, words), a requirement, a scenario (g1, group 1: in a group); Enter: Read'
     & $d '      from any screen: t where nothing is typed, Ctrl+T anywhere; Esc comes back; Tab its kind (sections'
     & $d '      too), Shift+Tab the document it is in (proposal, specs, design, tasks, models ...)'
     & $d '      Right: mark them (Space, a all, g its group); Del delete; Enter: delete, change, redo them'
@@ -297,9 +309,13 @@ function Show-Usage {
     & $g '  .\lazyspec.exe -Export Word -IncludeChanges -Open'
     & $g '  .\lazyspec.exe -Export Pdf -Item add-user-login   # one spec or change (x in Read)'
     & $g '  .\lazyspec.exe -Export Word -Item add-user-signup,add-online-payments -Title "Online payments"'
+    & $g '  .\lazyspec.exe -Export Pdf -Groups 1,3       # groups 1 and 3 and the ones they require'
     & $d '  Several changes as one whole (m, or x: chosen changes): a chapter per kind of document, each'
     & $d '  change''s part under its title; -Title on the cover (else the changes'' titles). m saves it as a'
-    & $d '  named whole (lazyspec: bundles: in openspec\config.yaml): then -Item <its key>.'
+    & $d '  named whole (lazyspec: bundles: in openspec\config.yaml): then -Item <its key>. A saved whole'
+    & $d '  with groups: 1, 3 instead of changes: those groups. -Groups (or -Item groups:1,3): a part per'
+    & $d '  group, its changes under it; -Item group:2: that group alone. What a group is called: groupLabel /'
+    & $d '  groupLabelPlural in openspec\config.yaml (Group, Groups; Phase, Module ...), its groups: groups:.'
     & $d '  One document: a cover, the contents, a chapter per spec (in the Scope order); with'
     & $d '  -IncludeChanges the active changes too. Written to openspec\exports\ (-Out: elsewhere; lazyspec: exportDir:).'
     & $d '  PDF: Edge or Chrome. Word: Microsoft Word, else pandoc. The cover: lazyspec.json "export".'
@@ -610,7 +626,7 @@ $g = @{
     h = C 0x2500; v = C 0x2502; tl = C 0x256D; tr = C 0x256E; bl = C 0x2570; br = C 0x256F; lt = C 0x251C; rt = C 0x2524; tt = C 0x252C; bt = C 0x2534
     dot = C 0x25CF; ring = C 0x25CB; diamond = C 0x25C6; check = C 0x2713; cross = C 0x2717; arrow = C 0x2192; tri = C 0x25B8; ell = C 0x2026
     mid = C 0x00B7; bar = C 0x258C; caret = C 0x203A; cursor = C 0x2581; up = C 0x2191; down = C 0x2193; dash = C 0x2013; bullet = C 0x2022
-    full = C 0x2588; light = C 0x2591; warn = C 0x26A0
+    full = C 0x2588; light = C 0x2591; warn = C 0x26A0; open = C 0x25BE; shut = C 0x25B9
 }
 $spinner = @(0x280B, 0x2819, 0x2839, 0x2838, 0x283C, 0x2834, 0x2826, 0x2827, 0x2807, 0x280F) | ForEach-Object { C $_ }
 # SGR parameters (256 colours): the same palette as LazyBicep.
@@ -748,7 +764,7 @@ $specOrder = [string[]]$specOrder
 # $env:XDG_DATA_HOME\openspec\schemas), then the CLI's built-in ones. Without any: spec-driven as built in here.
 function New-Artifact([string]$Id, [string]$Generates, [string[]]$Requires = @()) { return [pscustomobject]@{ Id = $Id; Generates = $Generates; Requires = @($Requires) } }
 $defaultWorkflow = [pscustomobject]@{
-    Name = 'spec-driven'; Tracks = 'tasks.md'; Missing = ''; Language = ''
+    Name = 'spec-driven'; Tracks = 'tasks.md'; Missing = ''; Language = ''; Grouping = @()
     Artifacts = @((New-Artifact 'proposal' 'proposal.md'), (New-Artifact 'specs' 'specs/**/*.md' @('proposal')), (New-Artifact 'design' 'design.md' @('proposal')), (New-Artifact 'tasks' 'tasks.md' @('specs', 'design')))
 }
 $script:workflows = @{}
@@ -769,6 +785,7 @@ function Read-Workflow([string]$File, [string]$Name) {
     $artifacts = @()
     $tracks = ''
     $language = ''
+    $grouping = @()
     $section = ''; $itemIndent = -1; $keyIndent = -1; $cur = $null
     foreach ($line in (Read-Text $File).Replace("`r", '').Split("`n")) {
         if (-not $line.Trim() -or $line.TrimStart().StartsWith('#')) { continue }
@@ -776,8 +793,11 @@ function Read-Workflow([string]$File, [string]$Name) {
             $section = $Matches[1]; $itemIndent = -1; $keyIndent = -1; $cur = $null
             # LazySpec's own key (the CLI ignores keys it doesn't know): the language the documents are written in.
             if ($section -eq 'language') { $language = (Unquote $Matches[2]).ToLower() }
+            # Netmedia's: grouping: [group] (or a list, "- group"): changes grouped by their x-group.
+            if ($section -eq 'grouping' -and (Unquote $Matches[2]) -match '^\[(.*)\]$') { $grouping = @($Matches[1].Split(',') | ForEach-Object { $_.Trim().Trim('"', "'") } | Where-Object { $_ }) }
             continue
         }
+        if ($section -eq 'grouping') { if ($line -match '^\s*-\s+(.+?)\s*$') { $grouping += (Unquote $Matches[1]) }; continue }
         $indent = $line.Length - $line.TrimStart().Length
         if ($section -eq 'artifacts') {
             if ($line -match '^(\s*)-\s+([\w-]+):\s*(.*)$' -and ($itemIndent -lt 0 -or $Matches[1].Length -eq $itemIndent)) {
@@ -804,7 +824,7 @@ function Read-Workflow([string]$File, [string]$Name) {
     $artifacts = @($artifacts | Where-Object { $_.Id -and $_.Generates })
     if (-not $artifacts.Count) { return $null }
     if (-not $tracks) { $t = @($artifacts | Where-Object { $_.Id -eq 'tasks' }); if ($t.Count) { $tracks = $t[0].Generates } }
-    return [pscustomobject]@{ Name = $Name; Tracks = $tracks; Missing = ''; Language = $language; Artifacts = $artifacts }
+    return [pscustomobject]@{ Name = $Name; Tracks = $tracks; Missing = ''; Language = $language; Grouping = @($grouping); Artifacts = $artifacts }
 }
 function Get-SchemaDirs {
     $dirs = @()
@@ -838,7 +858,7 @@ function Get-Workflow([string]$ChangeDir) {
     }
     if (-not $wf) {
         $wf = $defaultWorkflow
-        if ($name -ne 'spec-driven') { $wf = [pscustomobject]@{ Name = $defaultWorkflow.Name; Tracks = $defaultWorkflow.Tracks; Missing = $name; Language = ''; Artifacts = $defaultWorkflow.Artifacts } }
+        if ($name -ne 'spec-driven') { $wf = [pscustomobject]@{ Name = $defaultWorkflow.Name; Tracks = $defaultWorkflow.Tracks; Missing = $name; Language = ''; Grouping = @(); Artifacts = $defaultWorkflow.Artifacts } }
     }
     $script:workflows[$name] = $wf
     return $wf
@@ -944,11 +964,36 @@ function Get-ChangeInfo($Dir, [bool]$Archived) {
     if (-not (Test-Path -LiteralPath $main)) { $first = @($docs | Where-Object { -not $_.IsSpecs -and $_.Files.Count } | Select-Object -First 1); if ($first.Count) { $main = $first[0].Files[0] } }
     $title = ''
     $m = [regex]::Match((Read-Text $main), '(?m)^#\s+(.+?)\s*$')
-    if ($m.Success) { $title = $m.Groups[1].Value -replace '^(Change|Proposal)\s*:\s*', '' }
+    # Without the document's own name in front ("Proposal: ", "Brief: ") and the group's ("G1 - ").
+    $own = @($docs | Where-Object { @($_.Files) -contains $main } | Select-Object -First 1)
+    $prefix = 'Change|Proposal'
+    if ($own.Count) { $prefix += '|' + [regex]::Escape($own[0].Title) }
+    if ($m.Success) { $title = ($m.Groups[1].Value -replace "^($prefix)\s*:\s*", '') -replace "^[Gg]\d+\s*[$(C 0xB7):|$(C 0x2013)-]\s*", '' }
+    # Its group: x-group: <id> in .openspec.yaml; else the line "<label>: <id> - <name>" under the title of
+    # its first document that has one; else the folder's g<id>- ('': ungrouped).
+    $group = Get-YamlValue (Read-Text (Join-Path $Dir.FullName '.openspec.yaml')) 'x-group'
+    $groupFrom = ''
+    if ($group) { $groupFrom = 'x-group' }
+    else {
+        $labels = (@((Get-ProjectGroups).Label, 'Group', 'Grupa', 'Gruppe', 'Groep') | Where-Object { $_ } | ForEach-Object { [regex]::Escape($_) }) -join '|'
+        foreach ($d in @($docs | Where-Object { -not $_.IsSpecs -and $_.Files.Count })) {
+            $lines = (Read-Text $d.Files[0]).Replace("`r", '').Split("`n")
+            $h = -1
+            for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^#\s+\S') { $h = $i; break } }
+            if ($h -lt 0) { continue }
+            for ($i = $h + 1; $i -lt $lines.Count; $i++) {
+                if (-not $lines[$i].Trim()) { continue }
+                if ($lines[$i] -match "(?i)^\s*[*_]*(?:$labels)[*_]*\s*:\s*[*_]*\s*([\w.-]+)") { $group = $Matches[1]; $groupFrom = 'title' }
+                break
+            }
+            break
+        }
+        if (-not $group -and $Dir.Name -match '^(?:\d{4}-\d{2}-\d{2}-)?g(\d+)-') { $group = $Matches[1]; $groupFrom = 'folder' }
+    }
     return [pscustomobject]@{
         Type = 'change'; Name = $Dir.Name; Title = $title; Stage = $stage; Archived = $Archived; Done = $done; Total = $total
         Modified = (Last-Write $Dir.FullName); Dir = $Dir.FullName; Path = $main; Caps = $caps; Tasks = $tasks
-        Workflow = $wf; Docs = $docs
+        Workflow = $wf; Docs = $docs; Group = $group; GroupFrom = $groupFrom
     }
 }
 function Load-Changes {
@@ -965,6 +1010,125 @@ $stageLook = @{
     'Draft' = @($g.ring, $st.muted, $st.chipFaint); 'In Progress' = @($g.diamond, $st.accent, $st.chipOn)
     'Completed' = @($g.dot, $st.ok, $st.chipOk); 'Archived' = @($g.mid, $st.faint, $st.chipFaint)
 }
+# --- groups: the first level of a plan (openspec/config.yaml groups:, a change's x-group: <id>) -----------
+
+# What the project calls a group (groupLabel, groupLabelPlural: Group, Groups by default; Phase, Module ...)
+# and its groups, by id: name, description, requires (the groups it can't be delivered without).
+function Get-ProjectGroups {
+    if ($null -ne $script:projectGroups) { return $script:projectGroups }
+    $text = ''
+    if ($hasRoot) { $text = Read-Text (Join-Path $osDir 'config.yaml') }
+    $label = Get-YamlValue $text 'groupLabel'
+    $plural = Get-YamlValue $text 'groupLabelPlural'
+    if (-not $label) { $label = 'Group' }
+    if (-not $plural) { $plural = "${label}s" }
+    $list = @()
+    $in = $false; $cur = $null; $itemIndent = -1; $listKey = ''; $keyIndent = -1
+    foreach ($line in $text.Replace("`r", '').Split("`n")) {
+        if (-not $line.Trim() -or $line.TrimStart().StartsWith('#')) { continue }
+        $indent = $line.Length - $line.TrimStart().Length
+        if ($indent -eq 0 -and -not $line.StartsWith('-')) { $in = $line -match '^groups:\s*(#.*)?$'; $cur = $null; $itemIndent = -1; continue }
+        if (-not $in) { continue }
+        $t = $line.TrimStart()
+        # A description over several lines (| or >): its lines, deeper than its key.
+        if ($cur -and $listKey -eq 'description' -and $indent -gt $keyIndent) { $cur.Description = ("$($cur.Description) $($t.Trim())").Trim(); continue }
+        if ($t -match '^-\s+([\w-]+):\s*(.*)$' -and ($itemIndent -lt 0 -or $indent -eq $itemIndent)) {
+            $itemIndent = $indent; $keyIndent = $indent + 2
+            $cur = [pscustomobject]@{ Id = ''; Name = ''; Description = ''; Requires = @() }; $list += $cur
+            $k = $Matches[1]; $v = $Matches[2]
+        }
+        elseif ($cur -and $listKey -eq 'requires' -and $t -match '^-\s+(.+)$') { $cur.Requires += (Unquote $Matches[1]); continue }
+        elseif ($cur -and $t -match '^([\w-]+):\s*(.*)$') { $k = $Matches[1]; $v = $Matches[2]; $keyIndent = $indent }
+        else { continue }
+        $listKey = ''
+        $uv = Unquote $v
+        switch ($k) {
+            'id' { $cur.Id = $uv }
+            'name' { $cur.Name = $uv }
+            'description' { if ($uv -match '^[|>][-+]?$') { $listKey = 'description' } else { $cur.Description = $uv } }
+            'requires' {
+                $listKey = 'requires'
+                if ($uv -match '^\[(.*)\]$') { $cur.Requires = @($Matches[1].Split(',') | ForEach-Object { $_.Trim().Trim('"', "'") } | Where-Object { $_ }) }
+                elseif ($uv) { $cur.Requires = @($uv) }
+            }
+        }
+    }
+    $list = @($list | Where-Object { $_.Id } | Sort-Object @{ Expression = { Get-GroupOrder $_.Id } }, Id)
+    $script:projectGroups = [pscustomobject]@{ Label = $label; Plural = $plural; List = $list }
+    return $script:projectGroups
+}
+# Groups by their id's number (1, 2, 10), others after them; ungrouped ('') last.
+function Get-GroupOrder([string]$Id) {
+    if (-not $Id) { return [double]::MaxValue }
+    $n = 0
+    if ([int]::TryParse($Id, [ref]$n)) { return [double]$n }
+    return [double]::MaxValue - 1
+}
+function Get-GroupDef([string]$Id) { return @((Get-ProjectGroups).List | Where-Object { $_.Id -eq $Id } | Select-Object -First 1) | Select-Object -First 1 }
+# "Group 1 - Phase 1" (the project's label), "Group 3" without a name in config.yaml, "Ungrouped".
+function Get-GroupTitle([string]$Id) {
+    if (-not $Id) { return 'Ungrouped' }
+    $t = "$((Get-ProjectGroups).Label) $Id"
+    $d = Get-GroupDef $Id
+    if ($d -and $d.Name -and $d.Name -ne $t) { $t += " $($g.dash) $($d.Name)" }
+    return $t
+}
+# Grouped: a schema that groups (grouping: [group]), or changes with x-group anyway.
+function Test-Grouping {
+    if ($null -ne $script:groupingOn) { return $script:groupingOn }
+    $on = $false
+    foreach ($c in $script:changes) { if ($c.GroupFrom -eq 'x-group' -or @($c.Workflow.Grouping) -contains 'group') { $on = $true; break } }
+    $script:groupingOn = $on
+    return $on
+}
+# The groups chosen and the ones they require (and those theirs), in the groups' order; Added: the required ones.
+function Get-GroupSelection([string[]]$Ids) {
+    $want = [ordered]@{}
+    $added = @{}
+    $todo = New-Object Collections.Queue
+    foreach ($i in $Ids) { if ($i -and -not $want.Contains($i)) { $want[$i] = $true; $todo.Enqueue($i) } }
+    while ($todo.Count) {
+        $d = Get-GroupDef ($todo.Dequeue())
+        if (-not $d) { continue }
+        foreach ($r in $d.Requires) { if (-not $want.Contains($r)) { $want[$r] = $true; $added[$r] = $true; $todo.Enqueue($r) } }
+    }
+    $all = @($want.Keys | Sort-Object @{ Expression = { Get-GroupOrder $_ } }, @{ Expression = { $_ } })
+    return [pscustomobject]@{ Ids = $all; Added = $added }
+}
+# A group as one whole: its active changes; Name "group:<id>", exported as -Item groups:<id>.
+function Get-GroupItem([string]$Id, $Changes) {
+    $b = Get-ChangeBundle @($Changes) (Get-GroupTitle $Id) ''
+    $b.Id = "group:$Id"
+    if (-not $Id) { $b.Id = '' }
+    $b | Add-Member -NotePropertyName IsGroup -NotePropertyValue $true
+    $b | Add-Member -NotePropertyName Group -NotePropertyValue $Id
+    $b | Add-Member -NotePropertyName Key -NotePropertyValue "group:$Id"
+    return $b
+}
+# Groups as one document, a part each, its changes under it: -Item groups:1,3 (and a saved whole with
+# groups:) with the groups they require; -Item group:2 that group alone.
+function Get-GroupsBundle([string[]]$Ids, [string]$Title, [string]$Id, [bool]$WithRequired = $true) {
+    $sel = Get-GroupSelection $Ids
+    if (-not $WithRequired) { $sel = [pscustomobject]@{ Ids = @($Ids); Added = @{} } }
+    $all = @(Load-Changes | Where-Object { -not $_.Archived })
+    $parts = @()
+    $members = @()
+    foreach ($gid in $sel.Ids) {
+        $cs = @($all | Where-Object { $_.Group -eq $gid } | Sort-Object Name)
+        if (-not $cs.Count) { continue }
+        $parts += [pscustomobject]@{ Id = $gid; Title = (Get-GroupTitle $gid); Def = (Get-GroupDef $gid); Item = (Get-ChangeBundle $cs (Get-GroupTitle $gid) ''); Added = [bool]$sel.Added[$gid] }
+        $members += $cs
+    }
+    if (-not $parts.Count) { throw "No active change in $((Get-ProjectGroups).Plural.ToLower()) $($Ids -join ', ') (x-group: <id> in a change's .openspec.yaml)." }
+    if (-not $Title) { $Title = (@($parts | ForEach-Object { $_.Title }) -join ', ') }
+    $b = Get-ChangeBundle $members $Title $Id
+    if (-not $Id) { $b.Id = 'groups:' + ($Ids -join ','); if (-not $WithRequired) { $b.Id = 'group:' + ($Ids -join ',') } }
+    $b | Add-Member -NotePropertyName GroupParts -NotePropertyValue $parts
+    return $b
+}
+# A plan row's key (the selection kept over a reload): a change's name, a group's "group:<id>".
+function Get-RowKey($Row) { if ($Row.PSObject.Properties['Key']) { return $Row.Key }; return $Row.Name }
+
 $sortModes = @('name', 'name-desc', 'recent')
 $sortLabels = @{ 'name' = 'name A-Z'; 'name-desc' = 'name Z-A'; 'recent' = 'recently modified' }
 
@@ -979,6 +1143,12 @@ $script:screen = 'home'
 if (-not $hasRoot) { $script:screen = 'none' }
 $script:sort = 'name'
 $script:showArchived = $false
+$script:grouped = $true
+$script:folded = @{}
+$script:groupMarks = [ordered]@{}
+$script:groupingOn = $null
+$script:projectGroups = $null
+$script:groupDeps = @{}
 $script:filter = ''
 $script:filtering = $false
 $script:message = ''
@@ -1024,10 +1194,13 @@ function Reload {
     $keepSpec = $null; $keepChange = $null
     $vs = @(Get-VisibleSpecs); $vc = @(Get-VisibleChanges)
     if ($vs.Count -gt $script:specIndex) { $keepSpec = $vs[$script:specIndex].Name }
-    if ($vc.Count -gt $script:changeIndex) { $keepChange = $vc[$script:changeIndex].Name }
+    if ($vc.Count -gt $script:changeIndex) { $keepChange = Get-RowKey $vc[$script:changeIndex] }
     $script:workflows = @{}
     $script:projectSchema = $null
     $script:projectConfig = $null
+    $script:projectGroups = $null
+    $script:groupingOn = $null
+    $script:groupDeps = @{}
     $script:specs = @(Load-Specs)
     $script:changes = @(Load-Changes)
     $script:readCache = @{}
@@ -1041,7 +1214,7 @@ function Select-ByName([string]$Spec, [string]$Change) {
     $script:specIndex = [Math]::Max(0, [Math]::Min($script:specIndex, $vs.Count - 1))
     $script:changeIndex = [Math]::Max(0, [Math]::Min($script:changeIndex, $vc.Count - 1))
     for ($i = 0; $i -lt $vs.Count; $i++) { if ($Spec -and $vs[$i].Name -eq $Spec) { $script:specIndex = $i } }
-    for ($i = 0; $i -lt $vc.Count; $i++) { if ($Change -and $vc[$i].Name -eq $Change) { $script:changeIndex = $i } }
+    for ($i = 0; $i -lt $vc.Count; $i++) { if ($Change -and (Get-RowKey $vc[$i]) -eq $Change) { $script:changeIndex = $i } }
 }
 function Matches-Filter($Item) { return (-not $script:filter) -or ($Item.Name.ToLower().Contains($script:filter.ToLower())) -or ($Item.Title -and $Item.Title.ToLower().Contains($script:filter.ToLower())) }
 function Get-VisibleSpecs { return @($script:specs | Where-Object { Matches-Filter $_ }) }
@@ -1054,18 +1227,29 @@ function Get-VisibleChanges {
         'recent' { $active = @($active | Sort-Object Modified -Descending) }
         default { $active = @($active | Sort-Object Name) }
     }
-    return @($active) + @($arch)
+    # Grouped (g: flat): a row per group (by id, ungrouped last), its changes under it unless folded (c).
+    if (-not ($script:grouped -and (Test-Grouping))) { return @($active) + @($arch) }
+    $rows = @()
+    $ids = @($active | ForEach-Object { [string]$_.Group } | Sort-Object -Unique | Sort-Object @{ Expression = { Get-GroupOrder $_ } }, @{ Expression = { $_ } })
+    foreach ($id in $ids) {
+        $cs = @($active | Where-Object { [string]$_.Group -eq $id })
+        $rows += (Get-GroupItem $id $cs)
+        if (-not $script:folded[$id]) { $rows += $cs }
+    }
+    return @($rows) + @($arch)
 }
 # What the lists and headers show: a spec's title (else its name), a change's number and title (else its name).
 function Get-ItemTitle($Item) {
     if ($Item.Type -eq 'spec') { if ($Item.Title) { return (Get-TranslatedText $Item.Title) }; return $Item.Short }
     if ($Item.Type -eq 'bundle') { return (Get-TranslatedText $Item.Title) }
+    # Its number without the group's prefix (g1-01-add-login: 01).
+    $name = $Item.Name -replace '^g\d+-', ''
     if ($Item.Title) {
-        $m = [regex]::Match($Item.Name, '^(\d+)-')
+        $m = [regex]::Match($name, '^(\d+)-')
         if ($m.Success) { return "$($m.Groups[1].Value) $(Get-TranslatedText $Item.Title)" }
         return (Get-TranslatedText $Item.Title)
     }
-    return $Item.Name
+    return $name
 }
 # Several changes as one whole (m on Home, x: chosen changes, -Item a,b,c): their documents by kind, in
 # their workflows' order (the documents no workflow names last); read and exported as one.
@@ -1096,8 +1280,16 @@ function Get-Bundles {
     foreach ($id in @($m.Groups.Keys)) {
         $e = $m.Groups[$id]
         $names = @(([string]$e['changes']).Trim().TrimStart('[').TrimEnd(']').Split(',') | ForEach-Object { Unquote $_ } | Where-Object { $_ })
-        if (-not $names.Count) { continue }
-        $list += [pscustomobject]@{ Id = $id; Title = [string]$e['title']; Changes = $names }
+        # groups: 1, 3 - their changes, and the groups they require.
+        $groups = @(([string]$e['groups']).Trim().TrimStart('[').TrimEnd(']').Split(',') | ForEach-Object { Unquote $_ } | Where-Object { $_ })
+        if ($groups.Count) {
+            $sel = Get-GroupSelection $groups
+            $pool = @($script:changes)
+            if (-not $pool.Count) { $pool = @(Load-Changes) }
+            $names = @($pool | Where-Object { -not $_.Archived -and $sel.Ids -contains [string]$_.Group } | Sort-Object Name | ForEach-Object { $_.Name })
+        }
+        if (-not $names.Count -and -not $groups.Count) { continue }
+        $list += [pscustomobject]@{ Id = $id; Title = [string]$e['title']; Changes = $names; Groups = $groups }
     }
     return $list
 }
@@ -2921,6 +3113,79 @@ function Get-TocEntryHtml([string]$Id, [string]$TitleHtml, [string]$Class, [stri
     if ($Format -ne 'Pdf') { return "<p$cls><a href=`"#$Id`">$TitleHtml</a></p>`n" }
     return "<p$cls><a class=`"paged`" href=`"#$Id`"><span class=`"t`">$TitleHtml</span><span class=`"dots`"></span><span class=`"pg`" data-page-for=`"$Id`">0</span></a></p>`n"
 }
+# A change, or several as one: a chapter per kind of document, each change's part under its title. $Part:
+# the part of the document they're in (a group's: its title and text first); $Prefix: before their anchors.
+function Get-ChangeChapters($One, [string]$Prefix = '', [string]$Part = 'specs', [string]$PartTitle = '', [string]$PartBody = '') {
+    $one = $One
+    $members = @($one)
+    if ($one.Type -eq 'bundle') { $members = @($one.Members) }
+    $many = $members.Count -gt 1
+    # A link to one of its documents ("open-questions.md") goes to that document's chapter.
+    if (-not $Prefix) { $script:docAnchors = @{} }
+    foreach ($m in $members) { foreach ($d in $m.Docs) { foreach ($f in $d.Files) { $script:docAnchors[(Split-Path $f -Leaf)] = "$($Prefix)doc-$($d.Id)" } } }
+    $chapters = @()
+    foreach ($d in $one.Docs) {
+        $sb = New-Object Text.StringBuilder
+        if ($d.IsSpecs) {
+            if (-not $one.Caps.Count) { continue }
+            # The whole change's diagram first (several: each change's, all of them before the capabilities,
+            # not between another change's), a visual introduction; then its capabilities.
+            foreach ($m in $members) { [void]$sb.Append((Get-DiagramHtml (Get-Diagram 'change' $m.Name $m.Dir) (Get-ItemTitle $m))) }
+            [void]$sb.Append((Get-CapabilitiesHtml $members))
+        }
+        else {
+            $parts = @(foreach ($m in $members) { foreach ($md in @($m.Docs | Where-Object { $_.Id -eq $d.Id -and $_.Files.Count } | Select-Object -First 1)) { [pscustomobject]@{ Change = $m; Doc = $md } } })
+            if (-not $parts.Count) { continue }
+            foreach ($pt in $parts) {
+                $shift = 0
+                if ($many) { [void]$sb.Append("<h2>$(Html (Get-ItemTitle $pt.Change))</h2>`n"); $shift = 1 }
+                $files = @($pt.Doc.Files)
+                foreach ($f in $files) {
+                    if ($files.Count -gt 1) { [void]$sb.Append("<h$(2 + $shift)>$(Html (Split-Path $f -Leaf))</h$(2 + $shift)>`n"); [void]$sb.Append((ConvertTo-HtmlBody (Remove-DocTitle (Read-Text $f)) (1 + $shift))) }
+                    else {
+                        $docText = Read-Text $f
+                        $docHtml = ConvertTo-HtmlBody (Remove-DocTitle $docText) $shift
+                        # models.md: the models' diagram, after the overview (else at the top).
+                        if ((Split-Path $f -Leaf) -ieq 'models.md') {
+                            $pic = New-ModelDiagram $docText
+                            $density = 1
+                            # Word: a PNG of it (2x; old Word, LibreOffice and pandoc may show no SVG).
+                            if ($pic -and $script:exportFormat -eq 'Word') {
+                                $png = [IO.Path]::ChangeExtension($pic, '.png')
+                                try { ConvertTo-PngFromSvg $pic $png; [void]$script:exportTempFiles.Add($png); $pic = $png; $density = 2 }
+                                catch { Write-Host "  ! the models' diagram left out: $($_.Exception.Message)"; $pic = '' }
+                            }
+                            if ($pic) {
+                                $dia = Get-DiagramHtml $pic (Get-ExportText 'models') $density
+                                $at = $docHtml.IndexOf('</table>')
+                                if ($at -ge 0) { $docHtml = $docHtml.Insert($at + 8, "`n$dia") } else { $docHtml = $dia + $docHtml }
+                            }
+                        }
+                        [void]$sb.Append($docHtml)
+                    }
+                }
+            }
+        }
+        $script:chapterNo++
+        # The chapter's title: export-texts.json's for the workflow's usual documents, else the document's own "# Title".
+        $dt = Get-ExportText $d.Id "`0"
+        if ($dt -eq "`0") {
+            $dt = $d.Title
+            # Several changes: the first one's.
+            $own = @($d.Files)
+            if ($many -and $parts.Count) { $own = @($parts[0].Doc.Files) }
+            if ($own.Count -eq 1) {
+                $h1 = [regex]::Match((Read-Text $own[0]), '(?m)^#\s+(.+?)\s*$')
+                if ($h1.Success) { $dt = Get-TranslatedText $h1.Groups[1].Value }
+                # Several changes: the kind ("Brief: G1 - General": Brief), not the first one's title.
+                if ($many -and $h1.Success -and $h1.Groups[1].Value -match '^([^:]{1,40}?)\s*:\s') { $dt = Get-TranslatedText $Matches[1] }
+            }
+        }
+        if ($d.IsSpecs) { $dt = Get-ExportText 'specs' }
+        $chapters += [pscustomobject]@{ Id = "$($Prefix)doc-$($d.Id)"; Title = "$(Get-ChapterNumber $script:chapterNo)$dt"; Part = $Part; PartTitle = $PartTitle; PartBody = $PartBody; Body = $sb.ToString() }
+    }
+    return $chapters
+}
 function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, [bool]$Friendly, $Doc, [string]$ItemTitle) {
     $specs = @()
     if (-not $Doc) { $specs = @(Load-Specs) }
@@ -2928,6 +3193,11 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
     if ($WithChanges) { $changes = @(Load-Changes | Where-Object { -not $_.Archived } | Sort-Object Name) }
     $one = $null
     $names = @(([string]$ItemName).Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    # Groups (-Item groups:1,3 with the ones they require, group:2 alone; -Groups 1,3): a part each.
+    if ([string]$ItemName -match '^(groups?):\s*(.+)$') {
+        $one = Get-GroupsBundle @($Matches[2].Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }) $ItemTitle '' ($Matches[1] -eq 'groups')
+        $names = @()
+    }
     if ($names.Count -gt 1) {
         # Several changes (-Item a,b,c): one whole for the client, their documents together.
         $one = Get-ChangeBundle (Get-ChangeGroup $names) $ItemTitle
@@ -2939,7 +3209,8 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
         $saved = @(Get-Bundles | Where-Object { $_.Id -eq $ItemName })
         if (-not $one -and $saved.Count) {
             if (-not $ItemTitle) { $ItemTitle = $saved[0].Title }
-            $one = Get-ChangeBundle (Get-ChangeGroup $saved[0].Changes) $ItemTitle $saved[0].Id
+            if (@($saved[0].Groups).Count) { $one = Get-GroupsBundle $saved[0].Groups $ItemTitle $saved[0].Id }
+            else { $one = Get-ChangeBundle (Get-ChangeGroup $saved[0].Changes) $ItemTitle $saved[0].Id }
         }
         if (-not $one) { throw "No spec, change or saved whole (lazyspec: bundles:) named '$ItemName' in openspec/." }
     }
@@ -2981,75 +3252,34 @@ function Get-ExportHtml([string]$Format, [bool]$WithChanges, [string]$ItemName, 
             $subtitle = "$(Get-ExportText 'specification'): $subtitle"
         }
         else {
-            # A change, or several as one (a chapter per kind of document, each change's part under its title).
-            $members = @($one)
-            if ($one.Type -eq 'bundle') { $members = @($one.Members) }
-            $many = $members.Count -gt 1
-            # A link to one of its documents ("open-questions.md") goes to that document's chapter.
-            $script:docAnchors = @{}
-            foreach ($m in $members) { foreach ($d in $m.Docs) { foreach ($f in $d.Files) { $script:docAnchors[(Split-Path $f -Leaf)] = "doc-$($d.Id)" } } }
-            $n = 0
-            foreach ($d in $one.Docs) {
-                $sb = New-Object Text.StringBuilder
-                if ($d.IsSpecs) {
-                    if (-not $one.Caps.Count) { continue }
-                    # The whole change's diagram first (several: each change's, all of them before the capabilities,
-                    # not between another change's), a visual introduction; then its capabilities.
-                    foreach ($m in $members) { [void]$sb.Append((Get-DiagramHtml (Get-Diagram 'change' $m.Name $m.Dir) (Get-ItemTitle $m))) }
-                    [void]$sb.Append((Get-CapabilitiesHtml $members))
+            # A change, or several as one; groups: a part each, its changes' chapters under it.
+            $script:chapterNo = 0
+            if ($one.PSObject.Properties['GroupParts']) {
+                $script:docAnchors = @{}
+                foreach ($gp in $one.GroupParts) {
+                    $intro = ''
+                    if ($gp.Def -and $gp.Def.Description) { $intro += "<p class=`"part-note`">$(Html $gp.Def.Description)</p>`n" }
+                    if ($gp.Def -and @($gp.Def.Requires).Count) { $intro += "<p class=`"part-note`">$(Html (Get-ExportText 'requires')): $(Html ((@($gp.Def.Requires | ForEach-Object { Get-GroupTitle $_ })) -join ', '))</p>`n" }
+                    $chapters += @(Get-ChangeChapters $gp.Item "g$($gp.Id)-" "group-$($gp.Id)" $gp.Title $intro)
                 }
-                else {
-                    $parts = @(foreach ($m in $members) { foreach ($md in @($m.Docs | Where-Object { $_.Id -eq $d.Id -and $_.Files.Count } | Select-Object -First 1)) { [pscustomobject]@{ Change = $m; Doc = $md } } })
-                    if (-not $parts.Count) { continue }
-                    foreach ($pt in $parts) {
-                        $shift = 0
-                        if ($many) { [void]$sb.Append("<h2>$(Html (Get-ItemTitle $pt.Change))</h2>`n"); $shift = 1 }
-                        $files = @($pt.Doc.Files)
-                        foreach ($f in $files) {
-                            if ($files.Count -gt 1) { [void]$sb.Append("<h$(2 + $shift)>$(Html (Split-Path $f -Leaf))</h$(2 + $shift)>`n"); [void]$sb.Append((ConvertTo-HtmlBody (Remove-DocTitle (Read-Text $f)) (1 + $shift))) }
-                            else {
-                                $docText = Read-Text $f
-                                $docHtml = ConvertTo-HtmlBody (Remove-DocTitle $docText) $shift
-                                # models.md: the models' diagram, after the overview (else at the top).
-                                if ((Split-Path $f -Leaf) -ieq 'models.md') {
-                                    $pic = New-ModelDiagram $docText
-                                    $density = 1
-                                    # Word: a PNG of it (2x; old Word, LibreOffice and pandoc may show no SVG).
-                                    if ($pic -and $script:exportFormat -eq 'Word') {
-                                        $png = [IO.Path]::ChangeExtension($pic, '.png')
-                                        try { ConvertTo-PngFromSvg $pic $png; [void]$script:exportTempFiles.Add($png); $pic = $png; $density = 2 }
-                                        catch { Write-Host "  ! the models' diagram left out: $($_.Exception.Message)"; $pic = '' }
-                                    }
-                                    if ($pic) {
-                                        $dia = Get-DiagramHtml $pic (Get-ExportText 'models') $density
-                                        $at = $docHtml.IndexOf('</table>')
-                                        if ($at -ge 0) { $docHtml = $docHtml.Insert($at + 8, "`n$dia") } else { $docHtml = $dia + $docHtml }
-                                    }
-                                }
-                                [void]$sb.Append($docHtml)
-                            }
-                        }
-                    }
-                }
-                $n++
-                # The chapter's title: export-texts.json's for the workflow's usual documents, else the document's own "# Title".
-                $dt = Get-ExportText $d.Id "`0"
-                if ($dt -eq "`0") {
-                    $dt = $d.Title
-                    # Several changes: the first one's.
-                    $own = @($d.Files)
-                    if ($many -and $parts.Count) { $own = @($parts[0].Doc.Files) }
-                    if ($own.Count -eq 1) {
-                        $h1 = [regex]::Match((Read-Text $own[0]), '(?m)^#\s+(.+?)\s*$')
-                        if ($h1.Success) { $dt = Get-TranslatedText $h1.Groups[1].Value }
-                    }
-                }
-                if ($d.IsSpecs) { $dt = Get-ExportText 'specs' }
-                $chapters += [pscustomobject]@{ Id = "doc-$($d.Id)"; Title = "$(Get-ChapterNumber $n)$dt"; Part = 'specs'; Body = $sb.ToString() }
+                $members = @($one.Members)
+                $many = $true
+            }
+            else {
+                $members = @($one)
+                if ($one.Type -eq 'bundle') { $members = @($one.Members) }
+                $many = $members.Count -gt 1
+                $chapters += @(Get-ChangeChapters $one)
             }
             foreach ($cap in $one.Caps) { $reqs += $cap.Added + $cap.Modified }
             $scope = "$(Get-CountText $chapters.Count 'nDocuments'), $(Get-CountText $one.Caps.Count 'nCapabilities'), $(Get-CountText $one.Total 'nTasks')"
             if ($many) { $scope = "$(Get-CountText $members.Count 'nChanges'), $scope" }
+            if ($one.PSObject.Properties['GroupParts']) {
+                $pg = Get-ProjectGroups
+                $word = $pg.Plural
+                if ($one.GroupParts.Count -eq 1) { $word = $pg.Label }
+                $scope = "$($one.GroupParts.Count) $($word.ToLower()), $scope"
+            }
         }
     }
     foreach ($s in $specs) { $reqs += $s.Reqs }
@@ -3116,6 +3346,7 @@ p, li, td, th, div, h1, h2, h3, h4, h5, h6 { font-family: 'Segoe UI', Calibri, A
 a { color: #1d6fa5; text-decoration: none; }
 h1 { page-break-before: always; font-size: 22pt; font-weight: 600; color: #0b3c5d; border-bottom: 2pt solid #f07b4f; padding-bottom: 4pt; margin: 0 0 14pt; }
 h1.part { font-size: 28pt; border: none; margin-top: 90mm; text-align: center; }
+p.part-note { text-align: center; font-size: 11pt; color: #52606d; margin: 6pt 20mm; }
 h2 { font-size: 15pt; font-weight: 600; color: #0b3c5d; margin: 18pt 0 6pt; }
 h3 { font-size: 12pt; font-weight: 600; color: #1f2933; margin: 14pt 0 4pt; }
 h4, h5, h6 { font-size: 10.5pt; font-weight: 600; margin: 10pt 0 3pt; }
@@ -3230,14 +3461,18 @@ $subtitleHtml
         [void]$h.Append("<div class=`"toc`">`n")
         $part = 'specs'
         foreach ($ch in $chapters) {
-            if ($ch.Part -ne $part) { $part = $ch.Part; [void]$h.Append("<p class=`"part`">$(Html (Get-ExportText 'plannedChanges'))</p>`n") }
+            if ($ch.Part -ne $part) { $part = $ch.Part; [void]$h.Append("<p class=`"part`">$(Html (Get-PartTitle $ch))</p>`n") }
             [void]$h.Append((Get-TocEntryHtml $ch.Id (Html $ch.Title) '' $Format))
         }
         [void]$h.Append("</div>`n")
     }
     $part = 'specs'
     foreach ($ch in $chapters) {
-        if ($ch.Part -ne $part) { $part = $ch.Part; [void]$h.Append("<h1 class=`"part`">$(Html (Get-ExportText 'plannedChanges'))</h1>`n") }
+        if ($ch.Part -ne $part) {
+            $part = $ch.Part
+            [void]$h.Append("<h1 class=`"part`">$(Html (Get-PartTitle $ch))</h1>`n")
+            if ($ch.PSObject.Properties['PartBody'] -and $ch.PartBody) { [void]$h.Append($ch.PartBody) }
+        }
         [void]$h.Append("<h1 id=`"$($ch.Id)`">$(Html $ch.Title)</h1>`n")
         [void]$h.Append($ch.Body)
     }
@@ -3245,6 +3480,11 @@ $subtitleHtml
     return [pscustomobject]@{ Html = $h.ToString(); Specs = $specs.Count; Changes = $changes.Count; Reqs = $reqs; Item = $one; Chapters = $chapters.Count; Scope = $scope; Meta = $meta }
 }
 
+# A part's title: a group's, else "Planned changes".
+function Get-PartTitle($Chapter) {
+    if ($Chapter.PSObject.Properties['PartTitle'] -and $Chapter.PartTitle) { return $Chapter.PartTitle }
+    return (Get-ExportText 'plannedChanges')
+}
 # A file's path as a file:// URI ([Uri] alone takes a Unix path for a relative one).
 function Get-FileUri([string]$Path) { return (New-Object Uri $Path, ([UriKind]::Absolute)).AbsoluteUri }
 # Edge or Chrome: Windows' install folders, macOS's applications (Chromium too).
@@ -4918,6 +5158,7 @@ function Invoke-Export([string]$Format, [string]$Target, [bool]$WithChanges, [bo
         $what = "$($doc.Item.Type) $($doc.Item.Name): $($doc.Scope)"
         if ($doc.Item.Type -eq 'spec') { $what = "spec $($doc.Item.Name): $($doc.Reqs) requirements" }
         if ($doc.Item.Type -eq 'bundle') { $what = "changes $($doc.Item.Name.Replace(',', ', ')) as one, $($doc.Item.Title): $($doc.Scope)" }
+        if ($doc.Item.PSObject.Properties['GroupParts']) { $what = "$($doc.Item.Title): $($doc.Scope)" }
     }
     else {
         if (-not $doc.Specs) { throw 'openspec/specs has no specs yet: nothing to export.' }
@@ -4935,6 +5176,14 @@ function Invoke-Export([string]$Format, [string]$Target, [bool]$WithChanges, [bo
         if ($doc.Item.Type -eq 'bundle') {
             $t = ''
             if ($doc.Item.Id) { $t = Get-Slug $doc.Item.Id } elseif ($ItemTitle) { $t = Get-Slug $ItemTitle }
+            # Groups: "group-2", "groups-1-3" (the project's word: "phase-2", "phases-1-3").
+            if ($doc.Item.Id -match '^groups?:(.*)$') {
+                $gids = @($Matches[1].Split(',') | Where-Object { $_ })
+                $word = (Get-ProjectGroups).Plural
+                if ($gids.Count -eq 1) { $word = (Get-ProjectGroups).Label }
+                $t = Get-Slug "$word $($gids -join ' ')"
+                if ($ItemTitle) { $t = Get-Slug $ItemTitle }
+            }
             if ($t) { $part = $t }
         }
         $Target = Join-Path (Get-ExportDir) "$slug-$part-$(Get-Date -Format 'yyyy-MM-dd').$ext"
@@ -4985,7 +5234,10 @@ if ($Export) {
     # -KeepDiagrams; -RefreshDiagrams: the latest in any case (and says so when there is no token).
     $script:diagramsRefresh = $RefreshDiagrams.IsPresent -or (-not $KeepDiagrams.IsPresent -and [bool](Get-FigmaToken))
     $script:diagramsOffline = $KeepDiagrams.IsPresent -and -not $RefreshDiagrams.IsPresent
-    try { Invoke-Export $Export $Out $IncludeChanges.IsPresent $Open.IsPresent (@($Item) -join ',') $ClientFriendly.IsPresent $Markdown $Title; exit 0 }
+    # -Groups 1,3: those groups (and the ones they require) as one document.
+    $itemArg = @($Item) -join ','
+    if ($Groups) { $itemArg = 'groups:' + (@($Groups) -join ',') }
+    try { Invoke-Export $Export $Out $IncludeChanges.IsPresent $Open.IsPresent $itemArg $ClientFriendly.IsPresent $Markdown $Title; exit 0 }
     catch { Write-Host "$($g.cross) Export failed: $($_.Exception.Message)" -ForegroundColor Red; exit 1 }
 }
 
@@ -5117,7 +5369,9 @@ function Get-ChangeDetails($Change, [int]$Width) {
     [void]$lines.Add(@((S " $($Change.Stage.ToUpper()) " $look[2]), (S "  $(Get-ItemTitle $Change)" $st.title)))
     $rel = "openspec/changes/$($Change.Name)/"
     if ($Change.Archived) { $rel = "openspec/changes/archive/$($Change.Name)/" }
-    [void]$lines.Add(@((S " $rel" $st.muted), (S "   modified $(Ago $Change.Modified)" $st.faint)))
+    $relLine = @((S " $rel" $st.muted), (S "   modified $(Ago $Change.Modified)" $st.faint))
+    if ($Change.Group -and (Test-Grouping)) { $relLine += (S "   $(Get-GroupTitle $Change.Group)" $st.shared) }
+    [void]$lines.Add($relLine)
     [void]$lines.Add(@())
     $pct = 0
     if ($Change.Total) { $pct = [int][Math]::Round(100 * $Change.Done / $Change.Total) }
@@ -5229,9 +5483,106 @@ function Get-DetailRows($Details, [int]$Rows, [int]$Width, [bool]$Focused) {
     }
     return , $out
 }
+# A group's summary: its description and the groups it requires, its changes and their tasks, the
+# capabilities they touch, the changes that depend on another group's.
+function Get-GroupDetails($Item, [int]$Width) {
+    $lines = New-Object Collections.ArrayList
+    $pg = Get-ProjectGroups
+    $d = $null
+    if ($Item.Group) { $d = Get-GroupDef $Item.Group }
+    [void]$lines.Add(@((S " $($pg.Label.ToUpper()) " $st.chipShared), (S "  $(Get-ItemTitle $Item)" $st.title)))
+    $n = $Item.Members.Count
+    $note = @(S " $n change$(if ($n -ne 1) { 's' })" $st.muted)
+    if (-not $Item.Group) { $note += (S "   without x-group in .openspec.yaml" $st.faint) }
+    elseif (-not $d) { $note += (S "   not in openspec/config.yaml groups:" $st.warn) }
+    [void]$lines.Add($note)
+    [void]$lines.Add(@())
+    if ($d -and $d.Description) {
+        foreach ($l in (Wrap $d.Description ($Width - 2))) { [void]$lines.Add(@(S " $l" $st.text)) }
+        [void]$lines.Add(@())
+    }
+    $pct = 0
+    if ($Item.Total) { $pct = [int][Math]::Round(100 * $Item.Done / $Item.Total) }
+    $barW = [Math]::Max(10, [Math]::Min(40, $Width - 26))
+    [void]$lines.Add(@(S ' ') + (Bar $Item.Done $Item.Total $barW $st.accent) + @((S "  $pct%" "1;$($st.accent)"), (S "   $($Item.Done) of $($Item.Total) tasks" $st.muted)))
+    [void]$lines.Add(@())
+    $marked = Get-GroupSelection @($script:groupMarks.Keys)
+    if ($d -and $d.Requires.Count) {
+        Section-Head $lines 'REQUIRES' ''
+        foreach ($r in $d.Requires) {
+            $style = $st.text
+            if (-not (Get-GroupDef $r)) { $style = $st.warn }
+            [void]$lines.Add(@((S "  $($g.arrow) " $st.shared), (S (Get-GroupTitle $r) $style)))
+        }
+        [void]$lines.Add(@())
+    }
+    $by = @($pg.List | Where-Object { $Item.Group -and $_.Requires -contains $Item.Group })
+    if ($by.Count) {
+        Section-Head $lines 'REQUIRED BY' ''
+        foreach ($b in $by) { [void]$lines.Add(@((S "  $($g.mid) " $st.muted), (S (Get-GroupTitle $b.Id) $st.text))) }
+        [void]$lines.Add(@())
+    }
+    Section-Head $lines 'CHANGES' ''
+    $tw = [Math]::Max(10, $Width - 14)
+    foreach ($c in $Item.Members) {
+        $look = $stageLook[$c.Stage]
+        [void]$lines.Add(@((S "  $($look[0]) " $look[1]), (S (Pad (Short (Get-ItemTitle $c) $tw) $tw) $st.text), (S (PadL "$($c.Done)/$($c.Total)" 8) $st.muted)))
+    }
+    [void]$lines.Add(@())
+    $caps = [ordered]@{}
+    foreach ($c in $Item.Members) { foreach ($cap in $c.Caps) { if ($caps.Contains($cap.Name)) { $caps[$cap.Name]++ } else { $caps[$cap.Name] = 1 } } }
+    if ($caps.Count) {
+        Section-Head $lines 'CAPABILITIES' ''
+        foreach ($k in @($caps.Keys | Sort-Object)) {
+            $row = @((S "  $($g.dot) " $st.ok), (S $k $st.text))
+            if ($caps[$k] -gt 1) { $row += (S "  $($caps[$k]) changes" $st.faint) }
+            [void]$lines.Add($row)
+        }
+        [void]$lines.Add(@())
+    }
+    $deps = @(Get-GroupDependencies $Item)
+    if ($deps.Count) {
+        Section-Head $lines "ON OTHER $($pg.Plural.ToUpper())" ''
+        $last = ''
+        foreach ($x in $deps) {
+            if ($x.Change.Name -ne $last) { $last = $x.Change.Name; [void]$lines.Add(@((S "  $($g.mid) " $st.muted), (S (Short (Get-ItemTitle $x.Change) ($Width - 6)) $st.text))) }
+            # Three a change, then how many more.
+            $shown = @($deps | Where-Object { $_.Change.Name -eq $last })
+            $at = [array]::IndexOf($shown, $x)
+            if ($at -lt 3) { [void]$lines.Add(@((S "      $($g.arrow) " $st.shared), (S (Short "$(Get-ItemTitle $x.On) ($(Get-GroupTitle $x.On.Group))" ($Width - 10)) $st.muted))) }
+            elseif ($at -eq 3) { [void]$lines.Add(@(S "        ... $($shown.Count - 3) more" $st.faint)) }
+        }
+        [void]$lines.Add(@())
+    }
+    if ($script:groupMarks.Count) {
+        Section-Head $lines 'CHOSEN' ''
+        foreach ($id in $marked.Ids) {
+            $row = @((S "  $($g.check) " $st.ok), (S (Get-GroupTitle $id) $st.text))
+            if ($marked.Added[$id]) { $row = @((S '  + ' $st.shared), (S (Get-GroupTitle $id) $st.text), (S '  required' $st.faint)) }
+            [void]$lines.Add($row)
+        }
+        [void]$lines.Add(@())
+    }
+    [void]$lines.Add(@((S ' Space' $st.key), (S ' choose' $st.muted), (S '   Enter' $st.key), (S ' read' $st.muted), (S '   x' $st.key), (S ' export' $st.muted), (S '   c' $st.key), (S ' fold' $st.muted), (S '   g' $st.key), (S ' flat' $st.muted)))
+    return , $lines
+}
+# A group's changes that name a change of another group in their documents (its folder's name).
+function Get-GroupDependencies($Item) {
+    $key = Get-RowKey $Item
+    if ($script:groupDeps.ContainsKey($key)) { return $script:groupDeps[$key] }
+    $others = @($script:changes | Where-Object { -not $_.Archived -and [string]$_.Group -ne [string]$Item.Group })
+    $out = @()
+    foreach ($c in $Item.Members) {
+        $text = (@(foreach ($d in $c.Docs) { if (-not $d.IsSpecs) { foreach ($f in $d.Files) { Read-Text $f } } }) -join "`n")
+        foreach ($o in $others) { if ($text.Contains($o.Name)) { $out += [pscustomobject]@{ Change = $c; On = $o } } }
+    }
+    $script:groupDeps[$key] = $out
+    return $out
+}
 function Get-Details($Width) {
     $sel = Get-Selected
     if ($sel -and $sel.Type -eq 'spec') { return Get-SpecDetails $sel $Width }
+    if ($sel -and $sel.PSObject.Properties['IsGroup']) { return Get-GroupDetails $sel $Width }
     if ($sel) { return Get-ChangeDetails $sel $Width }
     return , @(@(), @(S ' Nothing selected.' $st.muted))
 }
@@ -5273,6 +5624,8 @@ function Home-Hints {
     if ($script:filtering) { return , @(@('type', 'filter'), @('Enter', 'keep'), @('Esc', 'clear')) }
     if ($script:zoom) { return , @(@("$($g.up)$($g.down) PgUp PgDn", 'scroll'), @('z Esc', 'show the lists'), @('Enter', 'read'), @('e', 'edit'), @('?', 'help'), @('q', 'quit')) }
     if ($script:pane -eq 'details') { return , @(@("$($g.up)$($g.down) PgUp PgDn", 'scroll'), @("$([string][char]0x2190) Esc", 'lists'), @('z', 'zoom'), @('Enter', 'read'), @('e', 'edit'), @('?', 'help'), @('q', 'quit')) }
+    $sel = Get-Selected
+    if ($sel -and $sel.PSObject.Properties['IsGroup']) { return , @(@("$($g.up)$($g.down)", 'select'), @('Space', 'choose'), @('Enter', 'read'), @('x', 'export'), @('c', 'fold'), @('g', 'flat'), @('e', 'groups'), @('t', 'find'), @('?', 'help'), @('q', 'quit')) }
     return , @(@("$($g.up)$($g.down)", 'select'), @('Enter', 'open'), @('Tab', 'scope/plan'), @('v', 'validate'), @('a', 'archive'), @('n', 'new'), @('x', 'export'), @('m', 'as one'), @('t', 'find'), @('y', 'sync'), @('u', 'undo'), @('e', 'edit'), @('s', 'sort'), @('/', 'filter'), @('?', 'help'), @('q', 'quit'))
 }
 
@@ -5332,13 +5685,33 @@ function Draw-Home([int]$W, [int]$H) {
     $archived = @($script:changes | Where-Object { $_.Archived }).Count
     $note = "$active"
     if ($archived) { if ($script:showArchived) { $note += " + $archived archived" } else { $note += " $($g.mid) $archived archived (h)" } }
-    [void]$left.Add(@((S ' PLAN ' $st.title), (S "$($g.mid) $note" $st.muted)))
+    $marked = Get-GroupSelection @($script:groupMarks.Keys)
+    $planHead = @((S ' PLAN ' $st.title), (S "$($g.mid) $note" $st.muted))
+    if ($script:groupMarks.Count) {
+        $planHead += (S " $($g.mid) $($g.check) $($script:groupMarks.Count)" $st.ok)
+        if ($marked.Added.Count) { $planHead += (S " +$($marked.Added.Count)" $st.shared) }
+    }
+    [void]$left.Add($planHead)
     if (-not $vc.Count) { [void]$left.Add(@(S '   nothing planned  (n: new change)' $st.faint)) }
     $cw = $Lw - 12
+    $grouped = $script:grouped -and (Test-Grouping)
     for ($i = 0; $i -lt $vc.Count; $i++) {
         $c = $vc[$i]
         $mark = '  '
         if ($i -eq $script:changeIndex -and $script:focus -eq 'changes') { $mark = "$($g.tri) "; $bg[$left.Count] = $selBg }
+        # A group: folded or not, marked (Space) or required by a marked one, its changes and their tasks.
+        if ($c.PSObject.Properties['IsGroup']) {
+            $fold = $g.open
+            if ($script:folded[$c.Group]) { $fold = $g.shut }
+            $tstyle = $st.head; $pre = ''
+            if ($script:groupMarks.Contains($c.Group)) { $pre = "$($g.check) "; $tstyle = $st.ok }
+            elseif ($marked.Added[$c.Group]) { $pre = '+ '; $tstyle = $st.shared }
+            $title = "$pre$(Get-ItemTitle $c) ($($c.Members.Count))"
+            [void]$left.Add(@((S " $mark" $st.accent), (S "$fold " $st.muted), (S (Pad (Short $title $cw) $cw) $tstyle), (S (PadL "$($c.Done)/$($c.Total)" 6) $st.muted)))
+            continue
+        }
+        $ind = ''; $tw = $cw
+        if ($grouped -and -not $c.Archived) { $ind = '  '; $tw = $cw - 2 }
         $look = $stageLook[$c.Stage]
         $style = $st.text
         if ($c.Archived) { $style = $st.faint }
@@ -5347,10 +5720,15 @@ function Draw-Home([int]$W, [int]$H) {
         # Out of date (documents older than what they're written from): a ! before its count.
         $count = S (PadL "$($c.Done)/$($c.Total)" 6) $countStyle
         if (Test-Stale $c) { $count = S (PadL "! $($c.Done)/$($c.Total)" 6) $st.warn }
-        [void]$left.Add(@((S " $mark" $st.accent), (S "$($look[0]) " $look[1]), (S (Pad (Short (Get-ItemTitle $c) $cw) $cw) $style), $count))
+        [void]$left.Add(@((S " $mark$ind" $st.accent), (S "$($look[0]) " $look[1]), (S (Pad (Short (Get-ItemTitle $c) $tw) $tw) $style), $count))
     }
     [void]$left.Add(@())
     [void]$left.Add(@((S '   s' $st.key), (S ' sort: ' $st.muted), (S $sortLabels[$script:sort] $st.accent)))
+    if (Test-Grouping) {
+        $how = "by $((Get-ProjectGroups).Plural.ToLower())"
+        if (-not $script:grouped) { $how = 'flat' }
+        [void]$left.Add(@((S '   g' $st.key), (S ' plan: ' $st.muted), (S $how $st.accent)))
+    }
     if ($script:filter -or $script:filtering) {
         $f = $script:filter
         if ($script:filtering) { $f += $g.cursor }
@@ -5811,7 +6189,19 @@ $searchKinds = @('all', 'tasks', 'open tasks', 'requirements', 'scenarios', 'sec
 # its change's or spec's name or title, its group, its requirement or its own text.
 function Find-Search([string]$Query, [string]$Kind, [string]$Art = 'all') {
     $toks = @($Query.ToLower().Split(' ', [StringSplitOptions]::RemoveEmptyEntries))
-    if (-not $toks.Count) { return @() }
+    # A group: g1, or "group 1" (the project's label, or Group, Grupa, Gruppe, Groep): only its changes'.
+    $grp = $null
+    if ((Test-Grouping) -and $toks.Count) {
+        $labels = @(((Get-ProjectGroups).Label).ToLower(), 'group', 'grupa', 'gruppe', 'groep')
+        $keep = @()
+        for ($i = 0; $i -lt $toks.Count; $i++) {
+            if ($null -eq $grp -and $toks[$i] -match '^g(\d+)$') { $grp = $Matches[1]; continue }
+            if ($null -eq $grp -and $labels -contains $toks[$i] -and $i + 1 -lt $toks.Count -and $toks[$i + 1] -match '^\d+$') { $grp = $toks[$i + 1]; $i++; continue }
+            $keep += $toks[$i]
+        }
+        $toks = $keep
+    }
+    if (-not $toks.Count -and $null -eq $grp) { return @() }
     $out = New-Object Collections.ArrayList
     foreach ($e in (Get-SearchIndex)) {
         if ($Kind -eq 'tasks' -and $e.Kind -ne 'task') { continue }
@@ -5820,6 +6210,7 @@ function Find-Search([string]$Query, [string]$Kind, [string]$Art = 'all') {
         if ($Kind -eq 'scenarios' -and $e.Kind -ne 'scn') { continue }
         if ($Kind -eq 'sections' -and $e.Kind -ne 'sec') { continue }
         if ($Art -and $Art -ne 'all' -and $e.Art -ne $Art) { continue }
+        if ($null -ne $grp -and -not ($e.Item.Type -eq 'change' -and [string]$e.Item.Group -eq $grp)) { continue }
         $ok = $true
         foreach ($t in $toks) {
             if ($t -match '^\d+(\.\d+)+\.?$') {
@@ -5864,7 +6255,7 @@ function Draw-Search([int]$W, [int]$H) {
     [void]$lines.Add(@())
     $bodyRows = $H - 4
     if (-not $s.Query.Trim()) {
-        foreach ($l in (Wrap 'Type a task number (1.3), a change and a number (01 1.3, signup 1.3), or words: the tasks, requirements, scenarios and sections (with their text) of the specs and the changes that contain them all. Tab: all, tasks, open tasks, requirements, scenarios, sections. Shift+Tab: in which document (proposal, specs, design, tasks, models ...). Enter opens it in Read, at it.' ($W - 8))) { [void]$lines.Add(@(S "  $l" $st.muted)) }
+        foreach ($l in (Wrap "Type a task number (1.3), a change and a number (01 1.3, signup 1.3), or words: the tasks, requirements, scenarios and sections (with their text) of the specs and the changes that contain them all. Tab: all, tasks, open tasks, requirements, scenarios, sections. Shift+Tab: in which document (proposal, specs, design, tasks, models ...). Enter opens it in Read, at it.$(if (Test-Grouping) { " g1 or $((Get-ProjectGroups).Label.ToLower()) 1: only that group's." })" ($W - 8))) { [void]$lines.Add(@(S "  $l" $st.muted)) }
     }
     elseif (-not $res.Count) { [void]$lines.Add(@(S '  nothing found' $st.faint)) }
     else {
@@ -7180,7 +7571,10 @@ function Draw-Help([int]$W, [int]$H) {
         @('n', 'new change (asks its name: kebab-case, e.g. add-user-login)'),
         @('x', 'export the specification for the client: PDF, Word or HTML (openspec\exports\; opens it)'),
         @('m', 'changes as one: mark the ones that go to the client as one whole, read them together (x there: export)'),
-        @('t', 'find: tasks (1.3, 01 1.3, words), requirements and scenarios; Enter opens it in Read, at it'),
+        @('g', 'groups (grouping: [group] in the schema, x-group: <id> in .openspec.yaml): the plan by group, or flat'),
+        @('c', 'fold a group (its changes hidden), or open it again'),
+        @('  Space', 'on a group: choose it (the groups it requires come too, +); Enter reads, x exports the chosen; Esc unchooses'),
+        @('t', 'find: tasks (1.3, 01 1.3, words), requirements, scenarios (g1, group 1: in a group); Enter: Read, at it'),
         @('  Ctrl+T', 'find from any screen, also while typing (t where nothing is typed); Esc comes back there'),
         @('  ' + [string][char]0x2192, 'in find: mark (Space, a all, g its group); Del deletes; Enter: the marked - delete, change, redo'),
         @('y', 'a change out of date (! in the plan): its documents updated by the agent, or marked as in sync'),
@@ -7203,9 +7597,11 @@ function Draw-Help([int]$W, [int]$H) {
     & $section 'LOOK' @(
         @("$($g.diamond) $($g.dot)", 'a platform page (platform-*: overview, costs...), a capability spec'),
         @("$($g.ring) $($g.diamond) $($g.dot) $($g.mid)", 'a change: draft (no tasks), in progress, completed, archived'),
+        @("$($g.open) $($g.shut) $($g.check) +", 'a group: open, folded, chosen (Space), required by a chosen one'),
         @('+ ~ -', 'requirements a change adds, modifies, removes in a capability'))
     & $section 'THE SAME WITHOUT THE UI' @(
         @('v', 'openspec validate --all --strict'), @('a', 'openspec archive <change> --yes'), @('n', 'openspec new change <name>'), @('x', 'lazyspec -Export Pdf|Word|Html [-IncludeChanges] [-Out <file>] [-Open]'), @('m, x', 'lazyspec -Export Word -Item <change>,<change> -Title "<the whole''s title>"'),
+        @('Space, x', 'lazyspec -Export Pdf -Groups 1,3   (one group alone: -Item group:2)'),
         @('everything', '.\tools\lazyspec\lazyspec.ps1 -Help   and   tools\lazyspec\LAZYSPEC.md'))
     $bodyRows = $H - 2
     $max = [Math]::Max(0, $lines.Count - $bodyRows)
@@ -7252,6 +7648,26 @@ function Move-Selection([int]$Delta) {
     }
     $script:detailScroll = 0
 }
+# g on Home: the plan by group, or flat (the selected change stays selected).
+function Switch-Grouped {
+    if (-not (Test-Grouping)) { $script:message = 'No groups: a schema with grouping: [group], or x-group: <id> in a change''s .openspec.yaml.'; return }
+    $sel = Get-Selected
+    $keep = ''
+    if ($sel -and $script:focus -eq 'changes') { $keep = Get-RowKey $sel; if ($sel.PSObject.Properties['IsGroup'] -and $sel.Members.Count) { $keep = $sel.Members[0].Name } }
+    $script:grouped = -not $script:grouped
+    $script:focus = 'changes'
+    Select-ByName $null $keep
+    if ($script:grouped) { $script:message = "The plan by $((Get-ProjectGroups).Plural.ToLower())." } else { $script:message = 'The plan flat.' }
+}
+# c on Home: the selected group (or the selected change's) folded, or open again.
+function Switch-Fold {
+    $sel = Get-Selected
+    if (-not $sel -or $script:focus -ne 'changes' -or -not ($script:grouped -and (Test-Grouping))) { $script:message = 'c folds a group of the plan (Tab to the plan).'; return }
+    $id = [string]$sel.Group
+    if (-not $sel.PSObject.Properties['IsGroup'] -and $sel.Archived) { return }
+    $script:folded[$id] = -not $script:folded[$id]
+    Select-ByName $null "group:$id"
+}
 function Start-Archive {
     $sel = Get-Selected
     if (-not $sel -or $sel.Type -ne 'change') { $script:message = 'Select a change first (Tab to the changes).'; return }
@@ -7271,6 +7687,10 @@ function Start-NewChange {
 }
 # x: the specification as a document for the client: the format, then (with active changes) whether the plan goes in.
 function Start-ExportMenu {
+    # Groups chosen (Space): they and the ones they require; a group selected: that group.
+    if ($script:groupMarks.Count) { Start-GroupExportMenu @($script:groupMarks.Keys); return }
+    $gsel = Get-Selected
+    if ($gsel -and $gsel.PSObject.Properties['IsGroup'] -and $script:focus -eq 'changes') { Start-ItemExportMenu $gsel; return }
     # No specs yet: the selected change alone (as x in Read), or chosen changes as one.
     if (-not $script:specs.Count) {
         $sel = Get-Selected
@@ -7308,6 +7728,17 @@ function Start-ExportMenu {
                 } }
         } }
 }
+function Start-GroupExportMenu([string[]]$Ids) {
+    $sel = Get-GroupSelection $Ids
+    $pg = Get-ProjectGroups
+    $what = "$($pg.Plural) $($Ids -join ', ')"
+    if ($Ids.Count -eq 1) { $what = "$($pg.Label) $($Ids[0])" }
+    if ($sel.Added.Count) { $what += " (+ $(@($sel.Added.Keys) -join ', ') required)" }
+    $script:choose = [pscustomobject]@{ Text = "Export $what as"; Options = @('PDF', 'Word', 'HTML'); Keys = @('p', 'w', 'h'); Choice = 0; Item = 'groups:' + ($Ids -join ','); Do = {
+            param($i, $c)
+            Start-ExportAudience @('Pdf', 'Word', 'Html')[$i] $false $c.Item ''
+        } }
+}
 # x in the read screen: what is being read, alone: the spec, or the change with all its workflow's documents.
 function Start-ItemExportMenu($Item) {
     $what = 'the spec'
@@ -7318,8 +7749,9 @@ function Start-ItemExportMenu($Item) {
     if ($Item.Type -eq 'bundle') {
         $what = "$($Item.Members.Count) changes as one:"; $label = $Item.Title; $title = $Item.Title
         if ($Item.Id) { $name = $Item.Id; $title = '' }
+        if ($Item.Id -match '^groups?:') { $what = '' }
     }
-    $script:choose = [pscustomobject]@{ Text = "Export $what $label as"; Options = @('PDF', 'Word', 'HTML'); Keys = @('p', 'w', 'h'); Choice = 0; Item = $name; Title = $title; Do = {
+    $script:choose = [pscustomobject]@{ Text = (("Export $what $label as") -replace '\s+', ' '); Options = @('PDF', 'Word', 'HTML'); Keys = @('p', 'w', 'h'); Choice = 0; Item = $name; Title = $title; Do = {
             param($i, $c)
             Start-ExportAudience @('Pdf', 'Word', 'Html')[$i] $false $c.Item $c.Title
         } }
@@ -7441,18 +7873,33 @@ function On-Key($K) {
         }
         if ($name -eq 'Right') { if (-not $script:zoom) { $script:pane = 'details' }; return }
         if ($name -eq 'Left') { if ($script:zoom) { $script:zoom = $false }; $script:pane = 'list'; return }
+        # Space on a group: chosen or not (the groups it requires come with it: read, export).
+        if ($name -eq 'Space' -and -not $inDetails) {
+            $sel = Get-Selected
+            if ($sel -and $sel.PSObject.Properties['IsGroup']) {
+                if (-not $sel.Group) { $script:message = 'Ungrouped changes: give them x-group: <id> in .openspec.yaml to choose them.'; return }
+                if ($script:groupMarks.Contains($sel.Group)) { $script:groupMarks.Remove($sel.Group) } else { $script:groupMarks[$sel.Group] = $true }
+                return
+            }
+        }
         if ($name -eq 'PgDn' -or $name -eq 'Space') { $script:detailScroll += 10; return }
         if ($name -eq 'PgUp') { $script:detailScroll = [Math]::Max(0, $script:detailScroll - 10); return }
         if ($name -eq 'Home') { $script:detailScroll = 0; return }
         if ($name -eq 'End') { $script:detailScroll = 1000000; return }
         if ($name -eq 'Enter') {
             $sel = Get-Selected
+            # Groups chosen: they (and the ones they require) as one, read.
+            if ($sel -and $sel.PSObject.Properties['IsGroup'] -and $script:groupMarks.Count) {
+                try { $sel = Get-GroupsBundle @($script:groupMarks.Keys) '' '' }
+                catch { $script:message = $_.Exception.Message; return }
+            }
             if ($sel) { $script:readItem = $sel; $script:readTab = 0; $script:readScroll = 0; $script:readSel = 0; $script:readMark = $null; $script:readBack = 'home'; $script:screen = 'read' }
             return
         }
         if ($name -eq 'Esc') {
             if ($script:zoom) { $script:zoom = $false; $script:pane = 'list' }
             elseif ($script:pane -eq 'details') { $script:pane = 'list' }
+            elseif ($script:groupMarks.Count) { $script:groupMarks.Clear() }
             elseif ($script:filter) { $script:filter = '' }
             return
         }
@@ -7470,7 +7917,9 @@ function On-Key($K) {
             't' { Start-Search }
             'y' { Start-Sync }
             'u' { Start-Undo }
-            'e' { $sel = Get-Selected; if ($sel) { Open-InEditor $sel.Path } }
+            'e' { $sel = Get-Selected; if ($sel -and $sel.PSObject.Properties['IsGroup']) { Open-InEditor (Join-Path $osDir 'config.yaml') } elseif ($sel) { Open-InEditor $sel.Path } }
+            'g' { Switch-Grouped }
+            'c' { Switch-Fold }
             's' { $script:sort = $sortModes[([array]::IndexOf($sortModes, $script:sort) + 1) % $sortModes.Count]; $script:changeIndex = 0; $script:message = "Changes sorted by $($sortLabels[$script:sort])." }
             'h' { $script:showArchived = -not $script:showArchived; $script:changeIndex = 0 }
             '/' { $script:filtering = $true; $script:zoom = $false; $script:pane = 'list' }
