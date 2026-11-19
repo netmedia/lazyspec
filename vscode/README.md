@@ -141,16 +141,16 @@ document was written from in `.lazyspec/sync.json`, and the extension reads and 
 All of LazySpec's keys, Windows / Linux and Mac side by side: **Help and Keys** (the `?` in the Plan's title
 bar, or the LazySpec menu of an open document).
 
-`Ctrl+;` then a letter (Mac `Cmd+;`), wherever you are. The view gets the keyboard, so the arrows, `PgUp`
+`Ctrl+Alt` and a letter (Mac `⌃⌥`, Control+Option: the same letters), wherever you are. The view gets the keyboard, so the arrows, `PgUp`
 and `PgDn` work right away; the Plan keeps its selection.
 
 | Windows, Linux | Mac | Goes to |
 |---|---|---|
-| `Ctrl+;` `P` | `⌘;` `P` | the Plan |
-| `Ctrl+;` `S` | `⌘;` `S` | the Scope |
-| `Ctrl+;` `D` | `⌘;` `D` | the Details |
-| `Ctrl+;` `U` | `⌘;` `U` | Undo |
-| `Ctrl+;` `E` | `⌘;` `E` | the open document (the formatted editor: its text) |
+| `Ctrl+Alt+P` | `⌃⌥P` | the Plan |
+| `Ctrl+Alt+S` | `⌃⌥S` | the Scope |
+| `Ctrl+Alt+D` | `⌃⌥D` | the Details |
+| `Ctrl+Alt+U` | `⌃⌥U` | Undo |
+| `Ctrl+Alt+H` | `⌃⌥H` | here: the open document (the formatted editor: its text) |
 
 | Windows, Linux | Mac | In the Plan and the Scope |
 |---|---|---|
@@ -158,16 +158,16 @@ and `PgDn` work right away; the Plan keeps its selection.
 | `F2` | `F2` (`fn`+`F2` on a laptop) | edit the item |
 | `Space` | `Space` | a task done / not done |
 | `Delete` | `⌘⌫` | delete (asked first) |
-| `Ctrl+Alt+A` | `⌘⌥A` | the agent |
-| `Ctrl+Alt+R` | `⌘⌥R` | Read |
-| `Ctrl+Alt+T` | `⌘⌥T` | Find (anywhere) |
+| `Ctrl+Alt+A` | `⌃⌥A` | the agent |
+| `Ctrl+Alt+R` | `⌃⌥R` | Read |
+| `Ctrl+Alt+T` | `⌃⌥T` | Find (anywhere) |
 
 VS Code's own: `Ctrl+B` / `⌘B` shows or hides the side bar, `Ctrl+0` / `⌘0` goes to it, `Ctrl+1` / `⌘1`
 to the editor.
 
 ## Find
 
-`Ctrl+Alt+T` (Mac `⌘⌥T`) finds tasks, requirements, scenarios and sections as you type.
+`Ctrl+Alt+T` (Mac `⌃⌥T`) finds tasks, requirements, scenarios and sections as you type.
 
 - Each result has a small second line: the document it is in (TASKS, DESIGN, SPECS, OPEN QUESTIONS ...),
   what it is (task, requirement, scenario, section) and its requirement or task group.

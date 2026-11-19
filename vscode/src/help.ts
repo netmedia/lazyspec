@@ -6,19 +6,19 @@ import * as vscode from 'vscode';
 /** [what it does, Windows / Linux, Mac] - by section. */
 const KEYS: { title: string; note?: string; rows: [string, string, string][] }[] = [
   {
-    title: 'Go to a pane', note: 'Ctrl+; (Mac ⌘;), then a letter: the pane gets the keyboard, the arrows work right away. On a Croatian keyboard ; is the key right of L (č).',
+    title: 'Go to a pane', note: 'The same letters everywhere: Ctrl+Alt on Windows and Linux, Control+Option (⌃⌥) on a Mac. The pane gets the keyboard, the arrows work right away.',
     rows: [
-      ['The Plan', 'Ctrl+;  P', '⌘;  P'],
-      ['The Scope', 'Ctrl+;  S', '⌘;  S'],
-      ['The Details', 'Ctrl+;  D', '⌘;  D'],
-      ['Undo', 'Ctrl+;  U', '⌘;  U'],
-      ['The open document (its text)', 'Ctrl+;  E', '⌘;  E'],
+      ['The Plan', 'Ctrl+Alt+P', '⌃⌥P'],
+      ['The Scope', 'Ctrl+Alt+S', '⌃⌥S'],
+      ['The Details', 'Ctrl+Alt+D', '⌃⌥D'],
+      ['Undo', 'Ctrl+Alt+U', '⌃⌥U'],
+      ['Here: the open document (its text)', 'Ctrl+Alt+H', '⌃⌥H'],
     ],
   },
   {
     title: 'Anywhere',
     rows: [
-      ['Find a task, requirement, scenario or section', 'Ctrl+Alt+T', '⌘⌥T'],
+      ['Find a task, requirement, scenario or section', 'Ctrl+Alt+T', '⌃⌥T'],
       ['All commands (type "LazySpec")', 'Ctrl+Shift+P', '⌘⇧P'],
       ['Show or hide the side bar', 'Ctrl+B', '⌘B'],
       ['To the side bar / to the editor', 'Ctrl+0 / Ctrl+1', '⌘0 / ⌘1'],
@@ -35,8 +35,8 @@ const KEYS: { title: string; note?: string; rows: [string, string, string][] }[]
       ['Edit the item (the formatted editor)', 'F2', 'F2 (fn+F2 on a laptop)'],
       ['A task done / not done', 'Space', 'Space'],
       ['Delete (asked first)', 'Delete', '⌘⌫'],
-      ['The agent: change it, write it again', 'Ctrl+Alt+A', '⌘⌥A'],
-      ['Read (formatted, a tab per document)', 'Ctrl+Alt+R', '⌘⌥R'],
+      ['The agent: change it, write it again', 'Ctrl+Alt+A', '⌃⌥A'],
+      ['Read (formatted, a tab per document)', 'Ctrl+Alt+R', '⌃⌥R'],
       ['Find in the view (VS Code\'s)', 'type, or Ctrl+Alt+F', 'type, or ⌘⌥F'],
     ],
   },
@@ -75,7 +75,7 @@ const KEYS: { title: string; note?: string; rows: [string, string, string][] }[]
       ['Save', 'Ctrl+S', '⌘S'],
       ['Bold / italic', 'Ctrl+B / Ctrl+I', '⌘B / ⌘I'],
       ['Undo / redo', 'Ctrl+Z / Ctrl+Y', '⌘Z / ⌘⇧Z'],
-      ['Back to the Plan', 'Ctrl+;  P', '⌘;  P'],
+      ['Back to the Plan', 'Ctrl+Alt+P', '⌃⌥P'],
       ['The Markdown itself', 'the title bar: LazySpec menu, Source', 'the title bar: LazySpec menu, Source'],
     ],
   },

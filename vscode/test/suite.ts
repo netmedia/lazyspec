@@ -240,10 +240,17 @@ export async function run(): Promise<void> {
     assert.ok(vscode.window.activeTextEditor?.document.uri.fsPath.toLowerCase() === tasks.toLowerCase(), 'Source: the Markdown in the text editor');
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
   });
-  await check('the panes: Ctrl+; then P, S, D, U, E', async () => {
+  await check('the panes: Ctrl+Alt (Mac Control+Option) and P, S, D, U, H - none of VS Code\'s own keys', async () => {
     const pkg = vscode.extensions.getExtension('netmedia.lazyspec')!.packageJSON;
     const keys = Object.fromEntries(pkg.contributes.keybindings.map((k: { command: string; key: string }) => [k.command, k.key]));
-    assert.deepStrictEqual(['lazyspec.focusPlan', 'lazyspec.focusScope', 'lazyspec.focusDetails', 'lazyspec.focusUndo', 'lazyspec.focusEditor'].map(c => keys[c]), ['ctrl+; p', 'ctrl+; s', 'ctrl+; d', 'ctrl+; u', 'ctrl+; e']);
+    assert.deepStrictEqual(['lazyspec.focusPlan', 'lazyspec.focusScope', 'lazyspec.focusDetails', 'lazyspec.focusUndo', 'lazyspec.focusEditor'].map(c => keys[c]), ['ctrl+alt+p', 'ctrl+alt+s', 'ctrl+alt+d', 'ctrl+alt+u', 'ctrl+alt+h']);
+    // VS Code's default keys (this platform's): none of LazySpec's global ones among them.
+    const text = (await vscode.workspace.openTextDocument(vscode.Uri.parse('vscode://defaultsettings/keybindings.json'))).getText();
+    const all: { key: string; command: string }[] = JSON.parse(text.split('\n').filter(l => !l.trim().startsWith('//')).join('\n'));
+    const theirs = new Map(all.filter(k => !k.command.startsWith('lazyspec.') && !k.command.startsWith('-')).map(k => [k.key.toLowerCase(), k.command]));
+    for (const k of pkg.contributes.keybindings.filter((x: { when?: string }) => !x.when)) {
+      assert.ok(!theirs.has(k.key), `${k.key} is VS Code's own: ${theirs.get(k.key)}`);
+    }
     for (const c of ['lazyspec.focusPlan', 'lazyspec.focusScope', 'lazyspec.focusDetails', 'lazyspec.focusUndo', 'lazyspec.focusPlan']) { await vscode.commands.executeCommand(c); }
   });
   await check('Help and Keys opens; every key has its Mac one (or is the same there)', async () => {
