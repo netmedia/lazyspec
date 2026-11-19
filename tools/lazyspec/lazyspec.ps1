@@ -262,6 +262,8 @@ function Show-Usage {
     & $d '      too), Shift+Tab the document it is in (proposal, specs, design, tasks, models ...)'
     & $d '      Right: mark them (Space, a all, g its group); Del delete; Enter: delete, change, redo them'
     & $d '    y out of date (! in the plan): the agent updates the documents, or mark them as in sync'
+    & $d '      the agent: here (h: Claude Code in this terminal, you answer its questions; /exit comes back),'
+    & $d '      in the background (b; when done, a answers it: claude -c), or the prompt saved (s)'
     & $d '    u undo: the changes since the last commit, piece by piece (needs git)'
     & $d '    t u y: the letter where nothing is typed, Ctrl+T Ctrl+U Ctrl+Y on any screen (also while typing)'
     & $d '    Alt+T Alt+U Alt+Y Alt+S: the same as Ctrl+. On a Mac: Control (^T ^U ^Y ^S: LazySpec turns the'
@@ -6023,7 +6025,7 @@ function Open-SearchResult($E) {
 # --- revisions and the agent ----------------------------------------------------------------------------
 # Work for the agent (Claude Code): the prompt is saved in .lazyspec\prompts\ (the project's root) in any case;
 # then it runs now, in the run screen, or it waits for you (the command to give it). Asked each time; the last
-# answer is the project's default (lazyspec: agent: run | prompt in openspec/config.yaml).
+# answer is the project's default (lazyspec: agent: here | background | prompt in openspec/config.yaml).
 function Get-AgentInstruction([string]$Rel) { return "Read the file $Rel and do exactly what it says." }
 function Start-AgentTask([string]$Label, [string]$Name, [string]$Prompt) {
     $dir = Join-Path $Root '.lazyspec\prompts'
@@ -6031,14 +6033,22 @@ function Start-AgentTask([string]$Label, [string]$Name, [string]$Prompt) {
     $file = Join-Path $dir ("$(Get-Date -Format 'yyyyMMdd-HHmmss')-$Name.md")
     [IO.File]::WriteAllText($file, $Prompt, (New-Object Text.UTF8Encoding $false))
     $rel = $file.Substring($Root.TrimEnd('\', '/').Length + 1).Replace('\', '/')
-    $choice = 0
-    if ([string](Get-ProjectConfig).Values['agent'] -eq 'prompt') { $choice = 1 }
-    $script:choose = [pscustomobject]@{ Text = "${Label}:"; Options = @('Run Claude Code now', 'Save the prompt for later'); Short = @('run it', 'save it'); Keys = @('r', 's'); Choice = $choice
+    # Here (in this terminal: Claude Code as you know it - it can ask, you answer), in the background (no
+    # questions; its output in the run screen, a answers it after), or the prompt saved for later.
+    $modes = @('here', 'background', 'prompt')
+    $def = [string](Get-ProjectConfig).Values['agent']
+    if ($def -eq 'run') { $def = 'here' }
+    $choice = [Math]::Max(0, [array]::IndexOf($modes, $def))
+    $script:choose = [pscustomobject]@{ Text = "${Label}:"; Options = @('Here (it asks, you answer)', 'In the background (no questions)', 'Save the prompt'); Short = @('here', 'background', 'save it'); Keys = @('h', 'b', 's'); Choice = $choice
         Rel = $rel; Label = $Label; Do = {
             param($k, $c)
-            $mode = @('run', 'prompt')[$k]
+            $mode = @('here', 'background', 'prompt')[$k]
             if ([string](Get-ProjectConfig).Values['agent'] -ne $mode) { try { Set-ConfigValue 'agent' $mode } catch { } }
-            if ($k -eq 0) { Start-Agent $c.Label $c.Rel } else { Show-AgentPrompt $c.Rel '' }
+            switch ($k) {
+                0 { Start-AgentHere $c.Label $c.Rel }
+                1 { Start-Agent $c.Label $c.Rel }
+                2 { Show-AgentPrompt $c.Rel '' }
+            }
         } }
 }
 function Show-AgentPrompt([string]$Rel, [string]$Why) {
@@ -6047,19 +6057,71 @@ function Show-AgentPrompt([string]$Rel, [string]$Why) {
     if (-not $harness) { try { Set-Clipboard -Value $cmd; $copied = ' (copied)' } catch { } }
     $script:message = "$($Why)Prompt saved: $Rel - give it to the agent: $cmd$copied"
 }
-function Start-Agent([string]$Label, [string]$Rel) {
-    $instr = Get-AgentInstruction $Rel
-    # LAZYSPEC_AGENT: another command instead of claude (the tests).
+# claude (LAZYSPEC_AGENT: another command, the tests), or ''.
+function Get-AgentTool {
     $tool = $env:LAZYSPEC_AGENT
     if (-not $tool) { $c = Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; if ($c) { $tool = [string]$c.Source } }
+    return $tool
+}
+# Here: LazySpec gives Claude Code the terminal, with the prompt; you see it, answer it, approve; /exit (or
+# Ctrl+C twice) brings you back, the documents read again.
+function Start-AgentHere([string]$Label, [string]$Rel) {
+    $tool = Get-AgentTool
     if (-not $tool) { Show-AgentPrompt $Rel 'Claude Code (claude) is not installed. '; return }
-    New-Run $Label "claude -p `"$instr`" --permission-mode acceptEdits"
-    $argLine = "-p $(Quote-Arg $instr) --permission-mode acceptEdits"
-    if ($tool -match '\.(cmd|bat)$') {
+    $instr = Get-AgentInstruction $Rel
+    if (-not $harness) { [Console]::Out.Write("$E[0m$E[?25h$E[?1049l") }
+    Set-TerminalKeys $false
+    Write-Host ''
+    Write-Host "  LazySpec $($g.caret) Claude Code: $Label" -ForegroundColor Cyan
+    Write-Host '  It may ask you things: answer here. Done: /exit (or Ctrl+C twice) brings you back to LazySpec.' -ForegroundColor DarkGray
+    Write-Host ''
+    $code = 0
+    try {
+        if ($tool -match '\.(cmd|bat)$') {
+            $shell = $env:ComSpec
+            if (-not $shell) { $shell = 'cmd.exe' }
+            & $shell /d /c "`"$tool`" $(Quote-Arg $instr) --permission-mode acceptEdits"
+        }
+        else { & $tool $instr --permission-mode acceptEdits }
+        $code = $LASTEXITCODE
+    } catch { $code = -1 }
+    Set-TerminalKeys $true
+    if (-not $harness) {
+        Enable-Ansi
+        [Console]::TreatControlCAsInput = $true
+        [Console]::Out.Write("$E[?1049h$E[?25l$E[2J")
+    }
+    $script:prev = @()
+    Update-ReadItem
+    $script:message = "Claude Code done ($Label). u: what it changed, undo it"
+    if ($code -and $code -ne 0) { $script:message = "Claude Code ended with exit code $code ($Label). u: what it changed" }
+}
+# In the background: claude -p, its output in the run screen; it doesn't ask (it decides, and says what). When
+# it's done, a answers it or goes on: claude -c -p <your words>, the same conversation.
+function Start-Agent([string]$Label, [string]$Rel) {
+    $tool = Get-AgentTool
+    if (-not $tool) { Show-AgentPrompt $Rel 'Claude Code (claude) is not installed. '; return }
+    $instr = (Get-AgentInstruction $Rel) + ' Do not ask questions: where something is unclear, decide sensibly, and at the end list what you decided.'
+    Start-AgentRun $Label $tool @('-p', $instr, '--permission-mode', 'acceptEdits')
+}
+function Start-AgentRun([string]$Label, [string]$Tool, [string[]]$AgentArgs) {
+    New-Run $Label ("claude " + ((@($AgentArgs) | ForEach-Object { Quote-Arg $_ }) -join ' '))
+    $script:run | Add-Member -NotePropertyName Agent -NotePropertyValue $true -Force
+    $argLine = (@($AgentArgs) | ForEach-Object { Quote-Arg $_ }) -join ' '
+    if ($Tool -match '\.(cmd|bat)$') {
         $shell = $env:ComSpec
         if (-not $shell) { $shell = 'cmd.exe' }
-        Start-RunProcess $shell "/d /s /c `"`"$tool`" $argLine`""
-    } else { Start-RunProcess $tool $argLine }
+        Start-RunProcess $shell "/d /s /c `"`"$Tool`" $argLine`""
+    } else { Start-RunProcess $Tool $argLine }
+}
+function Start-AgentAnswer {
+    $script:input = [pscustomobject]@{ Label = 'Answer Claude:'; Value = ''; Hint = 'its question''s option (1, 2 ...) or anything to go on with; claude -c'; Free = $true; Do = {
+            param($v, $i)
+            if (-not $v) { return }
+            $tool = Get-AgentTool
+            if (-not $tool) { $script:message = 'Claude Code (claude) is not installed.'; return }
+            Start-AgentRun 'Claude Code: your answer' $tool @('-c', '-p', $v, '--permission-mode', 'acceptEdits')
+        } }
 }
 # A block of a document: a task (its line and the lines indented under it), a requirement (to the next
 # heading of its level or above), a scenario (to the next heading of its level or above). The index after it.
@@ -7005,6 +7067,15 @@ function Draw-Run([int]$W, [int]$H) {
         elseif ($null -eq $run.Code) { [void]$prompt.Add(@((S " $($g.cross) " $st.err), (S "$($run.Label): didn't start." $st.err))) }
         else { [void]$prompt.Add(@((S ' ! ' $st.warn), (S "$($run.Label): ended with exit code $($run.Code)." $st.warn))) }
         $hints = @(@('Enter Esc', 'back'), @('PgUp PgDn Home End', 'scroll'))
+        if ($run.PSObject.Properties['Agent'] -and $run.Agent) {
+            [void]$prompt.Add(@((S ' a ' $st.key), (S 'answer Claude (its question''s option, or anything to go on with) - the same conversation' $st.muted)))
+            $hints = @(, @('a', 'answer Claude')) + $hints
+        }
+        if ($script:input) {
+            $prompt.Clear()
+            [void]$prompt.Add(@((S ' ? ' $st.key), (S "$($script:input.Label)  " $st.bold), (S "$($script:input.Value)$($g.cursor)" $st.accent), (S "   $($script:input.Hint)" $st.faint)))
+            $hints = @(@('Enter', 'send'), @('Esc', 'cancel'))
+        }
         if ($run.Code -ne 0 -and $run.PSObject.Properties['Retry'] -and $run.Retry) {
             [void]$prompt.Add(@((S ' r ' $st.key), (S 'retry (after closing the file, if it was open)' $st.muted)))
             $hints = @(, @('r', 'retry')) + $hints
@@ -7114,6 +7185,7 @@ function Draw-Help([int]$W, [int]$H) {
         @('  ' + [string][char]0x2192, 'in find: mark (Space, a all, g its group); Del deletes; Enter: the marked - delete, change, redo'),
         @('y', 'a change out of date (! in the plan): its documents updated by the agent, or marked as in sync'),
         @('u', 'undo: what changed in openspec/ since the last commit, piece by piece (git; a commit empties it)'),
+        @('  agent', 'Claude Code: here (h: this terminal, you answer its questions; /exit back), in the background (b; a answers it after), or the prompt saved (s)'),
         @('  Ctrl+U Ctrl+Y', 'undo, out of date: the same from any screen, also while typing (u, y where nothing is typed)'),
         @('  Alt+T U Y S', 'the same as Ctrl+ (a Mac: Option, with "Use Option as Meta key" in Terminal, Esc+ in iTerm2)'),
         @('e', 'edit: open the spec or the proposal in your editor'),
@@ -7450,6 +7522,8 @@ function On-Key($K) {
         return
     }
     if ($run.Done) {
+        # The agent in the background asked something, or you want it to go on: a, then your words.
+        if (([string]$ch).ToLower() -eq 'a' -and $run.PSObject.Properties['Agent'] -and $run.Agent) { Start-AgentAnswer; return }
         # A failed export: the same again (the file was open in another program, Figma didn't answer ...).
         if (([string]$ch).ToLower() -eq 'r' -and $run.Code -ne 0 -and $run.PSObject.Properties['Retry'] -and $run.Retry) {
             $r = $run.Retry

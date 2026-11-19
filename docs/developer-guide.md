@@ -384,7 +384,13 @@ Command line: `lazyspec -Export Word -Item add-user-signup,add-online-payments -
 2. `y`: **update them** (the agent gets exactly what changed, before and now) or **mark them as in sync** if nothing needs to change.
 3. The first time, LazySpec asks whether to watch for this in the project (`lazyspec: syncCheck:`).
 
-**The agent:** each time LazySpec hands work to Claude Code it asks: run it now (in the run screen) or save the prompt (in `.lazyspec/prompts/`, the command copied, e.g. `claude "Read the file .lazyspec/prompts/... and do exactly what it says."`). Your answer is the default next time (`lazyspec: agent:`). Add `.lazyspec/` to `.gitignore`.
+**The agent:** each time LazySpec hands work to Claude Code it asks how:
+
+- **Here** (`h`, recommended): Claude Code takes over this terminal with the prompt. When it asks you to choose (1, 2, 3 ...) or to approve, answer it there; `/exit` (or `Ctrl+C` twice) brings you back to LazySpec, which reads the documents again.
+- **In the background** (`b`): its output in the run screen, without questions (it decides and says what it decided). When it's done, `a` sends it your answer or more to do, in the same conversation.
+- **Save the prompt** (`s`): in `.lazyspec/prompts/`, the command copied, e.g. `claude "Read the file .lazyspec/prompts/... and do exactly what it says."`.
+
+Your answer is the default next time (`lazyspec: agent:`). Add `.lazyspec/` to `.gitignore`.
 
 ### 19. Undo since the last commit
 

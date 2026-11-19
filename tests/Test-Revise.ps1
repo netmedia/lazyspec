@@ -85,7 +85,7 @@ try {
     Check ((Read-File 'openspec\config.yaml') -match '(?m)^  syncCheck: on$') 'the answer remembered (lazyspec: syncCheck: on)'
     Check ($f[1] -match 'OUT OF DATE' -and $f[1] -match '! Tasks is older than' -and $f[1] -match '~ specs/user-accounts/spec\.md . E-mail verification' -and $f[1] -match '! 5/7') 'the change: ! in the plan, what changed in its details' $f[1]
 
-    # 3. y: the agent - the prompt saved, then run.
+    # 3. y: the agent - the prompt saved; in the background, then answered (a); here, in the terminal.
     $f = Invoke-Keys 'Tab,y,snap,u,snap,s,snap'
     Check ($f[0] -match 'Update them \(the agent\)' -and $f[0] -match 'Mark them as in sync') 'y: update or mark as in sync' $f[0]
     Check ($f[2] -match 'Prompt saved: \.lazyspec/prompts/\d{8}-\d{6}-sync-01-add-user-signup\.md - give it to the agent: claude') 'the prompt saved, the command for the agent' $f[2]
@@ -94,9 +94,15 @@ try {
     if ($prompt.Count) { $pt = [IO.File]::ReadAllText($prompt[0].FullName, $utf8) }
     Check ($pt -match 'requirement "E-mail verification" changed' -and $pt -match '(?s)Before:.*Link expired.*Now:' -and $pt -match 'openspec validate 01-add-user-signup') 'the prompt: what changed, before and now'
     Check ((Read-File 'openspec\config.yaml') -match '(?m)^  agent: prompt$') 'the choice remembered (lazyspec: agent: prompt)'
-    $f = Invoke-Keys 'Tab,y,u,snap,r,wait:done,snap'
-    Check ($f[0] -match 'Save the prompt for later') 'asked again, the remembered one first' $f[0]
-    Check ($f[1] -match 'STAND-IN AGENT -p "Read the file \.lazyspec/prompts/' -and $f[1] -match 'acceptEdits') 'run: the agent gets the prompt' $f[1]
+    $f = Invoke-Keys 'Tab,y,u,snap,b,wait:done,snap,a,text:2,snap,Enter,wait:done,snap'
+    Check ($f[0] -match 'Here \(it asks, you answer\)\s+In the background \(no questions\)\s+Save the prompt' -and $f[0] -match 'h here\s+b background\s+s save it') 'asked how: here, in the background, or saved' $f[0]
+    Check ($f[1] -match 'STAND-IN AGENT -p "Read the file \.lazyspec/prompts/' -and $f[1] -match 'Do not ask questions' -and $f[1] -match 'acceptEdits' -and $f[1] -match 'a answer Claude') 'in the background: the prompt, no questions; a answers it after' $f[1]
+    Check ($f[2] -match 'Answer Claude:\s+2') 'a: your answer typed in the run screen' $f[2]
+    Check ($f[3] -match 'STAND-IN AGENT -c -p 2 --permission-mode acceptEdits') 'the answer: the same conversation (claude -c)' $f[3]
+    Check ((Read-File 'openspec\config.yaml') -match '(?m)^  agent: background$') 'the choice remembered (lazyspec: agent: background)'
+    $f = Invoke-Keys 'Tab,y,u,h,snap'
+    Check ($f[0] -match 'Claude Code done \(Update 01-add-user-signup\)\. u: what it changed') 'here: Claude Code in the terminal, then back, the documents read again' $f[0]
+    Check ((Read-File 'openspec\config.yaml') -match '(?m)^  agent: here$') 'the choice remembered (lazyspec: agent: here)'
     # From Read too: the change being read out of date at the top, y there.
     $f = Invoke-Keys 'Tab,Enter,snap,y,snap,Esc'
     Check ($f[0] -match '! out of date: y') 'Read: out of date said at the top' $f[0]
