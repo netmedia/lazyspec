@@ -4,7 +4,8 @@
 // bar above it (Save, Cancel, Source ...). Bundled by esbuild into out/webview/editor.js (+ .css).
 
 import { CrepeBuilder } from '@milkdown/crepe/builder';
-import { remarkStringifyOptionsCtx } from '@milkdown/kit/core';
+import { editorViewCtx, remarkStringifyOptionsCtx } from '@milkdown/kit/core';
+import { TextSelection } from '@milkdown/kit/prose/state';
 import { cursor } from '@milkdown/crepe/feature/cursor';
 import { linkTooltip } from '@milkdown/crepe/feature/link-tooltip';
 import { listItem } from '@milkdown/crepe/feature/list-item';
@@ -71,7 +72,9 @@ async function load(markdown: string): Promise<string> {
 function reveal(text: string, nth: number) {
   const norm = (t: string) => t.replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
   const want = norm(text);
-  if (!want) { return; }
+  // Focused (the arrows, PgUp, PgDn work straight away); the cursor at the item, when there is one.
+  const view = crepe ? crepe.editor.action(ctx => ctx.get(editorViewCtx)) : null;
+  if (!want) { view?.focus(); return; }
   const root = document.getElementById('editor')!;
   const blocks = [...root.querySelectorAll('.ProseMirror h1, .ProseMirror h2, .ProseMirror h3, .ProseMirror h4, .ProseMirror h5, .ProseMirror h6, .ProseMirror li, .ProseMirror p, .ProseMirror td')] as HTMLElement[];
   // The innermost blocks that contain it (a list item, not the list around it).
@@ -79,6 +82,14 @@ function reveal(text: string, nth: number) {
   const el = hits[Math.min(nth, hits.length - 1)];
   if (!el) { return; }
   el.scrollIntoView({ block: 'center' });
+  if (view) {
+    try {
+      const pos = view.posAtDOM(el, 0);
+      view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(pos))));
+    } catch { /* the cursor stays where it was */ }
+    view.focus();
+    el.scrollIntoView({ block: 'center' });
+  }
   // A mark over it, not on it (the editor puts its own elements back as they were).
   document.querySelectorAll('.lazyspec-hit').forEach(x => x.remove());
   const r = el.getBoundingClientRect();

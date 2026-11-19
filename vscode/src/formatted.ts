@@ -33,9 +33,14 @@ export class FormattedEditorProvider implements vscode.CustomTextEditorProvider 
   static async openAt(uri: vscode.Uri, text: string, nth = 0) {
     const key = uri.toString();
     const panel = FormattedEditorProvider.panels.get(key);
-    if (text) { FormattedEditorProvider.pending.set(key, { text, nth }); }
+    // Opened (or shown again): focused, at the item - the arrows, PgUp and PgDn scroll it straight away.
+    FormattedEditorProvider.pending.set(key, { text, nth });
     await vscode.commands.executeCommand('vscode.openWith', uri, FormattedEditorProvider.viewType);
-    if (panel && text) { FormattedEditorProvider.pending.delete(key); void panel.webview.postMessage({ type: 'reveal', text, nth }); }
+    if (panel) { FormattedEditorProvider.pending.delete(key); void panel.webview.postMessage({ type: 'reveal', text, nth }); }
+  }
+  /** The formatted editor shown now: its text focused. */
+  static focusActive() {
+    for (const p of FormattedEditorProvider.panels.values()) { if (p.active) { void p.webview.postMessage({ type: 'reveal', text: '', nth: 0 }); } }
   }
 
   resolveCustomTextEditor(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
