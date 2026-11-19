@@ -257,6 +257,7 @@ function Show-Usage {
     & $d '    v validate all   a archive the change   n new change   e edit   s sort changes'
     & $d '    m changes as one (mark them with Space, Enter: a title, then read them; x there: export)'
     & $d '    t find: a task (1.3, 01 1.3, words), a requirement, a scenario; Enter: Read, at it'
+    & $d '      from any screen: t (where nothing is typed) or Ctrl+F; Esc comes back'
     & $d '      Right: mark them (Space, a all, g its group); Del delete; Enter: delete, change, redo them'
     & $d '    y out of date (! in the plan): the agent updates the documents, or mark them as in sync'
     & $d '    u undo: the changes since the last commit, piece by piece (needs git)'
@@ -5499,12 +5500,12 @@ function Draw-Read([int]$W, [int]$H) {
         if ($items[$script:readSel].Kind -eq 'task') { $hints += , @('Space', 'done') }
         $hints += , @('Del', 'delete'); $hints += , @('a', 'agent'); $hints += , @('PgUp PgDn', 'scroll')
         if ($tabs.Count -gt 1) { $hints += , @("$([string][char]0x2190)$([string][char]0x2192)", 'document') }
-        $hints += , @('e', 'edit file'); $hints += , @('x', 'export'); $hints += , @('Esc', 'back')
+        $hints += , @('t', 'find'); $hints += , @('e', 'edit file'); $hints += , @('x', 'export'); $hints += , @('Esc', 'back')
     }
     else {
         $hints = @(@("$($g.up)$($g.down) PgUp PgDn", 'scroll'), @('Home End', 'top, end'))
         if ($tabs.Count -gt 1) { $hints += , @("$([string][char]0x2190)$([string][char]0x2192)", 'document') }
-        $hints += , @('x', 'export'); $hints += , @('e', 'edit'); $hints += , @('?', 'help'); $hints += , @('Esc', 'back')
+        $hints += , @('t', 'find'); $hints += , @('x', 'export'); $hints += , @('e', 'edit'); $hints += , @('?', 'help'); $hints += , @('Esc', 'back')
     }
     [void]$rows.Add((Border-Bottom $W $hints 0))
     return , $rows
@@ -5768,7 +5769,8 @@ function Find-Search([string]$Query, [string]$Kind) {
 }
 function Start-Search {
     if (-not $script:search) { $script:search = [pscustomobject]@{ Query = ''; Kind = 'all'; Index = 0; Focus = 'type'; Marked = [ordered]@{} } }
-    $script:search.Focus = 'type' 
+    $script:search.Focus = 'type'
+    if ($script:screen -ne 'search') { $script:search | Add-Member -NotePropertyName Back -NotePropertyValue $script:screen -Force }
     $script:search.Index = 0
     $script:message = ''
     $script:screen = 'search'
@@ -5839,7 +5841,7 @@ function On-SearchKey($K) {
     $name = $K.Name; $ch = $K.Char
     if ($s.Focus -eq 'list') { On-SearchListKey $K; return }
     if ($name -eq 'Right') { if (@(Find-Search $s.Query $s.Kind).Count) { $s.Focus = 'list' }; return }
-    if ($name -eq 'Esc') { $script:screen = 'home'; return }
+    if ($name -eq 'Esc') { $script:screen = 'home'; if ($s.PSObject.Properties['Back'] -and $s.Back) { $script:screen = $s.Back }; return }
     if ($name -eq 'Back') { if ($s.Query.Length) { $s.Query = $s.Query.Substring(0, $s.Query.Length - 1) }; $s.Index = 0; return }
     if ($name -eq 'Tab') { $s.Kind = $searchKinds[([array]::IndexOf($searchKinds, $s.Kind) + 1) % $searchKinds.Count]; $s.Index = 0; return }
     if ($name -eq 'Up') { $s.Index = [Math]::Max(0, $s.Index - 1); return }
@@ -6693,7 +6695,7 @@ function Draw-Undo([int]$W, [int]$H) {
     [void]$rows.Add((Border-Top $W "$projectName $($g.mid) undo" "$files changed since the last commit" 0))
     foreach ($r in (Full-Rows $bodyRows $W $lines)) { [void]$rows.Add($r) }
     foreach ($r in $bottom) { [void]$rows.Add($r) }
-    if ($script:confirm) { $hints = Home-Hints } else { $hints = @(@("$($g.up)$($g.down)", 'select'), @('Enter', 'undo it'), @('r', 'refresh'), @('Esc', 'back')) }
+    if ($script:confirm) { $hints = Home-Hints } else { $hints = @(@("$($g.up)$($g.down)", 'select'), @('Enter', 'undo it'), @('r', 'refresh'), @('t', 'find'), @('Esc', 'back')) }
     [void]$rows.Add((Border-Bottom $W $hints 0))
     return , $rows
 }
@@ -6993,6 +6995,7 @@ function Draw-Help([int]$W, [int]$H) {
         @('x', 'export the specification for the client: PDF, Word or HTML (export\ in the project; opens it)'),
         @('m', 'changes as one: mark the ones that go to the client as one whole, read them together (x there: export)'),
         @('t', 'find: tasks (1.3, 01 1.3, words), requirements and scenarios; Enter opens it in Read, at it'),
+        @('  Ctrl+F', 'find from any screen (t too, where nothing is typed); Esc comes back there'),
         @('  ' + [string][char]0x2192, 'in find: mark (Space, a all, g its group); Del deletes; Enter: the marked - delete, change, redo'),
         @('y', 'a change out of date (! in the plan): its documents updated by the agent, or marked as in sync'),
         @('u', 'undo: what changed in openspec/ since the last commit, piece by piece (git; a commit empties it)'),
@@ -7157,6 +7160,17 @@ function On-Key($K) {
     if ($name -eq 'CtrlC') {
         if ($script:screen -eq 'run' -and -not $script:run.Done) { $script:run.ConfirmStop = $true; return }
         $script:quit = $true; return
+    }
+    # Find, from any screen: t where letters aren't typed, Ctrl+F anywhere but the editor (its changes would
+    # be left). Not while a question or a text is asked. Esc there comes back here.
+    if (-not ($script:confirm -or $script:choose -or $script:input -or $script:filtering) -and $script:screen -notin @('search', 'edit', 'none')) {
+        $tScreens = @('home', 'read', 'pick', 'undo', 'help')
+        $runDone = $script:screen -eq 'run' -and $script:run -and $script:run.Done
+        if ($name -eq 'CtrlF' -or ([string]$ch -eq 't' -and ($tScreens -contains $script:screen -or $runDone))) {
+            if ($script:screen -eq 'run' -and -not $runDone) { return }
+            Start-Search
+            return
+        }
     }
     if ($script:screen -eq 'help') {
         if ($name -eq 'PgDn' -or $name -eq 'Down') { $script:helpScroll += 10 }
@@ -7332,6 +7346,7 @@ function Read-Keys {
         $k = [Console]::ReadKey($true)
         if ($k.Key -eq 'C' -and ($k.Modifiers -band [ConsoleModifiers]::Control)) { $out += [pscustomobject]@{ Name = 'CtrlC'; Char = $null }; continue }
         if ($k.Key -eq 'S' -and ($k.Modifiers -band [ConsoleModifiers]::Control)) { $out += [pscustomobject]@{ Name = 'CtrlS'; Char = $null }; continue }
+        if ($k.Key -eq 'F' -and ($k.Modifiers -band [ConsoleModifiers]::Control)) { $out += [pscustomobject]@{ Name = 'CtrlF'; Char = $null }; continue }
         $name = $keyNames[$k.Key.ToString()]
         if ($k.Key -eq 'Spacebar') { $name = 'Space' }
         $char = $null
@@ -7399,7 +7414,7 @@ function Next-TestKey {
     [void]$queue.Dequeue()
     if ($k -eq 'snap') { Save-Frame "snap $($script:screen)"; return $null }
     if ($k.StartsWith('text:')) { foreach ($c in $k.Substring(5).ToCharArray()) { On-Key ([pscustomobject]@{ Name = $null; Char = $c }) }; return $null }
-    $names = @('Up', 'Down', 'Left', 'Right', 'Enter', 'Esc', 'Tab', 'PgUp', 'PgDn', 'Home', 'End', 'Back', 'Space', 'CtrlC', 'Del', 'CtrlS')
+    $names = @('Up', 'Down', 'Left', 'Right', 'Enter', 'Esc', 'Tab', 'PgUp', 'PgDn', 'Home', 'End', 'Back', 'Space', 'CtrlC', 'Del', 'CtrlS', 'CtrlF')
     if ($names -contains $k) { return [pscustomobject]@{ Name = $k; Char = $null } }
     return [pscustomobject]@{ Name = $null; Char = $k[0] }
 }

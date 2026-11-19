@@ -22,6 +22,7 @@
     4. Words: tasks, requirements and scenarios that contain them all; Tab: only requirements, only open tasks.
     5. A requirement of a delta spec and of a spec: Read at it, marked.
     6. Archived changes only with h, as on Home; Esc: back to Home.
+    7. From any screen: t (Read, changes as one), Ctrl+F (help); Esc comes back there; not while asked.
 
 .EXAMPLE
     .\tests\Test-Search.ps1
@@ -70,6 +71,14 @@ try {
 
     $f = Invoke-Keys 't,text:01,Tab,Tab,snap'
     Check ($f[0] -match 'kind: open tasks' -and $f[0] -match '3 found' -and $f[0] -match "$ring 01 Add user sign-up\s+1\.4" -and $f[0] -notmatch "$ok ") 'Tab: open tasks only' $f[0]
+
+    # From any screen: t (Read, changes as one), Ctrl+F (help); Esc comes back there; not while asked.
+    $f = Invoke-Keys 'Tab,Enter,t,snap,Esc,snap,?,CtrlF,snap,Esc,snap'
+    Check ($f[0] -match '^snap search' -and $f[1] -match '^snap read') 't in Read: find, Esc back to Read' (($f | ForEach-Object { $_.Split("`n")[0] }) -join ' / ')
+    Check ($f[2] -match '^snap search' -and $f[3] -match '^snap help') 'Ctrl+F in help: find, Esc back to help'
+    $f = Invoke-Keys 'Tab,m,t,snap,Esc,snap,Esc,x,snap'
+    Check ($f[0] -match '^snap search' -and $f[1] -match '^snap pick') 't in changes as one: find, Esc back there'
+    Check ($f[2] -match '^snap home' -and $f[2] -notmatch 'find') 'a question open (x: the format): t isn''t find' $f[2]
 
     $f = Invoke-Keys 't,text:sign-in endpoint,snap,Esc,h,t,snap'
     Check ($f[0] -match 'nothing found') 'archived changes hidden, as on Home' $f[0]
