@@ -24,7 +24,7 @@ export type Node =
   | { kind: 'scn'; project: Project; owner: Owner; cap: string; file: string; req: string; name: string; line: number }
   | { kind: 'sec'; project: Project; owner: Owner; file: string; section: Section };
 
-export interface Settings { grouped: boolean; showArchived: boolean; sort: 'name' | 'name-desc' | 'recent'; documents: 'preview' | 'source' }
+export interface Settings { grouped: boolean; showArchived: boolean; sort: 'name' | 'name-desc' | 'recent'; documents: 'formatted' | 'preview' | 'source' }
 export interface Hooks { stale(p: Project, c: Change): boolean }
 
 export function openCommand(file: string, line = 0): vscode.Command {

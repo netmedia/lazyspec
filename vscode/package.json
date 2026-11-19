@@ -2,7 +2,7 @@
   "name": "lazyspec",
   "displayName": "LazySpec - OpenSpec specs and changes",
   "description": "A project's OpenSpec in your editor: the specifications and the plan (by group), formatted reading, tasks, requirements, scenarios and sections to edit, tick, delete or hand to the agent, find, out-of-date documents, undo, validate, archive, and exports for the client in the company look.",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "publisher": "netmedia",
   "author": {
     "name": "Netmedia",
@@ -293,6 +293,23 @@
         "command": "lazyspec.help",
         "title": "Help",
         "category": "LazySpec"
+      },
+      {
+        "command": "lazyspec.openFormatted",
+        "title": "Open Formatted Editor",
+        "category": "LazySpec",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "lazyspec.readFile",
+        "title": "Read (LazySpec)",
+        "category": "LazySpec",
+        "icon": "$(book)"
+      },
+      {
+        "command": "lazyspec.openBlock",
+        "title": "Edit in the File",
+        "category": "LazySpec"
       }
     ],
     "menus": {
@@ -518,6 +535,11 @@
           "command": "lazyspec.undoItem",
           "when": "viewItem =~ /^undo(File|Hunk)$/",
           "group": "1_undo@1"
+        },
+        {
+          "command": "lazyspec.openFormatted",
+          "when": "viewItem == document",
+          "group": "1_open@0"
         }
       ],
       "explorer/context": [
@@ -594,6 +616,44 @@
         {
           "command": "lazyspec.exportMarkdown",
           "when": "resourceExtname == .md"
+        },
+        {
+          "command": "lazyspec.openBlock",
+          "when": "false"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "lazyspec.openFormatted",
+          "when": "resourceExtname == .md && !(activeCustomEditorId == lazyspec.formatted)",
+          "group": "navigation@-10"
+        },
+        {
+          "submenu": "lazyspec.mdOptions",
+          "when": "resourceExtname == .md",
+          "group": "navigation@-9"
+        }
+      ],
+      "lazyspec.mdOptions": [
+        {
+          "command": "lazyspec.openFormatted",
+          "group": "1_open@1"
+        },
+        {
+          "command": "lazyspec.showSource",
+          "group": "1_open@2"
+        },
+        {
+          "command": "lazyspec.showPreview",
+          "group": "1_open@3"
+        },
+        {
+          "command": "lazyspec.readFile",
+          "group": "2_read@1"
+        },
+        {
+          "command": "lazyspec.exportMarkdown",
+          "group": "3_export@1"
         }
       ]
     },
@@ -682,15 +742,17 @@
         "lazyspec.documents": {
           "type": "string",
           "enum": [
+            "formatted",
             "preview",
             "source"
           ],
           "enumDescriptions": [
-            "Formatted (the Markdown preview)",
-            "The Markdown itself, to edit"
+            "Formatted, to edit (bold, headings, lists, tables from a bar on top)",
+            "Formatted, read-only (the Markdown preview)",
+            "The Markdown itself"
           ],
-          "default": "preview",
-          "description": "A document clicked in the Plan or the Scope opens formatted or as its source (right-click: the other)."
+          "default": "formatted",
+          "description": "A document clicked in the Plan or the Scope opens in the formatted editor, the preview or as its source (the title bar's buttons switch)."
         },
         "lazyspec.sort": {
           "type": "string",
@@ -701,23 +763,58 @@
           ],
           "default": "name",
           "description": "The plan's changes: by name A-Z, Z-A, or recently modified first."
+        },
+        "lazyspec.editor": {
+          "type": "string",
+          "enum": [
+            "formatted",
+            "source"
+          ],
+          "enumDescriptions": [
+            "The item alone in the formatted editor (Save / Cancel)",
+            "Its lines selected in the Markdown"
+          ],
+          "default": "formatted",
+          "description": "Edit on a task, requirement, scenario or section: in the formatted editor, or in the Markdown itself."
         }
       }
-    }
+    },
+    "customEditors": [
+      {
+        "viewType": "lazyspec.formatted",
+        "displayName": "LazySpec: Formatted Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          }
+        ],
+        "priority": "option"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "lazyspec.mdOptions",
+        "label": "LazySpec",
+        "icon": "$(list-selection)"
+      }
+    ]
   },
   "scripts": {
     "kit": "node scripts/copy-kit.js",
-    "compile": "npm run kit && tsc -p .",
+    "compile": "npm run kit && tsc -p . && node scripts/bundle-webview.js",
     "watch": "tsc -watch -p .",
-    "test": "npm run compile && node --test out/test/model.test.js out/test/ops.test.js",
+    "test": "npm run compile && node --test out/test/model.test.js out/test/ops.test.js out/test/mdmerge.test.js",
     "test:vscode": "npm run compile && node out/test/run-vscode.js",
     "package": "npm run compile && vsce package --no-dependencies -o lazyspec.vsix"
   },
   "devDependencies": {
+    "@milkdown/crepe": "^7.23.0",
+    "@milkdown/kit": "^7.23.0",
     "@types/node": "^20.11.0",
     "@types/vscode": "~1.85.0",
     "@vscode/test-electron": "^2.4.1",
     "@vscode/vsce": "^3.2.0",
+    "esbuild": "^0.28.2",
     "typescript": "^5.6.0"
   }
 }

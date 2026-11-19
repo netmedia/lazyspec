@@ -9,6 +9,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { answer, agentTask, offerDoneSync, onSynced, runningSyncs } from './agent';
 import { DetailsView, Selected } from './details';
+import { editItemFormatted, FormattedEditorProvider } from './formatted';
 import { agentItems, deleteItems, editItem, ItemContext, openBlock, toggleTask } from './items';
 import { Change, Entry, find, FindKind, itemTitle, Project, searchIndex, Spec } from './model';
 import { doneSyncPrompts, saveSyncSnapshot, setConfigBundle, setConfigValue, setInSync, slug, StaleDoc, syncPromptMany, syncState } from './ops';
@@ -28,7 +29,7 @@ const syncOffered = new Set<string>();
 
 function settings(): Settings {
   const c = vscode.workspace.getConfiguration('lazyspec');
-  return { grouped: c.get('grouped', true), showArchived: c.get('showArchived', false), sort: c.get('sort', 'name'), documents: c.get('documents', 'preview') };
+  return { grouped: c.get('grouped', true), showArchived: c.get('showArchived', false), sort: c.get('sort', 'name'), documents: c.get('documents', 'formatted') };
 }
 
 // --- the workspace's projects -----------------------------------------------------------------------------------
@@ -472,17 +473,19 @@ let scopeView: vscode.TreeView<Node>;
 let undoView: vscode.TreeView<UndoNode>;
 let status: vscode.StatusBarItem;
 let reloadTimer: NodeJS.Timeout | undefined;
-const itemCtx: ItemContext = { projectOfFile: f => projectOfFile(f), reload: () => reload(), openFile: (f, l) => openFile(f, l) };
+const itemCtx: ItemContext = { projectOfFile: f => projectOfFile(f), reload: () => reload(), openFile: (f, l) => openFile(f, l), formatted: (e, viaChange) => editItemFormatted(ctx.extensionUri, itemCtx, e, viaChange) };
 
 async function openFile(file: string, line = 0) {
   const doc = await vscode.workspace.openTextDocument(file);
   const pos = new vscode.Position(Math.max(0, line - 1), 0);
   await vscode.window.showTextDocument(doc, { selection: new vscode.Range(pos, pos), preview: line > 0 });
 }
-/** A document: formatted (the Markdown preview) or its source, as lazyspec.documents says. */
-async function openDocument(file: string, as?: 'preview' | 'source') {
+/** A document: in the formatted editor, the Markdown preview or its source, as lazyspec.documents says. */
+async function openDocument(file: string, as?: 'formatted' | 'preview' | 'source') {
   const how = as || settings().documents;
-  if (how === 'preview' && file.toLowerCase().endsWith('.md')) { await vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(file)); return; }
+  const md = file.toLowerCase().endsWith('.md');
+  if (how === 'formatted' && md) { await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(file), FormattedEditorProvider.viewType); return; }
+  if (how === 'preview' && md) { await vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(file)); return; }
   await openFile(file);
 }
 function reload() {
@@ -598,6 +601,19 @@ export function activate(context: vscode.ExtensionContext): Api {
   reg('lazyspec.openDocument', (file: string) => openDocument(file));
   reg('lazyspec.showPreview', (n?: Node | vscode.Uri) => { const f = fileOf(n); if (f) { return openDocument(f, 'preview'); } });
   reg('lazyspec.showSource', (n?: Node | vscode.Uri) => { const f = fileOf(n); if (f) { return openDocument(f, 'source'); } });
+  reg('lazyspec.openFormatted', (n?: Node | vscode.Uri) => { const f = fileOf(n); if (f) { return openDocument(f, 'formatted'); } });
+  reg('lazyspec.openBlock', (e: Entry) => openBlock(e));
+  reg('lazyspec.readFile', (n?: vscode.Uri) => {
+    const f = fileOf(n);
+    const e = f ? searchIndex(projectOfFile(f) || projects[0], true).find(x => x.path.toLowerCase() === f.toLowerCase()) : undefined;
+    if (e) { return readAt(e); }
+    const p = f ? projectOfFile(f) : undefined;
+    const c = p?.changes.find(x => f!.toLowerCase().startsWith(x.dir.toLowerCase()));
+    const s = p?.specs.find(x => x.path.toLowerCase() === f!.toLowerCase());
+    if (p && c) { ReadPanel.show({ kind: 'change', project: p, change: c }, readActions); }
+    else if (p && s) { ReadPanel.show({ kind: 'spec', project: p, spec: s }, readActions); }
+    else { void vscode.window.showInformationMessage('Read shows the documents of a change or a spec (openspec/).'); }
+  });
   reg('lazyspec.openItem', (arg?: unknown) => {
     const t = targetOf(arg);
     if (t?.change) { return openDocument(t.change.path); }
@@ -695,6 +711,7 @@ export function activate(context: vscode.ExtensionContext): Api {
     output, status, planView, scopeView, undoView, { dispose: () => watchers.forEach(w => w.dispose()) },
     vscode.workspace.registerTextDocumentContentProvider(HeadContent.scheme, new HeadContent()),
     vscode.window.registerWebviewViewProvider('lazyspec.details', details),
+    vscode.window.registerCustomEditorProvider(FormattedEditorProvider.viewType, new FormattedEditorProvider(context.extensionUri), { webviewOptions: { retainContextWhenHidden: true } }),
     planView.onDidChangeSelection(e => select(e.selection[0])),
     scopeView.onDidChangeSelection(e => select(e.selection[0])),
     planView.onDidChangeCheckboxState(async e => {

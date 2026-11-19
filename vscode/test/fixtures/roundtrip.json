@@ -1,0 +1,74 @@
+[
+ {
+  "file": "changes\\01-add-user-signup\\design.md",
+  "md": "# Design: Add user sign-up\n\n## Context\n\nAccounts exist already (sign-in, password reset); support creates them by hand in the back office.\n\n## Decisions\n\n### ADR-001: Verification by link, not by code\n\nA link in the e-mail, valid for 24 hours, verifies the address. A code to type in was considered; a link is\none click for the customer and needs no extra page.\n\n### ADR-002: Unverified accounts are removed after 24 hours\n\nA nightly job removes accounts that were not verified in time, so that an address can be used again.\n\n## Risks / Trade-offs\n\n- E-mails that land in spam: the \"check your e-mail\" page says so and offers to send the link again.\n"
+ },
+ {
+  "file": "changes\\01-add-user-signup\\models.md",
+  "md": "# Models: Add user sign-up\n\n## Overview\n\n| Model / lookup list | Kind  | Change  | Capabilities                 |\n| ------------------- | ----- | ------- | ---------------------------- |\n| `User`              | model | changed | user-accounts                |\n| `EmailVerification` | model | new     | user-accounts, notifications |\n\n## New models\n\n### `EmailVerification`\n\nA link sent to verify a new account's e-mail address.\n\n| Change | Field        | Type        | Required | Description                 |\n| ------ | ------------ | ----------- | -------- | --------------------------- |\n| +      | `Id`         | `int`       | yes      |                             |\n| +      | `UserId`     | `int`       | yes      | the account it verifies     |\n| +      | `Token`      | `string`    | yes      | the random part of the link |\n| +      | `ExpiresAt`  | `DateTime`  | yes      | 24 hours after it was sent  |\n| +      | `VerifiedAt` | `DateTime?` | no       | when the link was opened    |\n\n**Relations:** + `EmailVerification` N:1 `User` (`UserId`)\n\n## Changed models\n\n### `User`\n\n| Change | Field        | Type        | Required | Description                           |\n| ------ | ------------ | ----------- | -------- | ------------------------------------- |\n|        | `Id`         | `int`       | yes      |                                       |\n|        | `Email`      | `string`    | yes      |                                       |\n| +      | `IsVerified` | `bool`      | yes      | false until the address is verified   |\n| +      | `SignedUpAt` | `DateTime?` | no       | empty for accounts created by support |\n"
+ },
+ {
+  "file": "changes\\01-add-user-signup\\proposal.md",
+  "md": "# Proposal: Add user sign-up\n\n## Why\n\nToday accounts are created by support. Customers wait up to two days before they can order, and support\nspends hours a week on it.\n\n## What Changes\n\n- Customers create their own account with an e-mail address and a password.\n- The address is verified through a link sent by e-mail.\n- An account that isn't verified within 24 hours is removed.\n\n## Capabilities\n\n### New Capabilities\n\n- None\n\n### Modified Capabilities\n\n- `user-accounts`: sign-up and e-mail verification.\n- `notifications`: the verification e-mail.\n\n## Impact\n\n- API: a sign-up and a verification endpoint.\n- Front end: a sign-up page and a \"check your e-mail\" page.\n- Database: the account's verification state (see Models).\n"
+ },
+ {
+  "file": "changes\\01-add-user-signup\\specs\\notifications\\spec.md",
+  "md": "## ADDED Requirements\n\n### Requirement: Verification e-mail\n\nThe system SHALL send a new account an e-mail with its verification link within five minutes of signing up.\n\n#### Scenario: Sent\n\n- **WHEN** a visitor signs up\n- **THEN** the verification e-mail arrives within five minutes\n"
+ },
+ {
+  "file": "changes\\01-add-user-signup\\specs\\user-accounts\\spec.md",
+  "md": "## ADDED Requirements\n\n### Requirement: Self sign-up\n\nThe system SHALL let a visitor create an account with an e-mail address and a password of at least 12\ncharacters.\n\n#### Scenario: New address\n\n- **WHEN** a visitor signs up with an address that has no account\n- **THEN** an account is created and a verification e-mail is sent\n\n#### Scenario: Address in use\n\n- **WHEN** a visitor signs up with an address that already has an account\n- **THEN** the visitor sees the same \"check your e-mail\" page, and the owner of the address gets an e-mail saying someone tried to sign up\n\n### Requirement: E-mail verification\n\nThe system SHALL let a new account sign in only after its e-mail address is verified through the link.\n\n#### Scenario: Link opened in time\n\n- **WHEN** the customer opens the link within 24 hours\n- **THEN** the account is verified and the customer is signed in\n\n#### Scenario: Link expired\n\n- **WHEN** the customer opens the link after 24 hours\n- **THEN** they see that the link expired and can sign up again\n"
+ },
+ {
+  "file": "changes\\01-add-user-signup\\tasks.md",
+  "md": "# Tasks\n\n## 1. Backend\n\n- [x] 1.1 Sign-up endpoint with validation\n- [x] 1.2 Verification token and its expiry\n- [x] 1.3 Verification endpoint\n- [ ] 1.4 Nightly removal of unverified accounts\n\n## 2. Front end\n\n- [x] 2.1 Sign-up page\n- [ ] 2.2 \"Check your e-mail\" page with \"send again\"\n\n## 3. E-mail\n\n- [x] 3.1 Verification e-mail template\n- [ ] 3.2 Test the e-mail in the common mail clients\n"
+ },
+ {
+  "file": "changes\\02-add-refunds-to-online-payments\\proposal.md",
+  "md": "# Proposal: Add refunds to online payments\n\n## Why\n\nRefunds are made by hand in the payment provider's dashboard; the portal doesn't know an order was\nrefunded.\n\n## What Changes\n\n- Staff refund a paid order, or part of it, from the back office.\n- The customer sees the refund in their order and gets an e-mail.\n\n## Capabilities\n\n### Modified Capabilities\n\n- `online-payments`: refunds.\n\n## Impact\n\n- API: a refund endpoint; the payment provider's refund API.\n"
+ },
+ {
+  "file": "changes\\02-add-refunds-to-online-payments\\specs\\online-payments\\spec.md",
+  "md": "## ADDED Requirements\n\n### Requirement: Refund\n\nThe system SHALL let staff refund a paid order, in full or in part, through the payment provider.\n\n#### Scenario: Full refund\n\n- **WHEN** staff refund the whole order\n- **THEN** the provider refunds the card and the order shows as refunded\n"
+ },
+ {
+  "file": "changes\\03-add-order-history\\proposal.md",
+  "md": "# Proposal: Add order history\n\n## Why\n\nCustomers ask support about their past orders; they should see them in their account.\n\n## What Changes\n\n- An \"Orders\" page in the account: every order, newest first, with its status and total.\n\n## Capabilities\n\n### Modified Capabilities\n\n- `user-accounts`: the order history.\n\n## Impact\n\n- Front end: the \"Orders\" page. API: the customer's orders, paged.\n"
+ },
+ {
+  "file": "changes\\03-add-order-history\\specs\\user-accounts\\spec.md",
+  "md": "## ADDED Requirements\n\n### Requirement: Order history\n\nThe system SHALL show a signed-in customer their orders, newest first, with each order's date, status and\ntotal.\n\n#### Scenario: Orders\n\n- **WHEN** a customer with orders opens \"Orders\"\n- **THEN** they see every order, newest first\n\n#### Scenario: No orders yet\n\n- **WHEN** a customer without orders opens \"Orders\"\n- **THEN** they see that there are no orders yet and a link to the shop\n"
+ },
+ {
+  "file": "changes\\03-add-order-history\\tasks.md",
+  "md": "# Tasks\n\n## 1. Order history\n\n- [x] 1.1 API: the customer's orders, paged\n- [x] 1.2 The \"Orders\" page\n- [x] 1.3 Empty state for customers without orders\n"
+ },
+ {
+  "file": "changes\\archive\\2026-10-20-add-email-login\\proposal.md",
+  "md": "# Proposal: Add e-mail login\n\n## Why\n\nCustomers had no way to sign in; every order started from scratch.\n\n## What Changes\n\n- Sign-in with an e-mail address and a password; password reset.\n"
+ },
+ {
+  "file": "changes\\archive\\2026-10-20-add-email-login\\tasks.md",
+  "md": "# Tasks\n\n## 1. Sign-in\n\n- [x] 1.1 Sign-in endpoint and page\n- [x] 1.2 Password reset\n"
+ },
+ {
+  "file": "specs\\notifications\\spec.md",
+  "md": "# Notifications\n\n## Purpose\n\nThe e-mails the portal sends to customers about their account and their orders.\n\n## Requirements\n\n### Requirement: Order confirmation e-mail\n\nThe system SHALL send the customer an e-mail when their order is confirmed, with the order's items and\ntotal.\n\n#### Scenario: Confirmed order\n\n- **WHEN** an order is confirmed\n- **THEN** the customer receives the confirmation e-mail within five minutes\n"
+ },
+ {
+  "file": "specs\\online-payments\\spec.md",
+  "md": "# Online payments\n\n## Purpose\n\nCustomers pay for their orders online by card, through the payment provider.\n\n## Requirements\n\n### Requirement: Card payment\n\nThe system SHALL let a customer pay an order by card; the order SHALL be confirmed only after the payment\nprovider confirms the payment.\n\n#### Scenario: Paid\n\n- **WHEN** the payment provider confirms the payment\n- **THEN** the order is confirmed and the customer gets a confirmation e-mail\n\n#### Scenario: Declined\n\n- **WHEN** the card is declined\n- **THEN** the order stays open and the customer can try again\n"
+ },
+ {
+  "file": "specs\\platform-architecture\\spec.md",
+  "md": "# Acme Portal — Architecture\n\n## Purpose\n\nThe building blocks of the portal and how they talk to each other.\n\n## Requirements\n\n### Requirement: Web app and API\n\nThe portal SHALL consist of a web front end and a REST API; the front end SHALL reach data only through the\nAPI.\n\n| Part      | Technology | Hosting         |\n| --------- | ---------- | --------------- |\n| Front end | React      | Static web app  |\n| API       | .NET 10    | App Service     |\n| Database  | SQL Server | Azure SQL       |\n| E-mail    | SMTP relay | Managed service |\n\n#### Scenario: Data access\n\n- **WHEN** the front end needs a customer's orders\n- **THEN** it calls the API, never the database\n"
+ },
+ {
+  "file": "specs\\platform-overview\\spec.md",
+  "md": "# Acme Portal — Overview\n\n## Purpose\n\nAcme Portal is the online shop and customer portal of Acme, a made-up retailer. Customers browse the\ncatalogue, order and pay online, and follow their orders; Acme's staff manage orders in the back office.\n\n## Requirements\n\n### Requirement: One portal for customers and staff\n\nThe portal SHALL serve customers (the shop and their account) and Acme's staff (the back office) from one\nsystem, with each user seeing only what their role allows.\n\n#### Scenario: A customer signs in\n\n- **WHEN** a customer signs in\n- **THEN** they see the shop and their own account, not the back office\n\n#### Scenario: Staff sign in\n\n- **WHEN** a member of staff signs in\n- **THEN** they see the back office\n\n### Requirement: Supported browsers\n\nThe portal SHALL work in the current versions of Chrome, Edge, Firefox and Safari, on desktop and mobile.\n\n#### Scenario: A phone\n\n- **WHEN** a customer opens the shop on a phone\n- **THEN** every page is usable without zooming\n"
+ },
+ {
+  "file": "specs\\user-accounts\\spec.md",
+  "md": "# User accounts\n\n## Purpose\n\nCustomers have an account with an e-mail address and a password, so that they can order faster and follow\ntheir orders.\n\n## Requirements\n\n### Requirement: Sign in\n\nThe system SHALL let a customer sign in with their e-mail address and password.\n\n#### Scenario: Valid password\n\n- **WHEN** the customer enters their e-mail address and the right password\n- **THEN** they are signed in\n\n#### Scenario: Wrong password\n\n- **WHEN** the password is wrong\n- **THEN** the customer sees an error and stays signed out\n\n### Requirement: Password reset\n\nThe system SHALL let a customer set a new password through a link sent to their e-mail address.\n\n#### Scenario: Reset link\n\n- **WHEN** the customer asks for a reset link\n- **THEN** a link valid for one hour is sent to their address\n"
+ }
+]
