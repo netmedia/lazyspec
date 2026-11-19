@@ -41,6 +41,15 @@ on the same files. It has:
  Install it with `.\install-vscode.exe` (macOS, Linux: `./install-vscode.sh`): in every
 VS Code, Cursor, Windsurf and VSCodium found; again after a `git pull` to update it.
 
+**In Claude Desktop and Claude Code** ([LazySpec for Claude](desktop/README.md)): the same specs and changes as
+tools for Claude, for product managers who refine, clarify and investigate specs in a chat.
+- Read, find, write and tick; out of date, validate, undo.
+- Read the code, read-only.
+- Save as a pull request (`openspec/` only).
+- The same exports for the client.
+
+In Claude Desktop, install `lazyspec.mcpb` from the releases. In Claude Code: `/plugin install lazyspec@netmedia`.
+
 In a project's `.gitignore`: `.lazyspec/` (LazySpec's own notes and the agent's prompts) and, unless you commit
 what went to the client, `openspec/exports/`. The Netmedia conventions keep the document theme in
 `openspec/artifacts/` (`document-theme.yaml`, used when `documentTheme:` isn't set).

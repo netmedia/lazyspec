@@ -47,6 +47,12 @@ Markdown is edited as formatted text, like a word processor: no `**` or `#` to t
   with its lines selected). A main spec's requirement or scenario is saved through a new change
   (`MODIFIED`), or directly, as you choose.
 - A **document** clicked in the Plan or the Scope opens in the formatted editor too; save it with `Ctrl+S`.
+- So does **everything in it**: a task, task group, requirement, scenario or section clicked in the trees, a
+  find result, a link in Details. Its document opens formatted, scrolled to it, and the item is marked for a
+  moment.
+- **Wherever openspec's Markdown is opened from** (the Explorer, `Ctrl+P`, a link), it opens formatted:
+  LazySpec sets `workbench.editorAssociations` for `**/openspec/**/*.md` in your user settings. Turn
+  `lazyspec.openMarkdownFormatted` off to take that out again.
 - The **formatting bar** on top has a heading level (H1-H6, text), bold, italic, strikethrough, inline code,
   bullet, numbered and task lists, link, table, code block, quote and a rule. Selected text gets a small bar
   too. Markdown shortcuts work as you type: `**bold**`, `# ` for a heading, `- [ ] ` for a task.
@@ -184,6 +190,7 @@ every other project setting work the same as in LazySpec; see
 |---|---|---|
 | `lazyspec.openOnStartup` | `true` | Opening a folder with `openspec/` (`code .` there) shows LazySpec's sidebar |
 | `lazyspec.documents` | `formatted` | A document clicked opens in the formatted editor (`formatted`), the preview (`preview`) or as its Markdown (`source`) |
+| `lazyspec.openMarkdownFormatted` | `true` | openspec's `.md` files open in the formatted editor wherever they are opened from (`workbench.editorAssociations`) |
 | `lazyspec.editor` | `formatted` | Edit on an item: the item alone in the formatted editor (`formatted`), or its lines in the Markdown (`source`) |
 | `lazyspec.grouped` | `true` | The plan by group (in projects that group their changes) |
 | `lazyspec.showArchived` | `false` | Archived changes at the end of the plan |

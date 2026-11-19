@@ -1,0 +1,37 @@
+{
+  "manifest_version": "0.3",
+  "name": "lazyspec",
+  "display_name": "LazySpec - OpenSpec specs and changes",
+  "version": "0.0.0",
+  "description": "A project's OpenSpec specifications and changes: read, find, refine, clarify, investigate the code, and save as a pull request.",
+  "long_description": "LazySpec gives Claude a project's OpenSpec: the specifications (openspec/specs/) and the changes (openspec/changes/) with their proposal, delta specs, design and tasks. Claude reads, finds, edits and ticks them; main specs are changed through a change, as OpenSpec wants; out-of-date documents are shown; everything since the last commit can be undone; the work is saved as a pull request (openspec/ only). The code is read-only, to investigate what the system does today. Documents for the client go to openspec/exports/ in the company look. Made by Netmedia.",
+  "author": { "name": "Netmedia", "email": "netmedia@netmedia.hr", "url": "https://netmedia.agency" },
+  "repository": { "type": "git", "url": "https://github.com/netmedia/lazyspec.git" },
+  "homepage": "https://github.com/netmedia/lazyspec",
+  "icon": "icon.png",
+  "license": "SEE LICENSE IN LICENSE",
+  "keywords": ["openspec", "specification", "spec-driven", "requirements", "product management"],
+  "server": {
+    "type": "node",
+    "entry_point": "server/server.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/server.js", "${user_config.projects}"]
+    }
+  },
+  "user_config": {
+    "projects": {
+      "type": "directory",
+      "title": "Projects folder",
+      "description": "The folder with your projects' git repositories (e.g. where GitHub Desktop clones them). LazySpec finds every project with an openspec/ folder in it, up to three levels down.",
+      "required": true,
+      "multiple": true
+    }
+  },
+  "tools": [],
+  "prompts": [],
+  "compatibility": {
+    "platforms": ["win32", "darwin"],
+    "runtimes": { "node": ">=18.0.0" }
+  }
+}

@@ -20,7 +20,7 @@ function bar(done: number, total: number): string {
   return `<div class="progress"><div class="bar"><div style="width:${pct}%"></div></div><span>${pct}% &nbsp; ${done} of ${total} tasks</span></div>`;
 }
 function link(file: string, label: string, line = 0): string {
-  return `<a href="#" data-open="${esc(file)}" data-line="${line}">${esc(label)}</a>`;
+  return `<a href="#" data-open="${esc(file)}" data-line="${line}" data-text="${line ? esc(label) : ''}">${esc(label)}</a>`;
 }
 function button(command: string, label: string, args: unknown[] = []): string {
   return `<button data-run="${esc(command)}" data-args="${esc(JSON.stringify(args))}">${esc(label)}</button>`;
@@ -40,7 +40,7 @@ export class DetailsView implements vscode.WebviewViewProvider {
     this.view = view;
     view.webview.options = { enableScripts: true, enableCommandUris: false };
     view.webview.onDidReceiveMessage(m => {
-      if (m.open) { void vscode.commands.executeCommand('lazyspec.openFile', m.open, m.line || 0); }
+      if (m.open) { void vscode.commands.executeCommand('lazyspec.openAt', m.open, m.line || 0, m.text || ''); }
       if (m.run) { void vscode.commands.executeCommand(m.run, ...(m.args || [])); }
     });
     this.render();
@@ -88,7 +88,7 @@ p { margin: 4px 0; line-height: 1.4; }
 const vscode = acquireVsCodeApi();
 document.addEventListener('click', e => {
   const a = e.target.closest('[data-open]');
-  if (a) { e.preventDefault(); vscode.postMessage({ open: a.dataset.open, line: Number(a.dataset.line) }); return; }
+  if (a) { e.preventDefault(); vscode.postMessage({ open: a.dataset.open, line: Number(a.dataset.line), text: a.dataset.text }); return; }
   const b = e.target.closest('[data-run]');
   if (b) { vscode.postMessage({ run: b.dataset.run, args: JSON.parse(b.dataset.args) }); }
 });

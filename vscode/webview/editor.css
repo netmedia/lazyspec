@@ -18,3 +18,6 @@ body { margin: 0; padding: 0; background: var(--vscode-editor-background); color
 #lazyspec-bar button.primary { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
 #lazyspec-bar button.primary:hover { background: var(--vscode-button-hoverBackground); }
 #lazyspec-bar:empty { display: none; }
+
+/* An item opened from LazySpec's views: marked for a moment. */
+.lazyspec-hit { outline: 2px solid var(--vscode-focusBorder, #3794ff); outline-offset: 3px; border-radius: 3px; background: var(--vscode-editor-findMatchHighlightBackground, rgba(255, 200, 0, .15)); transition: background .4s; }

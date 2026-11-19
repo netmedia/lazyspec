@@ -214,6 +214,25 @@ export async function run(): Promise<void> {
     assert.ok(fs.existsSync(path.join(vscode.extensions.getExtension('netmedia.lazyspec')!.extensionPath, 'out', 'webview', 'editor.js')), 'the editor bundled');
     await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
   });
+  await check('everything formatted: an item clicked (a task) opens the formatted editor; openspec\'s .md the default; Source: the text', async () => {
+    const tasks = path.join(work, 'openspec', 'changes', '01-add-user-signup', 'tasks.md');
+    const change = api.plan.getChildren(api.plan.getChildren()[0])[0];
+    const tasksDoc = api.plan.getChildren(change).find(d => api.plan.getTreeItem(d).label === 'Tasks')!;
+    const task = api.plan.getChildren(api.plan.getChildren(tasksDoc)[0])[0];
+    const cmd = api.plan.getTreeItem(task).command!;
+    assert.strictEqual(cmd.command, 'lazyspec.openAt');
+    await vscode.commands.executeCommand(cmd.command, ...(cmd.arguments || []));
+    await new Promise(r => setTimeout(r, 1500));
+    let tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    assert.ok(tab && tab.input instanceof vscode.TabInputCustom && tab.input.viewType === 'lazyspec.formatted' && tab.input.uri.fsPath.toLowerCase() === tasks.toLowerCase(), `active: ${tab?.label}`);
+    await new Promise(r => setTimeout(r, 500));
+    const assoc = vscode.workspace.getConfiguration('workbench').get<Record<string, string>>('editorAssociations') || {};
+    assert.strictEqual(assoc['**/openspec/**/*.md'], 'lazyspec.formatted', JSON.stringify(assoc));
+    await vscode.commands.executeCommand('lazyspec.showSource', vscode.Uri.file(tasks));
+    await new Promise(r => setTimeout(r, 800));
+    assert.ok(vscode.window.activeTextEditor?.document.uri.fsPath.toLowerCase() === tasks.toLowerCase(), 'Source: the Markdown in the text editor');
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+  });
   await check('the bundled lazyspec.ps1 is in the extension', () => {
     assert.ok(fs.existsSync(path.join(vscode.extensions.getExtension('netmedia.lazyspec')!.extensionPath, 'kit', 'lazyspec.ps1')));
   });

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1
+
+- Everything formatted: tasks, task groups, requirements, scenarios, sections, find results and Details links
+  open their document in the formatted editor, scrolled to the item and marked.
+- openspec's Markdown opens formatted wherever it is opened from (lazyspec.openMarkdownFormatted, on by
+  default: workbench.editorAssociations); Source still opens the Markdown.
+
 ## 0.4.0
 
 - A formatted editor (Milkdown): Edit opens the item alone, formatted, with Save / Cancel; documents open in it

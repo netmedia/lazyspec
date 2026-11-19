@@ -27,8 +27,9 @@ export type Node =
 export interface Settings { grouped: boolean; showArchived: boolean; sort: 'name' | 'name-desc' | 'recent'; documents: 'formatted' | 'preview' | 'source' }
 export interface Hooks { stale(p: Project, c: Change): boolean }
 
-export function openCommand(file: string, line = 0): vscode.Command {
-  return { command: 'lazyspec.openFile', title: 'Open', arguments: [file, line] };
+/** An item clicked: its document opened at it - in the formatted editor (scrolled to it, marked) or the source. */
+export function openCommand(file: string, line = 0, text = ''): vscode.Command {
+  return { command: 'lazyspec.openAt', title: 'Open', arguments: [file, line, text] };
 }
 function docCommand(file: string): vscode.Command {
   return { command: 'lazyspec.openDocument', title: 'Open', arguments: [file] };
@@ -186,7 +187,7 @@ abstract class BaseTree implements vscode.TreeDataProvider<Node> {
         const t = new vscode.TreeItem(g.title || 'Tasks', C.Collapsed);
         t.description = `${done}/${g.tasks.length}`;
         t.iconPath = new vscode.ThemeIcon(done === g.tasks.length ? 'pass' : done ? 'circle-large-filled' : 'circle-outline');
-        t.command = openCommand(g.path, g.line);
+        t.command = openCommand(g.path, g.line, g.title);
         t.id = `tg:${g.path}:${g.line}`;
         return t;
       }
@@ -194,7 +195,7 @@ abstract class BaseTree implements vscode.TreeDataProvider<Node> {
         const k = n.task;
         const t = new vscode.TreeItem(k.text, C.None);
         t.checkboxState = k.done ? vscode.TreeItemCheckboxState.Checked : vscode.TreeItemCheckboxState.Unchecked;
-        t.command = openCommand(k.path, k.line);
+        t.command = openCommand(k.path, k.line, k.text);
         t.tooltip = `${k.text}\n${path.basename(k.path)}:${k.line}`;
         t.contextValue = 'item.task';
         t.id = `task:${k.path}:${k.line}`;
@@ -215,7 +216,7 @@ abstract class BaseTree implements vscode.TreeDataProvider<Node> {
         const t = new vscode.TreeItem(r.name, r.scenarios.length ? C.Collapsed : C.None);
         t.iconPath = new vscode.ThemeIcon('symbol-field', r.op === 'REMOVED' ? new vscode.ThemeColor('charts.red') : r.op === 'MODIFIED' ? new vscode.ThemeColor('charts.yellow') : undefined);
         if (r.op) { t.description = r.op.toLowerCase(); }
-        t.command = openCommand(n.file, r.line);
+        t.command = openCommand(n.file, r.line, r.name);
         t.contextValue = 'item.req';
         t.id = `req:${n.file}:${r.line}`;
         return t;
@@ -223,7 +224,7 @@ abstract class BaseTree implements vscode.TreeDataProvider<Node> {
       case 'scn': {
         const t = new vscode.TreeItem(n.name, C.None);
         t.iconPath = new vscode.ThemeIcon('symbol-event');
-        t.command = openCommand(n.file, n.line);
+        t.command = openCommand(n.file, n.line, n.name);
         t.contextValue = 'item.scn';
         t.id = `scn:${n.file}:${n.line}`;
         return t;
@@ -231,7 +232,7 @@ abstract class BaseTree implements vscode.TreeDataProvider<Node> {
       case 'sec': {
         const t = new vscode.TreeItem(n.section.title, n.section.children.length ? C.Collapsed : C.None);
         t.iconPath = new vscode.ThemeIcon('symbol-key');
-        t.command = openCommand(n.file, n.section.line);
+        t.command = openCommand(n.file, n.section.line, n.section.title);
         t.contextValue = 'item.sec';
         t.id = `sec:${n.file}:${n.section.line}`;
         return t;
