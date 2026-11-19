@@ -23,7 +23,9 @@
     3. y: update with the agent, the prompt saved (lazyspec: agent: prompt remembered, the requirement before and
        now in it); y again: run it (the stand-in agent gets the prompt).
     4. Remove a requirement of a main spec: a new change with REMOVED Requirements, valid.
-    5. g marks a task's group; c with a note: the prompt with each item and the note.
+    5. g marks a task's group; Enter: what to do with them; change with a note: the prompt.
+    7. Read: a task picked, edited in the window (Ctrl+S), ticked (Space), deleted (Del).
+    8. A main spec's requirement edited: through a change (MODIFIED).
     6. u: the changes since the commit; a piece undone, a new file deleted; nothing of them left.
 
 .PARAMETER Keep
@@ -71,13 +73,13 @@ try {
     $tasks = 'openspec\changes\01-add-user-signup\tasks.md'
 
     # 1. A task removed.
-    $f = Invoke-Keys 't,text:1.4,Right,x,snap,y,wait:done,snap'
-    Check ($f[0] -match 'Remove 1 task\(s\)\?') 'x: asked first' $f[0]
+    $f = Invoke-Keys 't,text:1.4,Right,Del,snap,y,wait:done,snap'
+    Check ($f[0] -match 'Delete the task "1\.4 Nightly') 'Del: asked first' $f[0]
     Check ((Read-File $tasks) -notmatch '1\.4 Nightly' -and (Read-File $tasks) -match '1\.3 Verification endpoint') 'a task removed from tasks.md, the others kept'
     Check ($f[1] -match '- task 1\.4' -and $f[1] -match 'Totals: 8 passed, 0 failed') 'then validated' $f[1]
 
     # 2. A scenario of a delta spec removed: the tasks out of date; asked once, remembered.
-    $f = Invoke-Keys 't,text:link expired,Right,x,y,wait:done,Esc,Esc,snap,y,Tab,snap'
+    $f = Invoke-Keys 't,text:link expired,Right,Del,y,wait:done,Esc,Esc,snap,y,Tab,snap'
     Check ((Read-File 'openspec\changes\01-add-user-signup\specs\user-accounts\spec.md') -notmatch 'Link expired') 'a scenario removed from its delta spec'
     Check ($f[0] -match 'Out of date: documents of 01-add-user-signup older than their specs\. Watch for this in this project\?') 'out of date: asked once whether to watch for it' $f[0]
     Check ((Read-File 'openspec\config.yaml') -match '(?m)^  syncCheck: on$') 'the answer remembered (lazyspec: syncCheck: on)'
@@ -99,7 +101,7 @@ try {
     Check ($f[0] -match 'marked as in sync' -and $f[0] -notmatch 'OUT OF DATE') 'mark as in sync: no longer out of date' $f[0]
 
     # 4. A requirement of a main spec: a new change with REMOVED Requirements.
-    $f = Invoke-Keys 't,text:password reset,Right,x,snap,y,wait:done,snap'
+    $f = Invoke-Keys 't,text:password reset,Right,Del,snap,y,wait:done,snap'
     Check ($f[0] -match 'in the main specs: through a new change') 'a main spec: through a new change (said first)' $f[0]
     $rc = @(Get-ChildItem -LiteralPath (Join-Path $proj 'openspec\changes') -Directory -Filter 'remove-from-specs-*')
     $delta = ''
@@ -108,21 +110,40 @@ try {
     Check ($f[1] -match 'remove-from-specs-' -and $f[1] -match 'Totals: 9 passed, 0 failed') 'the new change valid' $f[1]
 
     # 5. g: a task's group; c with a note.
-    $f = Invoke-Keys 't,text:front end,Tab,Right,g,snap,c,text:Use the design system,Enter,s,snap'
+    $f = Invoke-Keys 't,text:front end,Tab,Right,g,snap,Enter,snap,c,text:Use the design system,Enter,s,snap'
     Check (([regex]::Matches($f[0], [string][char]0x2022)).Count -eq 2) 'g: the task''s whole group marked' $f[0]
+    Check ($f[1] -match '2 marked:\s+Delete them\s+Change them') 'Enter with marks: what to do with them' $f[1]
     $cp = @(Get-ChildItem -LiteralPath (Join-Path $proj '.lazyspec\prompts') -Filter '*-change.md' | Select-Object -First 1)
     $ct = ''
     if ($cp.Count) { $ct = [IO.File]::ReadAllText($cp[0].FullName, $utf8) }
     Check ($ct -match '> Use the design system' -and $ct -match '2\.1 Sign-up page' -and $ct -match '2\.2 "Check your e-mail"' -and $ct -match 'tasks\.md \(line \d+\)') 'c: the prompt with the note and each item'
 
+    # 7. Read: a task picked (Up, Down), edited in the window (Ctrl+S), ticked (Space), deleted (Del).
+    $f = Invoke-Keys 'Tab,Enter,Right,Right,Right,Down,Down,snap,Enter,snap,End,text: (also the API),CtrlS,snap,Down,Space,Down,Del,y,snap'
+    Check ($f[0] -match ([string][char]0x25B8 + ' ' + [string][char]0x2713 + ' 1\.3 Verification endpoint') -and $f[0] -match 'Enter edit it') 'Read: Down picks the next task, marked' $f[0]
+    Check ($f[1] -match '^snap edit' -and $f[1] -match '1 - \[x\] 1\.3 Verification endpoint' -and $f[1] -match 'Ctrl\+S save') 'Enter: the task alone in the editor' $f[1]
+    $t = Read-File $tasks
+    Check ($f[2] -match 'Saved\. u: undo' -and $t -match '- \[x\] 1\.3 Verification endpoint \(also the API\)') 'Ctrl+S: the line saved in tasks.md' $t
+    Check ($t -match '- \[ \] 2\.1 Sign-up page') 'Space: the next task (done) unticked' $t
+    Check ($t -notmatch '2\.2 ' -and $t -match '3\.1 ') 'Del: the picked task deleted' $t
+
+    # 8. A main spec's requirement edited (the last result: the specs come after the changes): through a change
+    #    (MODIFIED), the spec itself untouched.
+    $f = Invoke-Keys 't,text:password reset,Tab,Tab,Tab,End,Enter,Enter,Down,End,text: Within an hour.,CtrlS,snap,c,snap'
+    Check ($f[0] -match 'A main spec:\s+Through a change \(MODIFIED\)') 'a main spec: asked how' $f[0]
+    $mc = @(Get-ChildItem -LiteralPath (Join-Path $proj 'openspec\changes') -Directory -Filter 'modify-specs-*')
+    $mt = ''
+    if ($mc.Count) { $mt = [IO.File]::ReadAllText((Join-Path $mc[0].FullName 'specs\user-accounts\spec.md'), $utf8) }
+    Check ($mt -match '## MODIFIED Requirements' -and $mt -match 'e-mail address\. Within an hour\.' -and $mt -match 'Scenario: Reset link' -and (Read-File 'openspec\specs\user-accounts\spec.md') -notmatch 'Within an hour') 'through a change: the whole requirement as edited, the spec untouched' $mt
+
     # 6. u: undo a piece, delete the new files.
     $f = Invoke-Keys 'u,snap'
-    Check ($f[0] -match 'undo' -and $f[0] -match 'tasks\.md  changed' -and $f[0] -match '1\.4 Nightly removal' -and $f[0] -match 'remove-from-specs-.+  new') 'u: the changes since the commit, piece by piece' $f[0]
+    Check ($f[0] -match 'undo' -and $f[0] -match 'tasks\.md  changed' -and $f[0] -match '-\d+\s+\+\d+' -and $f[0] -match 'remove-from-specs-.+  new') 'u: the changes since the commit, piece by piece' $f[0]
     # Each piece and each new file, undone (Enter, y) until none is left.
-    $f = Invoke-Keys 'u,Enter,y,Enter,y,Enter,y,Enter,y,Enter,y,Enter,y,Enter,y,Enter,y,snap'
+    $f = Invoke-Keys ('u' + (',Enter,y' * 30) + ',snap')
     $left = Invoke-Git @('status', '--porcelain', '--untracked-files=all', '--', 'openspec')
-    Check ((Read-File $tasks) -match '1\.4 Nightly' -and (Read-File 'openspec\changes\01-add-user-signup\specs\user-accounts\spec.md') -match 'Link expired') 'undone: the task and the scenario back'
-    Check (-not @(Get-ChildItem -LiteralPath (Join-Path $proj 'openspec\changes') -Directory -Filter 'remove-from-specs-*').Count) 'undone: the new change deleted'
+    Check ((Read-File $tasks) -match '1\.4 Nightly' -and (Read-File $tasks) -notmatch 'also the API' -and (Read-File 'openspec\changes\01-add-user-signup\specs\user-accounts\spec.md') -match 'Link expired') 'undone: the task and the scenario back'
+    Check (-not @(Get-ChildItem -LiteralPath (Join-Path $proj 'openspec\changes') -Directory -Filter 'remove-from-specs-*').Count -and -not @(Get-ChildItem -LiteralPath (Join-Path $proj 'openspec\changes') -Directory -Filter 'modify-specs-*').Count) 'undone: the new changes deleted'
     Check (-not $left.Trim()) 'nothing left to undo: as committed' $left
 }
 finally {

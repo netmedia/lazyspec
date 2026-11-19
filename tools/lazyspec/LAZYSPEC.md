@@ -64,16 +64,27 @@ specs, with its capability and requirement). `Tab` narrows it: all, tasks, open 
 scenarios. `Enter` opens it in Read, on its document's tab, scrolled to it and marked `▸`; `Esc` there goes
 back to the results. Archived changes only with `h`, as on Home.
 
-**Revise** (in Find, `→` into the results) — mark what to remove or redo: `Space` one (the marks stay across
-searches), `a` all the results, `g` its group (a task's `## group`; a requirement's or scenario's capability).
-Then, for the marked ones (else the selected):
+**One item in Read** — on a tab with tasks, requirements or scenarios, `↑` `↓` pick one (marked `▸`; `PgUp`
+`PgDn` scroll):
 
-- `x` **remove**, asked first. A change's tasks, requirements and scenarios are taken out of its documents (a
+- `Enter` **edits it** in a window: only its own lines (a task's line, a requirement or a scenario), not the
+  whole document; `Ctrl+S` saves them into its file, `Esc` cancels (asked when changed). A main spec's: asked
+  whether directly or through a change (`modify-specs-<date>`, the whole requirement under `## MODIFIED
+  Requirements`).
+- `Space` a task: done / not done. `Del` **deletes it** (asked first). `a` the agent: change it (your note) or
+  write it again.
+- `e` still opens the whole file in your editor, `x` still exports.
+
+**Several at once** (in Find, `→` into the results) — mark them: `Space` one (the marks stay across searches),
+`a` all the results, `g` its group (a task's `## group`; a requirement's or scenario's capability). `Del`
+deletes the marked (else the selected); `Enter` with marks: delete, change (the agent), write again (the agent)
+or unmark them; without marks, `Enter` opens the selected in Read, to edit it there.
+
+- **Delete**, asked first. A change's tasks, requirements and scenarios are taken out of its documents (a
   delta spec left without requirements is deleted); the main specs (`openspec/specs`) are not edited: a new
   change `remove-from-specs-<date>` gets their removal (`## REMOVED Requirements`, or `## MODIFIED` for a
   requirement losing scenarios) - archive it to apply it. Then `openspec validate --all --strict` runs.
-- `c` **change** (you write what) and `r` **redo** (written again to match the current specs): work for the
-  agent, below.
+- **Change** (you write what) and **write again** (to match the current specs): work for the agent, below.
 
 **The agent** (Claude Code) — the work is written as a prompt in `.lazyspec/prompts/` (the project's root);
 then asked: **run Claude Code now** (`claude -p ... --permission-mode acceptEdits`, its output in the run screen)
@@ -113,9 +124,10 @@ It refreshes by itself when files under `openspec/` change (an editor, git, an a
 | Screen | Keys |
 |---|---|
 | Home | `↑` `↓` select · `Tab` scope ↔ plan · `→` into the details (`↑` `↓` scroll them), `←`/`Esc` back · `z` zoom the details to the whole width (again: the lists back) · `PgUp` `PgDn` `Home` `End` scroll the details · `Enter` read · `v` validate all · `a` archive the change · `n` new change · `x` export (PDF, Word, HTML) · `m` changes as one · `t` find · `y` out of date: update or mark in sync · `u` undo · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
-| Read | `↑` `↓` `PgUp` `PgDn` `Home` `End` scroll · `←` `→` document · `x` export this spec, change or changes as one · `e` edit · `Esc` back |
+| Read | `↑` `↓` an item (a tab with tasks, requirements, scenarios; else scroll) · `Enter` edit it · `Space` a task done / not · `Del` delete it · `a` the agent · `PgUp` `PgDn` `Home` `End` scroll · `←` `→` document · `x` export this spec, change or changes as one · `e` the whole file in your editor · `Esc` back |
 | Changes as one | `↑` `↓` select · `Space` mark (a saved whole: its changes) · `a` all, none · `Enter` go on (a saved whole: read it; else a title, save it?, then Read) · `d` remove a saved whole · `Esc` cancel |
-| Find | type the search · `↑` `↓` `PgUp` `PgDn` select · `Tab` all, tasks, open tasks, requirements, scenarios · `Enter` open in Read, at it · `→` into the results: `Space` mark · `a` all · `g` its group · `x` remove · `c` change · `r` redo · `←`/`Esc` back to typing · `Esc` back |
+| Find | type the search · `↑` `↓` `PgUp` `PgDn` select · `Tab` all, tasks, open tasks, requirements, scenarios · `Enter` open in Read, at it · `→` into the results: `Space` mark · `a` all · `g` its group · `Del` delete · `Enter` the marked: delete, change, write again, unmark · `←`/`Esc` back to typing · `Esc` back |
+| Edit (Enter on an item in Read) | type · `↑` `↓` `←` `→` `Home` `End` move · `Enter` new line · `Backspace` `Del` · `Ctrl+S` save · `Esc` cancel |
 | Undo | `↑` `↓` `PgUp` `PgDn` `Home` `End` select · `Enter` undo it (asked first) · `r` refresh · `Esc` back |
 | Run | `PgUp` `PgDn` `Home` `End` scroll · `Esc` stop (asked first); when done `Enter`/`Esc` back |
 

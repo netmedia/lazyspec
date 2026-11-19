@@ -182,9 +182,10 @@ The screenshots below come from LazySpec itself, run on a made-up demo project (
 | Screen | Keys |
 | --- | --- |
 | Home | `↑` `↓` select · `Tab` Scope ↔ Plan · `→` into details, `←`/`Esc` back · `z` zoom details · `PgUp` `PgDn` `Home` `End` scroll details · `Enter` read · `v` validate all · `a` archive change · `n` new change · `x` export · `m` changes as one · `t` find · `y` out of date · `u` undo · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
-| Read | `↑` `↓` `PgUp` `PgDn` `Home` `End` scroll · `←` `→` previous/next document · `x` export this item · `e` edit · `Esc` back |
+| Read | `↑` `↓` pick a task, requirement or scenario (else scroll) · `Enter` edit it · `Space` done/not · `Del` delete · `a` agent · `PgUp` `PgDn` scroll · `←` `→` previous/next document · `x` export this item · `e` the whole file · `Esc` back |
 | Changes as one | `↑` `↓` select · `Space` mark · `a` all/none · `Enter` continue · `d` remove saved bundle · `Esc` cancel |
-| Find | type · `↑` `↓` select · `Tab` all / tasks / open tasks / requirements / scenarios · `Enter` open in Read · `→` mark (`Space`, `a`, `g`) then `x` remove · `c` change · `r` redo · `Esc` back |
+| Find | type · `↑` `↓` select · `Tab` all / tasks / open tasks / requirements / scenarios · `Enter` open in Read · `→` mark (`Space`, `a`, `g`), then `Del` delete or `Enter` delete / change / write again · `Esc` back |
+| Edit | type · arrows `Home` `End` move · `Enter` new line · `Ctrl+S` save · `Esc` cancel |
 | Undo | `↑` `↓` select · `Enter` undo it · `r` refresh · `Esc` back |
 | Run | `PgUp` `PgDn` `Home` `End` scroll · `Esc` stop (asked first); when done `Enter`/`Esc` back |
 
@@ -359,10 +360,17 @@ Command line: `lazyspec -Export Word -Item add-user-signup,add-online-payments -
 
 **When:** specs and tasks came from a prototype, a workshop or an agent, and some of it has to go or be redone.
 
+**One item:** open the spec or change (`Enter`), go to its tab (`←` `→`), and `↑` `↓` pick the task, requirement or scenario (marked `▸`).
+
+- `Enter` edits only that item in a window (`Ctrl+S` saves it into its file, `Esc` cancels). In a main spec you choose: directly, or through a change (`MODIFIED`), as OpenSpec prefers.
+- `Space` ticks a task done or not done; `Del` deletes the item (asked first); `a` hands it to the agent (change it with your note, or write it again).
+
+**Several at once:**
+
 1. `t`, find them (a word such as `prototype`, a task number, a capability), `→` into the results.
 2. Mark: `Space` one, `a` all the results, `g` a task's whole group or a requirement's whole capability. Marks stay while you search for more.
-3. `x` removes them (asked first): out of the change's documents; for the main specs, a new change with `REMOVED Requirements` (archive it to apply it). LazySpec validates afterwards.
-4. `c` change (type what to change) or `r` redo (write them again from the current specs): the agent does it, see below.
+3. `Del` deletes them (asked first): out of the change's documents; for the main specs, a new change with `REMOVED Requirements` (archive it to apply it). LazySpec validates afterwards.
+4. `Enter` on the marked: delete, change (type what), write again (from the current specs) or unmark. Change and write again go to the agent, see below.
 
 ### 18. Keep tasks in step with the specs
 
