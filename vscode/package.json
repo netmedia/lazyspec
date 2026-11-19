@@ -2,7 +2,7 @@
   "name": "lazyspec",
   "displayName": "LazySpec - OpenSpec specs and changes",
   "description": "A project's OpenSpec in your editor: the specifications and the plan (by group), formatted reading, tasks, requirements, scenarios and sections to edit, tick, delete or hand to the agent, find, out-of-date documents, undo, validate, archive, and exports for the client in the company look.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "netmedia",
   "author": {
     "name": "Netmedia",

@@ -273,7 +273,9 @@ function Show-Usage {
     & $d '      from any screen: t where nothing is typed, Ctrl+T anywhere; Esc comes back; Tab its kind (sections'
     & $d '      too), Shift+Tab the document it is in (proposal, specs, design, tasks, models ...)'
     & $d '      Right: mark them (Space, a all, g its group); Del delete; Enter: delete, change, redo them'
-    & $d '    y out of date (! in the plan): the agent updates the documents, or mark them as in sync'
+    & $d '    y out of date (! in the plan): the agent updates the documents, or mark them as in sync; the'
+    & $d '      agent done (in the background: exit code 0 and openspec validate passed; here: asked), the change is'
+    & $d '      marked as in sync against the specs it was given (a spec edited meanwhile still shows)'
     & $d '      the agent: here (h: Claude Code in this terminal, you answer its questions; /exit comes back),'
     & $d '      in the background (b; when done, a answers it: claude -c), or the prompt saved (s)'
     & $d '    u undo: the changes since the last commit, piece by piece (needs git)'
@@ -1170,6 +1172,7 @@ $script:readMark = $null
 $script:readBack = 'home'
 $script:stale = @{}
 $script:syncAsked = $false
+$script:syncOffered = @{}
 $script:pendingAsk = $null
 $script:undo = $null
 $script:readSel = 0
@@ -1204,7 +1207,7 @@ function Reload {
     $script:specs = @(Load-Specs)
     $script:changes = @(Load-Changes)
     $script:readCache = @{}
-    try { Update-SyncState } catch { $script:stale = @{} }
+    try { Update-SyncState } catch { $script:stale = @{}; $script:message = "Out of date: not checked ($($_.Exception.Message))" }
     $script:signature = Get-Signature
     Select-ByName $keepSpec $keepChange
     if (-not $script:specs.Count -and $script:changes.Count) { $script:focus = 'changes' }
@@ -6418,12 +6421,17 @@ function Open-SearchResult($E) {
 # then it runs now, in the run screen, or it waits for you (the command to give it). Asked each time; the last
 # answer is the project's default (lazyspec: agent: here | background | prompt in openspec/config.yaml).
 function Get-AgentInstruction([string]$Rel) { return "Read the file $Rel and do exactly what it says." }
-function Start-AgentTask([string]$Label, [string]$Name, [string]$Prompt) {
+# $SyncChange: a sync prompt's change (y, update them): what its out-of-date documents were written from, as
+# they are now, saved next to the prompt (<prompt>.sync.json) - the agent done, the change is marked as in sync
+# against it (a spec edited during the run still shows).
+function Start-AgentTask([string]$Label, [string]$Name, [string]$Prompt, $SyncChange) {
     $dir = Join-Path $Root '.lazyspec\prompts'
     [void](New-Item -ItemType Directory -Force -Path $dir)
     $file = Join-Path $dir ("$(Get-Date -Format 'yyyyMMdd-HHmmss')-$Name.md")
     [IO.File]::WriteAllText($file, $Prompt, (New-Object Text.UTF8Encoding $false))
     $rel = $file.Substring($Root.TrimEnd('\', '/').Length + 1).Replace('\', '/')
+    $syncFile = ''
+    if ($SyncChange) { $syncFile = Save-SyncSnapshot $file $SyncChange }
     # Here (in this terminal: Claude Code as you know it - it can ask, you answer), in the background (no
     # questions; its output in the run screen, a answers it after), or the prompt saved for later.
     $modes = @('here', 'background', 'prompt')
@@ -6431,13 +6439,13 @@ function Start-AgentTask([string]$Label, [string]$Name, [string]$Prompt) {
     if ($def -eq 'run') { $def = 'here' }
     $choice = [Math]::Max(0, [array]::IndexOf($modes, $def))
     $script:choose = [pscustomobject]@{ Text = "${Label}:"; Options = @('Here (it asks, you answer)', 'In the background (no questions)', 'Save the prompt'); Short = @('here', 'background', 'save it'); Keys = @('h', 'b', 's'); Choice = $choice
-        Rel = $rel; Label = $Label; Do = {
+        Rel = $rel; Label = $Label; SyncFile = $syncFile; Do = {
             param($k, $c)
             $mode = @('here', 'background', 'prompt')[$k]
             if ([string](Get-ProjectConfig).Values['agent'] -ne $mode) { try { Set-ConfigValue 'agent' $mode } catch { } }
             switch ($k) {
-                0 { Start-AgentHere $c.Label $c.Rel }
-                1 { Start-Agent $c.Label $c.Rel }
+                0 { if ($c.SyncFile) { $script:syncOffered[$c.SyncFile] = $true }; Start-AgentHere $c.Label $c.Rel $c.SyncFile }
+                1 { if ($c.SyncFile) { $script:syncOffered[$c.SyncFile] = $true }; Start-Agent $c.Label $c.Rel $c.SyncFile }
                 2 { Show-AgentPrompt $c.Rel '' }
             }
         } }
@@ -6456,7 +6464,7 @@ function Get-AgentTool {
 }
 # Here: LazySpec gives Claude Code the terminal, with the prompt; you see it, answer it, approve; /exit (or
 # Ctrl+C twice) brings you back, the documents read again.
-function Start-AgentHere([string]$Label, [string]$Rel) {
+function Start-AgentHere([string]$Label, [string]$Rel, [string]$SyncFile) {
     $tool = Get-AgentTool
     if (-not $tool) { Show-AgentPrompt $Rel 'Claude Code (claude) is not installed. '; return }
     $instr = Get-AgentInstruction $Rel
@@ -6467,6 +6475,8 @@ function Start-AgentHere([string]$Label, [string]$Rel) {
     Write-Host '  It may ask you things: answer here. Done: /exit (or Ctrl+C twice) brings you back to LazySpec.' -ForegroundColor DarkGray
     Write-Host ''
     $code = 0
+    # In the project's root (as in the background), wherever LazySpec was started from (-Root).
+    Push-Location -LiteralPath $Root
     try {
         if ($tool -match '\.(cmd|bat)$') {
             $shell = $env:ComSpec
@@ -6476,6 +6486,7 @@ function Start-AgentHere([string]$Label, [string]$Rel) {
         else { & $tool $instr --permission-mode acceptEdits }
         $code = $LASTEXITCODE
     } catch { $code = -1 }
+    finally { Pop-Location }
     Set-TerminalKeys $true
     if (-not $harness) {
         Enable-Ansi
@@ -6486,14 +6497,31 @@ function Start-AgentHere([string]$Label, [string]$Rel) {
     Update-ReadItem
     $script:message = "Claude Code done ($Label). u: what it changed, undo it"
     if ($code -and $code -ne 0) { $script:message = "Claude Code ended with exit code $code ($Label). u: what it changed" }
+    # A sync: /exit ends it with 0 also when you stopped it halfway - asked (yes first); else not marked.
+    if ($SyncFile -and (Test-Path -LiteralPath $SyncFile)) {
+        $name = Get-SyncFileChange $SyncFile
+        if ($code -and $code -ne 0) { $script:message = "Claude Code ended with exit code $code ($Label): $name not marked as in sync. u: what it changed" }
+        else {
+            $script:confirm = [pscustomobject]@{ Text = "${name}: mark as in sync?"; Choice = 0; SyncFile = $SyncFile; Do = {
+                    param($c)
+                    $n = Set-InSyncFromFile $c.SyncFile
+                    if ($n) { $script:message = "${n}: updated by the agent, marked as in sync." }
+                } }
+        }
+    }
 }
 # In the background: claude -p, its output in the run screen; it doesn't ask (it decides, and says what). When
 # it's done, a answers it or goes on: claude -c -p <your words>, the same conversation.
-function Start-Agent([string]$Label, [string]$Rel) {
+function Start-Agent([string]$Label, [string]$Rel, [string]$SyncFile) {
     $tool = Get-AgentTool
     if (-not $tool) { Show-AgentPrompt $Rel 'Claude Code (claude) is not installed. '; return }
     $instr = (Get-AgentInstruction $Rel) + ' Do not ask questions: where something is unclear, decide sensibly, and at the end list what you decided.'
     Start-AgentRun $Label $tool @('-p', $instr, '--permission-mode', 'acceptEdits')
+    # A sync: when it ends with 0, validated, then marked as in sync (Complete-AgentSync).
+    if ($SyncFile) {
+        $script:run | Add-Member -NotePropertyName SyncFile -NotePropertyValue $SyncFile -Force
+        $script:run | Add-Member -NotePropertyName Phase -NotePropertyValue 'agent' -Force
+    }
 }
 function Start-AgentRun([string]$Label, [string]$Tool, [string[]]$AgentArgs) {
     New-Run $Label ("claude " + ((@($AgentArgs) | ForEach-Object { Quote-Arg $_ }) -join ' '))
@@ -6960,6 +6988,21 @@ function ConvertTo-Map($O) {
     return $O
 }
 function Get-SyncCheck { return [string](Get-ProjectConfig).Values['syncCheck'] }
+# .lazyspec\sync.json: what each change's documents were written from (read as ordered maps; written back).
+function Read-SyncState {
+    $file = Join-Path $Root '.lazyspec\sync.json'
+    $state = $null
+    if (Test-Path -LiteralPath $file) { try { $state = ConvertTo-Map ((Read-Text $file) | ConvertFrom-Json) } catch { $state = $null } }
+    if (-not $state) { $state = [ordered]@{} }
+    return $state
+}
+function Write-SyncState($State) {
+    $file = Join-Path $Root '.lazyspec\sync.json'
+    [void](New-Item -ItemType Directory -Force -Path (Split-Path $file))
+    [IO.File]::WriteAllText($file, ($State | ConvertTo-Json -Depth 8), (New-Object Text.UTF8Encoding $false))
+}
+# A document's own hash: its files' text, in order.
+function Get-DocHash($Doc) { return (Get-TextHash ((@($Doc.Files | Sort-Object | ForEach-Object { Read-Text $_ })) -join "`n")) }
 # The documents of a change that others are written from: each with the files it depends on, now.
 function Get-ChangeDeps($C) {
     $deps = @()
@@ -6981,16 +7024,13 @@ function Get-SyncSnapshot($Files) {
 function Update-SyncState {
     $script:stale = @{}
     if (-not $hasRoot -or (Get-SyncCheck) -eq 'off') { return }
-    $file = Join-Path $Root '.lazyspec\sync.json'
-    $state = [ordered]@{}
-    if (Test-Path -LiteralPath $file) { try { $state = ConvertTo-Map ((Read-Text $file) | ConvertFrom-Json) } catch { $state = [ordered]@{} } }
-    if (-not $state) { $state = [ordered]@{} }
+    $state = Read-SyncState
     $changed = $false
     foreach ($c in @($script:changes | Where-Object { -not $_.Archived })) {
         if (-not $state.Contains($c.Name)) { $state[$c.Name] = [ordered]@{} }
         $rec = $state[$c.Name]
         foreach ($dep in (Get-ChangeDeps $c)) {
-            $self = Get-TextHash ((@($dep.Doc.Files | Sort-Object | ForEach-Object { Read-Text $_ })) -join "`n")
+            $self = Get-DocHash $dep.Doc
             $now = Get-SyncSnapshot $dep.Ups
             $old = $null
             if ($rec.Contains($dep.Doc.Id)) { $old = $rec[$dep.Doc.Id] }
@@ -7024,10 +7064,8 @@ function Update-SyncState {
             }
         }
     }
-    if ($changed) {
-        [void](New-Item -ItemType Directory -Force -Path (Split-Path $file))
-        [IO.File]::WriteAllText($file, ($state | ConvertTo-Json -Depth 8), (New-Object Text.UTF8Encoding $false))
-    }
+    if ($changed) { Write-SyncState $state }
+    Find-DoneSyncPrompts
     # Out of date the first time, and not asked yet: watch for it in this project? (remembered)
     if ($script:stale.Count -and -not (Get-SyncCheck) -and -not $script:syncAsked) {
         $script:syncAsked = $true
@@ -7039,20 +7077,141 @@ function Update-SyncState {
             } }
     }
 }
-# Marks a change's documents as in sync with what they're written from, as they are now.
-function Set-InSync($C) {
-    $file = Join-Path $Root '.lazyspec\sync.json'
-    $state = [ordered]@{}
-    if (Test-Path -LiteralPath $file) { try { $state = ConvertTo-Map ((Read-Text $file) | ConvertFrom-Json) } catch { } }
-    if (-not $state) { $state = [ordered]@{} }
+# Marks a change's documents as in sync: each as it is now (self), against what it's written from - as that is
+# now, or ($Snapshot: document id -> its snapshot, from a sync prompt) as it was when the agent got the prompt;
+# then only the snapshot's documents, the others as they were noted.
+function Set-InSync($C, $Snapshot) {
+    $state = Read-SyncState
     $rec = [ordered]@{}
+    if ($Snapshot -and $state.Contains($C.Name) -and $state[$C.Name]) { $rec = $state[$C.Name] }
     foreach ($dep in (Get-ChangeDeps $C)) {
-        $self = Get-TextHash ((@($dep.Doc.Files | Sort-Object | ForEach-Object { Read-Text $_ })) -join "`n")
-        $rec[$dep.Doc.Id] = [ordered]@{ self = $self; up = (Get-SyncSnapshot $dep.Ups) }
+        if ($Snapshot) {
+            if (-not $Snapshot.Contains($dep.Doc.Id)) { continue }
+            $up = $Snapshot[$dep.Doc.Id]
+        }
+        else { $up = Get-SyncSnapshot $dep.Ups }
+        $rec[$dep.Doc.Id] = [ordered]@{ self = (Get-DocHash $dep.Doc); up = $up }
     }
     $state[$C.Name] = $rec
-    [void](New-Item -ItemType Directory -Force -Path (Split-Path $file))
-    [IO.File]::WriteAllText($file, ($state | ConvertTo-Json -Depth 8), (New-Object Text.UTF8Encoding $false))
+    Write-SyncState $state
+}
+# A sync prompt's snapshot (<prompt>.sync.json): the change; each of its documents written from others, with its
+# own hash and what it's written from, both as they are now (stale: the out-of-date ones the prompt names);
+# asked: the files of those (what the agent is to update).
+function Save-SyncSnapshot([string]$PromptFile, $C) {
+    $staleIds = @($script:stale[$C.Name] | Where-Object { $_ } | ForEach-Object { $_.Doc.Id })
+    $docs = [ordered]@{}
+    $asked = @()
+    foreach ($dep in (Get-ChangeDeps $C)) {
+        $isStale = $staleIds -contains $dep.Doc.Id
+        $docs[$dep.Doc.Id] = [ordered]@{ self = (Get-DocHash $dep.Doc); stale = $isStale; up = (Get-SyncSnapshot $dep.Ups) }
+        if ($isStale) { $asked += @($dep.Doc.Files | ForEach-Object { Get-RelPath $_ }) }
+    }
+    $file = [IO.Path]::ChangeExtension($PromptFile, '.sync.json')
+    $o = [ordered]@{ change = $C.Name; prompt = (Get-RelPath $PromptFile); asked = @($asked); docs = $docs }
+    [IO.File]::WriteAllText($file, ($o | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding $false))
+    return $file
+}
+function Read-SyncFile([string]$File) {
+    if (-not $File -or -not (Test-Path -LiteralPath $File)) { return $null }
+    try { return (ConvertTo-Map ((Read-Text $File) | ConvertFrom-Json)) } catch { return $null }
+}
+function Get-SyncFileChange([string]$File) { $s = Read-SyncFile $File; if ($s) { return [string]$s['change'] }; return '' }
+# The agent done: its change marked as in sync against the prompt's snapshot; the snapshot used up. Its name.
+function Set-InSyncFromFile([string]$File) {
+    $s = Read-SyncFile $File
+    if (-not $s) { return '' }
+    # The documents as the agent left them (new files too).
+    Reload
+    $c = @($script:changes | Where-Object { $_.Name -eq $s['change'] -and -not $_.Archived })
+    if (-not $c.Count) { return '' }
+    # What each document is written from: as it was then - but the files the agent was to update as they are now
+    # (its own work doesn't put the documents written from them out of date; a spec edited meanwhile does).
+    $asked = @($s['asked'])
+    $snap = [ordered]@{}
+    foreach ($k in @($s['docs'].Keys)) {
+        $up = [ordered]@{}
+        foreach ($rel in @($s['docs'][$k]['up'].Keys)) {
+            if ($asked -contains $rel) { $now = Get-SyncSnapshot @((Join-Path $Root $rel) | Where-Object { Test-Path -LiteralPath $_ }); foreach ($r in $now.Keys) { $up[$r] = $now[$r] } }
+            else { $up[$rel] = $s['docs'][$k]['up'][$rel] }
+        }
+        $snap[$k] = $up
+    }
+    Set-InSync $c[0] $snap
+    Remove-Item -LiteralPath $File -Force -ErrorAction SilentlyContinue
+    Reload
+    return [string]$s['change']
+}
+# A sync prompt saved for later (s), then given to the agent outside LazySpec: when a document it names has
+# changed since (the agent's work; a document it rewrote has a new baseline by itself) and the change is still
+# out of date (one it rightly left as it was), mark it against the prompt's snapshot? (once a session)
+function Find-DoneSyncPrompts {
+    $dir = Join-Path $Root '.lazyspec\prompts'
+    if ($script:pendingAsk -or -not (Test-Path -LiteralPath $dir)) { return }
+    $running = ''
+    if ($script:run -and -not $script:run.Done -and $script:run.PSObject.Properties['SyncFile']) { $running = $script:run.SyncFile }
+    foreach ($f in @(Get-ChildItem -LiteralPath $dir -Filter '*.sync.json' -File -ErrorAction SilentlyContinue | Sort-Object Name)) {
+        if ($f.FullName -eq $running -or $script:syncOffered.ContainsKey($f.FullName)) { continue }
+        $s = Read-SyncFile $f.FullName
+        if (-not $s -or -not $s['docs'] -or -not $script:stale.ContainsKey([string]$s['change'])) { continue }
+        $c = @($script:changes | Where-Object { $_.Name -eq $s['change'] -and -not $_.Archived })
+        if (-not $c.Count) { continue }
+        $any = $false
+        foreach ($k in @($s['docs'].Keys | Where-Object { $s['docs'][$_]['stale'] })) {
+            $d = @($c[0].Docs | Where-Object { $_.Id -eq $k })
+            if ($d.Count -and (Get-DocHash $d[0]) -ne $s['docs'][$k]['self']) { $any = $true; break }
+        }
+        if (-not $any) { continue }
+        $script:syncOffered[$f.FullName] = $true
+        $script:pendingAsk = [pscustomobject]@{ Text = "$($s['change']): its documents changed since the saved sync prompt. Mark them as in sync?"; Options = @('Yes, in sync', 'No'); Short = @('yes', 'no'); Keys = @('y', 'n'); Choice = 0; File = $f.FullName; Do = {
+                param($k, $c)
+                if ($k -ne 0) { return }
+                $n = Set-InSyncFromFile $c.File
+                if ($n) { $script:message = "${n}: marked as in sync (against the saved prompt's specs)." }
+            } }
+        return
+    }
+}
+# The agent's run (b) of a sync ended: 0 - validated (openspec validate <change>; its output here), then marked
+# as in sync; else not marked. $true: the validation started (the run goes on).
+function Complete-AgentSync($Run) {
+    if (-not $Run.PSObject.Properties['SyncFile'] -or -not $Run.SyncFile -or $Run.Stopped) { return $false }
+    $name = Get-SyncFileChange $Run.SyncFile
+    if (-not $name) { $Run.SyncFile = ''; return $false }
+    if ($Run.Phase -eq 'agent') {
+        if ($Run.Code -ne 0) {
+            Add-RunLog '' ''
+            Add-RunLog "! ${name}: not marked as in sync - the agent ended with exit code $($Run.Code) (y: again, or mark it)." $st.warn
+            $Run.SyncFile = ''
+            return $false
+        }
+        $tool = Resolve-OpenSpec
+        if ($tool) {
+            $Run.Phase = 'validate'
+            Add-RunLog '' ''
+            Add-RunLog "$($g.caret) openspec validate $name --strict --no-interactive" $st.muted
+            $Run.OutDone = $false; $Run.ErrDone = $false
+            Start-ToolProcess $tool @('validate', $name, '--strict', '--no-interactive')
+            if (-not $Run.Done) { return $true }
+            return $false
+        }
+        Add-RunLog '' ''
+        Add-RunLog "! not validated: the OpenSpec CLI isn't installed" $st.warn
+    }
+    elseif ($Run.Code -ne 0) {
+        Add-RunLog '' ''
+        Add-RunLog "! ${name}: not marked as in sync - openspec validate failed (above). Fix it, then y." $st.warn
+        $Run.SyncFile = ''
+        return $false
+    }
+    $n = Set-InSyncFromFile $Run.SyncFile
+    $Run.SyncFile = ''
+    if ($n) {
+        Add-RunLog '' ''
+        Add-RunLog "$($g.check) ${n}: updated by the agent, marked as in sync." $st.ok
+        $script:message = "${n}: updated by the agent, marked as in sync."
+    }
+    return $false
 }
 function Test-Stale($C) { return (Get-SyncCheck) -eq 'on' -and $script:stale.ContainsKey($C.Name) }
 function Get-SyncPrompt($C) {
@@ -7097,7 +7256,7 @@ function Start-Sync {
             param($k, $c)
             $ch = @($script:changes | Where-Object { $_.Name -eq $c.Name })[0]
             if ($k -eq 1) { Set-InSync $ch; Update-SyncState; $script:message = "$($c.Name): marked as in sync."; return }
-            Start-AgentTask "Update $($c.Name)" "sync-$($c.Name)" (Get-SyncPrompt $ch)
+            Start-AgentTask "Update $($c.Name)" "sync-$($c.Name)" (Get-SyncPrompt $ch) $ch
         } }
 }
 
@@ -7312,12 +7471,16 @@ function Start-Cli([string]$Label, [string[]]$CliArgs) {
         Add-RunLog "$($g.cross) The OpenSpec CLI isn't installed (or not on PATH): npm install -g @fission-ai/openspec" $st.err
         $script:run.Done = $true; $script:run.Watch.Stop(); return
     }
-    $argLine = (@($CliArgs) | ForEach-Object { Quote-Arg $_ }) -join ' '
-    if ($tool -match '\.(cmd|bat)$') {
+    Start-ToolProcess $tool $CliArgs
+}
+# A command in the run (npm's .cmd through cmd.exe).
+function Start-ToolProcess([string]$Tool, [string[]]$ToolArgs) {
+    $argLine = (@($ToolArgs) | ForEach-Object { Quote-Arg $_ }) -join ' '
+    if ($Tool -match '\.(cmd|bat)$') {
         $shell = $env:ComSpec
         if (-not $shell) { $shell = 'cmd.exe' }
-        Start-RunProcess $shell "/d /s /c `"`"$tool`" $argLine`""
-    } else { Start-RunProcess $tool $argLine }
+        Start-RunProcess $shell "/d /s /c `"`"$Tool`" $argLine`""
+    } else { Start-RunProcess $Tool $argLine }
 }
 # Export in the run screen: this script again, in a PowerShell of its own (-Export), its output shown here.
 function Start-Export([string]$Format, [bool]$WithChanges, [string]$ItemName, [bool]$Friendly, [string]$Diagrams, [string]$Title) {
@@ -7415,11 +7578,13 @@ function Update-Run {
         $run.Err = $run.Proc.StandardError.ReadLineAsync()
     }
     if (-not $run.Done -and $run.OutDone -and $run.ErrDone -and $run.Proc.HasExited) {
+        $run.Code = $run.Proc.ExitCode
+        $changed = $true
+        # A sync by the agent: validated, then marked as in sync (the run goes on while it validates).
+        if (Complete-AgentSync $run) { $script:dirty = $true; return }
         $run.Done = $true
         $run.Watch.Stop()
-        $run.Code = $run.Proc.ExitCode
         Reload
-        $changed = $true
     }
     if ($changed) { $script:dirty = $true }
 }
@@ -7578,6 +7743,7 @@ function Draw-Help([int]$W, [int]$H) {
         @('  Ctrl+T', 'find from any screen, also while typing (t where nothing is typed); Esc comes back there'),
         @('  ' + [string][char]0x2192, 'in find: mark (Space, a all, g its group); Del deletes; Enter: the marked - delete, change, redo'),
         @('y', 'a change out of date (! in the plan): its documents updated by the agent, or marked as in sync'),
+        @('  agent done', 'marked as in sync by itself: in the background when it ends with 0 and validates; here: asked'),
         @('u', 'undo: what changed in openspec/ since the last commit, piece by piece (git; a commit empties it)'),
         @('  agent', 'Claude Code: here (h: this terminal, you answer its questions; /exit back), in the background (b; a answers it after), or the prompt saved (s)'),
         @('  Ctrl+U Ctrl+Y', 'undo, out of date: the same from any screen, also while typing (u, y where nothing is typed)'),

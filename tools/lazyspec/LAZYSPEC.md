@@ -124,6 +124,25 @@ section in its details: which document, and what changed (`+` added, `~` changed
 kept and marked for review) or **mark them as in sync**. Asked once per project whether to watch for it
 (`lazyspec: syncCheck: on | off`).
 
+When the agent is done, the change is marked as in sync by itself:
+
+- **In the background**: when Claude Code ends with exit code 0, `openspec validate <change> --strict
+  --no-interactive` runs in the same screen. If it passes, the change is marked (*updated by the agent, marked
+  as in sync*). If it fails, or the agent ended with another code, the change is not marked, and the screen
+  says why.
+- **Here**: `/exit` also ends with 0 when you stopped it halfway, so LazySpec asks on return (*mark as in
+  sync?*, yes first).
+- **Saved prompt**: nothing ran, so nothing is marked. Later, when the agent has changed a document the prompt
+  names and the change is still out of date, LazySpec offers to mark it, once per session.
+
+It marks against what the agent was given, not against the files at the end. With the prompt LazySpec saves
+`<prompt>.sync.json` in `.lazyspec/prompts/`: what each document is written from, as it was then. The
+documents the agent was asked to update count as they are now. So:
+
+- a document it rightly left unchanged is in sync too
+- its own edits don't put the documents written from them out of date
+- a spec edited by someone else during the run still shows as out of date, for that edit
+
 **Undo** (`u`) — every change to `openspec/` since the last git commit (yours, LazySpec's or the agent's), by
 file and by piece (a removed task, a changed requirement ...), the selected piece shown. `Enter` undoes the
 piece; on a file's row, the whole file as committed (a new file: deleted). A commit empties it. Needs git.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- The built-in LazySpec (export, the terminal UI): after the agent brings a change's documents up to date,
+  it marks the change as in sync by itself (background: exit code 0 and validated; here: asked).
+
 ## 0.2.0
 
 Everything LazySpec's terminal UI does, on the same files:
