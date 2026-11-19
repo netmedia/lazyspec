@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.1
+
+- Opening a folder with an openspec folder (`code .` there) shows LazySpec's sidebar, the Plan's first item
+  selected and its details shown (`lazyspec.openOnStartup`: false to keep the Explorer).
+
 ## 0.1.0
 
 - The Plan (by group, or flat) and the Scope as trees: changes with their documents, tasks with checkboxes,

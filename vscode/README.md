@@ -58,6 +58,7 @@ other project setting work the same as in LazySpec; see
 
 | Setting | Default | |
 |---|---|---|
+| `lazyspec.openOnStartup` | `true` | Opening a folder with `openspec/` (`code .` there) shows LazySpec's sidebar |
 | `lazyspec.grouped` | `true` | The plan by group (in projects that group their changes) |
 | `lazyspec.showArchived` | `false` | Archived changes at the end of the plan |
 | `lazyspec.roots` | `[]` | Projects deeper than the workspace's folders, e.g. `apps/portal` |
