@@ -1,0 +1,140 @@
+{
+  "name": "lazyspec",
+  "displayName": "LazySpec - OpenSpec specs and changes",
+  "description": "A project's OpenSpec in your editor: the specifications and the plan (by group), tasks to tick, requirements and scenarios to jump to, find, validate, archive, and exports for the client in the company look.",
+  "version": "0.1.0",
+  "publisher": "netmedia",
+  "author": { "name": "Netmedia", "email": "netmedia@netmedia.hr", "url": "https://netmedia.agency" },
+  "license": "SEE LICENSE IN LICENSE",
+  "homepage": "https://github.com/netmedia/lazyspec",
+  "repository": { "type": "git", "url": "https://github.com/netmedia/lazyspec.git", "directory": "vscode" },
+  "bugs": { "url": "https://github.com/netmedia/lazyspec/issues" },
+  "icon": "media/icon.png",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other", "Visualization"],
+  "keywords": ["openspec", "specification", "spec-driven", "requirements", "tasks", "lazyspec"],
+  "main": "./out/src/extension.js",
+  "activationEvents": [
+    "workspaceContains:openspec/config.yaml",
+    "workspaceContains:openspec/specs",
+    "workspaceContains:openspec/changes"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "lazyspec", "title": "LazySpec", "icon": "media/lazyspec.svg" }
+      ]
+    },
+    "views": {
+      "lazyspec": [
+        { "id": "lazyspec.plan", "name": "Plan" },
+        { "id": "lazyspec.scope", "name": "Scope" },
+        { "id": "lazyspec.details", "name": "Details", "type": "webview" }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "lazyspec.plan",
+        "contents": "No openspec folder in this workspace.\nStart one in the project's root: npm install -g @fission-ai/openspec, then openspec init.\n[Open a folder](command:vscode.openFolder)"
+      }
+    ],
+    "commands": [
+      { "command": "lazyspec.refresh", "title": "Refresh", "category": "LazySpec", "icon": "$(refresh)" },
+      { "command": "lazyspec.find", "title": "Find a Task, Requirement, Scenario or Section", "category": "LazySpec", "icon": "$(search)" },
+      { "command": "lazyspec.newChange", "title": "New Change", "category": "LazySpec", "icon": "$(add)" },
+      { "command": "lazyspec.validate", "title": "Validate All", "category": "LazySpec", "icon": "$(pass)" },
+      { "command": "lazyspec.archive", "title": "Archive Change", "category": "LazySpec", "icon": "$(archive)" },
+      { "command": "lazyspec.export", "title": "Export for the Client...", "category": "LazySpec", "icon": "$(export)" },
+      { "command": "lazyspec.exportItem", "title": "Export This...", "category": "LazySpec", "icon": "$(export)" },
+      { "command": "lazyspec.exportGroups", "title": "Export Groups...", "category": "LazySpec" },
+      { "command": "lazyspec.exportMarkdown", "title": "Export Markdown as a Document...", "category": "LazySpec" },
+      { "command": "lazyspec.toggleGrouped", "title": "Plan: by Group or Flat", "category": "LazySpec", "icon": "$(list-tree)" },
+      { "command": "lazyspec.toggleArchived", "title": "Plan: Show or Hide Archived Changes", "category": "LazySpec", "icon": "$(archive)" },
+      { "command": "lazyspec.openTui", "title": "Open LazySpec (Terminal UI)", "category": "LazySpec", "icon": "$(terminal)" },
+      { "command": "lazyspec.openConfig", "title": "Open openspec/config.yaml", "category": "LazySpec" },
+      { "command": "lazyspec.openItem", "title": "Open", "category": "LazySpec", "icon": "$(go-to-file)" },
+      { "command": "lazyspec.showDetails", "title": "Show Details", "category": "LazySpec" }
+    ],
+    "menus": {
+      "view/title": [
+        { "command": "lazyspec.find", "when": "view == lazyspec.plan || view == lazyspec.scope", "group": "navigation@1" },
+        { "command": "lazyspec.newChange", "when": "view == lazyspec.plan", "group": "navigation@2" },
+        { "command": "lazyspec.export", "when": "view == lazyspec.plan || view == lazyspec.scope", "group": "navigation@3" },
+        { "command": "lazyspec.toggleGrouped", "when": "view == lazyspec.plan && lazyspec.hasGroups", "group": "navigation@4" },
+        { "command": "lazyspec.refresh", "when": "view == lazyspec.plan || view == lazyspec.scope", "group": "navigation@9" },
+        { "command": "lazyspec.validate", "when": "view == lazyspec.plan || view == lazyspec.scope", "group": "1_cli@1" },
+        { "command": "lazyspec.toggleArchived", "when": "view == lazyspec.plan", "group": "2_view@1" },
+        { "command": "lazyspec.exportGroups", "when": "view == lazyspec.plan && lazyspec.hasGroups", "group": "3_export@1" },
+        { "command": "lazyspec.openConfig", "when": "view == lazyspec.plan || view == lazyspec.scope", "group": "4_open@1" },
+        { "command": "lazyspec.openTui", "when": "view == lazyspec.plan || view == lazyspec.scope", "group": "4_open@2" }
+      ],
+      "view/item/context": [
+        { "command": "lazyspec.openItem", "when": "viewItem =~ /^(change|archivedChange|spec)$/", "group": "inline@1" },
+        { "command": "lazyspec.exportItem", "when": "viewItem =~ /^(change|archivedChange|spec|group)$/", "group": "inline@2" },
+        { "command": "lazyspec.openItem", "when": "viewItem =~ /^(change|archivedChange|spec)$/", "group": "1_open@1" },
+        { "command": "lazyspec.showDetails", "when": "viewItem =~ /^(change|archivedChange|spec|group)$/", "group": "1_open@2" },
+        { "command": "lazyspec.exportItem", "when": "viewItem =~ /^(change|archivedChange|spec|group)$/", "group": "2_export@1" },
+        { "command": "lazyspec.archive", "when": "viewItem == change", "group": "3_cli@1" }
+      ],
+      "explorer/context": [
+        { "command": "lazyspec.exportMarkdown", "when": "resourceExtname == .md", "group": "7_lazyspec@1" }
+      ],
+      "editor/title/context": [
+        { "command": "lazyspec.exportMarkdown", "when": "resourceExtname == .md", "group": "7_lazyspec@1" }
+      ],
+      "commandPalette": [
+        { "command": "lazyspec.archive", "when": "false" },
+        { "command": "lazyspec.exportItem", "when": "false" },
+        { "command": "lazyspec.openItem", "when": "false" },
+        { "command": "lazyspec.showDetails", "when": "false" },
+        { "command": "lazyspec.exportMarkdown", "when": "resourceExtname == .md" }
+      ]
+    },
+    "keybindings": [
+      { "command": "lazyspec.find", "key": "ctrl+alt+t", "mac": "cmd+alt+t" }
+    ],
+    "configuration": {
+      "title": "LazySpec",
+      "properties": {
+        "lazyspec.script": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "LazySpec's `lazyspec.ps1` for export and the terminal UI. Empty: the project's own (`tools/lazyspec/lazyspec.ps1`), else the one in this extension."
+        },
+        "lazyspec.powershell": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "The PowerShell to run it with. Empty: `powershell.exe` on Windows, `pwsh` elsewhere (PowerShell 7: https://aka.ms/powershell)."
+        },
+        "lazyspec.openspec": {
+          "type": "string",
+          "default": "openspec",
+          "markdownDescription": "The OpenSpec CLI (`npm install -g @fission-ai/openspec`): validate, archive, new change."
+        },
+        "lazyspec.roots": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "markdownDescription": "Projects with an `openspec` folder deeper than the workspace's folders (paths relative to a workspace folder, e.g. `apps/portal`)."
+        },
+        "lazyspec.showArchived": { "type": "boolean", "default": false, "description": "The plan shows archived changes too." },
+        "lazyspec.grouped": { "type": "boolean", "default": true, "description": "The plan by group (in projects that group their changes)." }
+      }
+    }
+  },
+  "scripts": {
+    "kit": "node scripts/copy-kit.js",
+    "compile": "npm run kit && tsc -p .",
+    "watch": "tsc -watch -p .",
+    "test": "npm run compile && node --test out/test/model.test.js",
+    "test:vscode": "npm run compile && node out/test/run-vscode.js",
+    "package": "npm run compile && vsce package --no-dependencies -o lazyspec.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "~1.85.0",
+    "@vscode/test-electron": "^2.4.1",
+    "@vscode/vsce": "^3.2.0",
+    "typescript": "^5.6.0"
+  }
+}
