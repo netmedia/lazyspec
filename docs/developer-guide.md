@@ -149,6 +149,7 @@ LazySpec has five screens; Home is where you start and `?` always shows the keys
 | Read | `Enter` | The whole spec, or a change's documents as tabs (proposal, delta specs, models, design, tasks ...) |
 | Changes as one | `m` | Saved bundles on top, active changes below; mark changes that go to the client together |
 | Find | `t` | Tasks, requirements and scenarios matching what you type; `Enter` opens one in Read, at it |
+| Undo | `u` | Every change to `openspec/` since the last commit, piece by piece; undo one, or a whole file |
 | Run | `v`, `a`, `n`, `x` | OpenSpec CLI or export output, coloured (✓ passed, ✗ failed, ⚠ warnings) |
 | Help | `?` | Keys and credits |
 
@@ -180,10 +181,11 @@ The screenshots below come from LazySpec itself, run on a made-up demo project (
 
 | Screen | Keys |
 | --- | --- |
-| Home | `↑` `↓` select · `Tab` Scope ↔ Plan · `→` into details, `←`/`Esc` back · `z` zoom details · `PgUp` `PgDn` `Home` `End` scroll details · `Enter` read · `v` validate all · `a` archive change · `n` new change · `x` export · `m` changes as one · `t` find · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
+| Home | `↑` `↓` select · `Tab` Scope ↔ Plan · `→` into details, `←`/`Esc` back · `z` zoom details · `PgUp` `PgDn` `Home` `End` scroll details · `Enter` read · `v` validate all · `a` archive change · `n` new change · `x` export · `m` changes as one · `t` find · `y` out of date · `u` undo · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
 | Read | `↑` `↓` `PgUp` `PgDn` `Home` `End` scroll · `←` `→` previous/next document · `x` export this item · `e` edit · `Esc` back |
 | Changes as one | `↑` `↓` select · `Space` mark · `a` all/none · `Enter` continue · `d` remove saved bundle · `Esc` cancel |
-| Find | type · `↑` `↓` select · `Tab` all / tasks / open tasks / requirements / scenarios · `Enter` open in Read · `Esc` back |
+| Find | type · `↑` `↓` select · `Tab` all / tasks / open tasks / requirements / scenarios · `Enter` open in Read · `→` mark (`Space`, `a`, `g`) then `x` remove · `c` change · `r` redo · `Esc` back |
+| Undo | `↑` `↓` select · `Enter` undo it · `r` refresh · `Esc` back |
 | Run | `PgUp` `PgDn` `Home` `End` scroll · `Esc` stop (asked first); when done `Enter`/`Esc` back |
 
 The screen refreshes by itself when files under `openspec/` change, whether from your editor, git or an agent.
@@ -352,6 +354,33 @@ Command line: `lazyspec -Export Word -Item add-user-signup,add-online-payments -
 2. `Tab` narrows it: all, tasks, open tasks, requirements, scenarios.
 3. `Enter` opens it in Read, on the tasks or the specs tab, scrolled to it and marked `▸`; `Esc` returns to the results, `Esc` again to Home.
 4. Archived changes are searched only when shown on Home (`h`).
+
+### 17. Clean up: remove, change or redo tasks, requirements and scenarios
+
+**When:** specs and tasks came from a prototype, a workshop or an agent, and some of it has to go or be redone.
+
+1. `t`, find them (a word such as `prototype`, a task number, a capability), `→` into the results.
+2. Mark: `Space` one, `a` all the results, `g` a task's whole group or a requirement's whole capability. Marks stay while you search for more.
+3. `x` removes them (asked first): out of the change's documents; for the main specs, a new change with `REMOVED Requirements` (archive it to apply it). LazySpec validates afterwards.
+4. `c` change (type what to change) or `r` redo (write them again from the current specs): the agent does it, see below.
+
+### 18. Keep tasks in step with the specs
+
+**When:** a spec was changed (by you, the client's feedback, an agent) after the tasks were written.
+
+1. The change shows `!` in Plan; its details list *OUT OF DATE*: which document, and which requirements were added (`+`), changed (`~`) or removed (`-`).
+2. `y`: **update them** (the agent gets exactly what changed, before and now) or **mark them as in sync** if nothing needs to change.
+3. The first time, LazySpec asks whether to watch for this in the project (`lazyspec: syncCheck:`).
+
+**The agent:** each time LazySpec hands work to Claude Code it asks: run it now (in the run screen) or save the prompt (in `.lazyspec/prompts/`, the command copied, e.g. `claude "Read the file .lazyspec/prompts/... and do exactly what it says."`). Your answer is the default next time (`lazyspec: agent:`). Add `.lazyspec/` to `.gitignore`.
+
+### 19. Undo since the last commit
+
+**When:** a removal, a sync or an agent's edit didn't turn out as you wanted.
+
+1. `u` lists every change to `openspec/` since the last git commit, by file and by piece, the selected piece shown (red: before, green: now).
+2. `Enter` undoes the piece (asked first); on a file's row, the whole file back as committed, or a new file deleted.
+3. A commit empties the list. It needs the project in git.
 
 ## Configuration and integrations
 

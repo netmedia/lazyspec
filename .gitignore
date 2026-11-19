@@ -1,0 +1,4 @@
+# LazySpec: its own notes in a project (the out-of-date notes, the prompts for the agent): personal.
+.lazyspec/
+# Word: the lock file of an open document.
+~$*
