@@ -351,9 +351,9 @@ Command line: `lazyspec -Export Word -Item add-user-signup,add-online-payments -
 
 **When:** "where is task 1.3?", "which change handles refunds?", a standup, a question from the client.
 
-1. Home, `t`, and type: a task number (`1.3`: in every change), a change and a number (`01 1.3`, `signup 1.3`), or words (`verification`, `refund e-mail`): every task, requirement and scenario that contains them all.
+1. `t` (on any screen where nothing is typed; `Ctrl+F` anywhere but the editor), and type: a task number (`1.3`: in every change), a change and a number (`01 1.3`, `signup 1.3`), or words (`verification`, `refund e-mail`): every task, requirement and scenario that contains them all.
 2. `Tab` narrows it: all, tasks, open tasks, requirements, scenarios.
-3. `Enter` opens it in Read, on the tasks or the specs tab, scrolled to it and marked `▸`; `Esc` returns to the results, `Esc` again to Home.
+3. `Enter` opens it in Read, on the tasks or the specs tab, scrolled to it and marked `▸`; `Esc` returns to the results, `Esc` again to the screen you came from.
 4. Archived changes are searched only when shown on Home (`h`).
 
 ### 17. Clean up: remove, change or redo tasks, requirements and scenarios

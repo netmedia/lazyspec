@@ -57,7 +57,8 @@ The project is the nearest folder with `openspec\` above the current folder (els
 **Read** (`Enter`) — the whole page: the spec, or the change's documents as its workflow names them (proposal, delta specs, design, tasks ...; `←` `→`), formatted:
 headings, lists, checkboxes, tables, code, requirements (`◆`), scenarios (`▸`) with WHEN / THEN.
 
-**Find** (`t`) — a task, a requirement or a scenario anywhere in the project, as you type: a task's number
+**Find** (`t` on any screen where nothing is typed, `Ctrl+F` on any but the editor; `Esc` comes back there) — a
+task, a requirement or a scenario anywhere in the project, as you type: a task's number
 (`1.3`: that task in every change; `01 1.3` or `signup 1.3`: that change's), or words (all of them in the
 task, its group, its change's name or title; a requirement or scenario of the specs or of the changes' delta
 specs, with its capability and requirement). `Tab` narrows it: all, tasks, open tasks, requirements,
