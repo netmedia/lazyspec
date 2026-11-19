@@ -102,9 +102,18 @@ or unmark them; without marks, `Enter` opens the selected in Read, to edit it th
 - **Change** (you write what) and **write again** (to match the current specs): work for the agent, below.
 
 **The agent** (Claude Code) — the work is written as a prompt in `.lazyspec/prompts/` (the project's root);
-then asked: **run Claude Code now** (`claude -p ... --permission-mode acceptEdits`, its output in the run screen)
-or **save the prompt** (the command to give it, copied). The answer is the project's default next time
-(`lazyspec: agent: run | prompt` in `openspec/config.yaml`).
+then asked how:
+
+- **Here** (`h`): LazySpec gives Claude Code this terminal, with the prompt - Claude Code as you know it: it can
+  ask (choose 1, 2, 3 ...), you answer, approve, add to it. `/exit` (or `Ctrl+C` twice) brings you back to
+  LazySpec, which reads the documents again; `u` shows what it changed.
+- **In the background** (`b`): `claude -p ... --permission-mode acceptEdits`, its output in the run screen; told
+  not to ask but to decide and say what it decided. When it's done, `a` answers it or has it go on (your words,
+  the same conversation: `claude -c -p ...`).
+- **Save the prompt** (`s`): the command to give it, copied.
+
+The answer is the project's default next time (`lazyspec: agent: here | background | prompt` in
+`openspec/config.yaml`).
 
 **Out of date** — a change's documents are written from others (the workflow's `requires`: tasks from the specs
 and the design). When one is written, LazySpec notes what those were (`.lazyspec/sync.json`: a hash of each, a
