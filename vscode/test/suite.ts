@@ -240,6 +240,12 @@ export async function run(): Promise<void> {
     assert.ok(vscode.window.activeTextEditor?.document.uri.fsPath.toLowerCase() === tasks.toLowerCase(), 'Source: the Markdown in the text editor');
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
   });
+  await check('the panes: Ctrl+; then P, S, D, U, E', async () => {
+    const pkg = vscode.extensions.getExtension('netmedia.lazyspec')!.packageJSON;
+    const keys = Object.fromEntries(pkg.contributes.keybindings.map((k: { command: string; key: string }) => [k.command, k.key]));
+    assert.deepStrictEqual(['lazyspec.focusPlan', 'lazyspec.focusScope', 'lazyspec.focusDetails', 'lazyspec.focusUndo', 'lazyspec.focusEditor'].map(c => keys[c]), ['ctrl+; p', 'ctrl+; s', 'ctrl+; d', 'ctrl+; u', 'ctrl+; e']);
+    for (const c of ['lazyspec.focusPlan', 'lazyspec.focusScope', 'lazyspec.focusDetails', 'lazyspec.focusUndo', 'lazyspec.focusPlan']) { await vscode.commands.executeCommand(c); }
+  });
   await check('the bundled lazyspec.ps1 is in the extension', () => {
     assert.ok(fs.existsSync(path.join(vscode.extensions.getExtension('netmedia.lazyspec')!.extensionPath, 'kit', 'lazyspec.ps1')));
   });

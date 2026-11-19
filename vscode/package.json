@@ -2,7 +2,7 @@
   "name": "lazyspec",
   "displayName": "LazySpec - OpenSpec specs and changes",
   "description": "A project's OpenSpec in your editor: the specifications and the plan (by group), formatted reading, tasks, requirements, scenarios and sections to edit, tick, delete or hand to the agent, find, out-of-date documents, undo, validate, archive, and exports for the client in the company look.",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "publisher": "netmedia",
   "author": {
     "name": "Netmedia",
@@ -309,6 +309,31 @@
       {
         "command": "lazyspec.openBlock",
         "title": "Edit in the File",
+        "category": "LazySpec"
+      },
+      {
+        "command": "lazyspec.focusPlan",
+        "title": "Go to the Plan",
+        "category": "LazySpec"
+      },
+      {
+        "command": "lazyspec.focusScope",
+        "title": "Go to the Scope",
+        "category": "LazySpec"
+      },
+      {
+        "command": "lazyspec.focusDetails",
+        "title": "Go to the Details",
+        "category": "LazySpec"
+      },
+      {
+        "command": "lazyspec.focusUndo",
+        "title": "Go to Undo",
+        "category": "LazySpec"
+      },
+      {
+        "command": "lazyspec.focusEditor",
+        "title": "Go to the Open Document",
         "category": "LazySpec"
       }
     ],
@@ -696,6 +721,31 @@
         "key": "delete",
         "mac": "cmd+backspace",
         "when": "focusedView == lazyspec.undo"
+      },
+      {
+        "command": "lazyspec.focusPlan",
+        "key": "ctrl+; p",
+        "mac": "cmd+; p"
+      },
+      {
+        "command": "lazyspec.focusScope",
+        "key": "ctrl+; s",
+        "mac": "cmd+; s"
+      },
+      {
+        "command": "lazyspec.focusDetails",
+        "key": "ctrl+; d",
+        "mac": "cmd+; d"
+      },
+      {
+        "command": "lazyspec.focusUndo",
+        "key": "ctrl+; u",
+        "mac": "cmd+; u"
+      },
+      {
+        "command": "lazyspec.focusEditor",
+        "key": "ctrl+; e",
+        "mac": "cmd+; e"
       }
     ],
     "configuration": {

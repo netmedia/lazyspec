@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0
+
+- Find: each result's document (TASKS, DESIGN ...) and kind on a small line of its own; in:<document> and
+  is:<kind> typed with the words (in:design, in:open, is:task, is:req ...).
+- A document opened from LazySpec (find, the trees, Details) is focused, the cursor at the item: the
+  keyboard scrolls it right away.
+- The panes: Ctrl+; then P (Plan), S (Scope), D (Details), U (Undo), E (the document); Mac Cmd+;.
+
 ## 0.4.2
 
 - A document's link without an item (Details' documents and capabilities) opened the Markdown source: now

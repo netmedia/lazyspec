@@ -128,9 +128,34 @@ document was written from in `.lazyspec/sync.json`, and the extension reads and 
   writes and reads). A document the agent rightly left unchanged is in sync too. A spec someone edited during
   the run still shows as out of date.
 
+## Keys: the panes
+
+`Ctrl+;` then a letter (Mac `Cmd+;`), wherever you are. The view gets the keyboard, so the arrows, `PgUp`
+and `PgDn` work right away; the Plan keeps its selection.
+
+| | Goes to |
+|---|---|
+| `Ctrl+;` `P` | the Plan |
+| `Ctrl+;` `S` | the Scope |
+| `Ctrl+;` `D` | the Details |
+| `Ctrl+;` `U` | Undo |
+| `Ctrl+;` `E` | the open document (the formatted editor: its text) |
+
+In a view: `↑` `↓` select, `→` `←` open and close, `Enter` opens (a document or an item, formatted, focused
+at it), `F2` edits, `Space` ticks a task, `Delete` deletes. `Ctrl+Alt+T` finds, `Ctrl+Alt+R` reads,
+`Ctrl+Alt+A` hands the selection to the agent. VS Code's own: `Ctrl+B` shows or hides the side bar, `Ctrl+0`
+goes to it, `Ctrl+1` to the editor, `F6` around the window's parts.
+
 ## Find
 
 `Ctrl+Alt+T` (Mac `Cmd+Alt+T`) finds tasks, requirements, scenarios and sections as you type.
+
+- Each result has a small second line: the document it is in (TASKS, DESIGN, SPECS, OPEN QUESTIONS ...),
+  what it is (task, requirement, scenario, section) and its requirement or task group.
+- **By document**: type `in:` and the document's name, or its beginning, with your words: `in:design cache`,
+  `in:open` (open questions), `in:tasks 1.3`. Alone, `in:design` lists all of that document's items.
+- **By kind**: `is:task`, `is:open` (open tasks), `is:req`, `is:scenario`, `is:section`.
+- Opening a result puts the keyboard in the document, with the cursor on it, so you can scroll right away.
 
 - What you can type:
   - a task number: `1.3`

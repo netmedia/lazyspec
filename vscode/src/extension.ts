@@ -341,7 +341,8 @@ async function findCommand() {
   type Item = vscode.QuickPickItem & { e?: Entry };
   const qp = vscode.window.createQuickPick<Item>();
   const grouping = projects.some(p => p.grouping);
-  qp.placeholder = `A task number (1.3), a change and a number (01 1.3), or words${grouping ? '; g1 or group 1: one group' : ''}`;
+  const artNames = arts.slice(1).map(a => a.toLowerCase().replace(/\s+/g, '-'));
+  qp.placeholder = `A task number (1.3), words${grouping ? ', g1 (a group)' : ''}; in:${artNames.slice(0, 3).join(' in:')} ... (a document); is:task is:req is:scenario is:section is:open`;
   const kindButton: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('filter'), tooltip: 'Kind: all, tasks, open tasks, requirements, scenarios, sections' };
   const artButton: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('file'), tooltip: 'In which document: all, proposal, specs, design, tasks ...' };
   const manyButton: vscode.QuickInputButton = { iconPath: new vscode.ThemeIcon('checklist'), tooltip: 'Select several (then delete them, tick them, or hand them to the agent)' };
@@ -353,13 +354,32 @@ async function findCommand() {
     { iconPath: new vscode.ThemeIcon('sparkle'), tooltip: 'The agent: change it, write it again' },
     { iconPath: new vscode.ThemeIcon('trash'), tooltip: 'Delete' },
   ];
+  const KIND_NAME: Record<Entry['kind'], string> = { task: 'task', req: 'requirement', scn: 'scenario', sec: 'section' };
+  const IS: Record<string, FindKind> = { task: 'tasks', tasks: 'tasks', open: 'open tasks', req: 'requirements', requirement: 'requirements', requirements: 'requirements', scn: 'scenarios', scenario: 'scenarios', scenarios: 'scenarios', sec: 'sections', section: 'sections', sections: 'sections' };
   const update = () => {
-    qp.title = `LazySpec: find - ${KINDS[kind]}, in ${arts[art]}${qp.canSelectMany ? ' - several: Enter goes on' : ''}`;
+    // Typed filters: in:<document> (design, tasks, open-questions ... a beginning is enough), is:<kind>.
+    let typedArt = '', typedKind: FindKind | '' = '';
+    const words = qp.value.split(/\s+/).filter(w => {
+      let m = /^in:(\S*)$/i.exec(w);
+      if (m) { const want = m[1].toLowerCase(); const i = artNames.findIndex(a => a.startsWith(want)); if (want && i >= 0) { typedArt = arts[i + 1]; } return false; }
+      m = /^is:(\S*)$/i.exec(w);
+      if (m) { const k = IS[m[1].toLowerCase()]; if (k) { typedKind = k; } return false; }
+      return true;
+    });
+    const wantArt = typedArt || (art > 0 ? arts[art] : '');
+    const wantKind = typedKind || KINDS[kind];
+    qp.title = `LazySpec: find - ${wantKind}, in ${wantArt || 'all documents'}${qp.canSelectMany ? ' - several: Enter goes on' : ''}`;
     const found: Item[] = [];
+    const query = words.join(' ');
     for (const { p, index } of indexes) {
-      for (const e of find(p, index, qp.value, KINDS[kind]).filter(x => art === 0 || x.art === arts[art]).slice(0, 300)) {
+      // Only a filter typed (in:design): everything of that document / kind.
+      const kindOk = (e: Entry) => wantKind === 'all' || (wantKind === 'tasks' && e.kind === 'task') || (wantKind === 'open tasks' && e.kind === 'task' && !e.done) || (wantKind === 'requirements' && e.kind === 'req') || (wantKind === 'scenarios' && e.kind === 'scn') || (wantKind === 'sections' && e.kind === 'sec');
+      const hits = query.trim() ? find(p, index, query, wantKind) : (typedArt || typedKind) ? index.filter(kindOk) : [];
+      for (const e of hits.filter(x => !wantArt || x.art === wantArt).slice(0, 300)) {
         const icon = e.kind === 'task' ? (e.done ? 'pass' : 'circle-outline') : KIND_ICON[e.kind];
-        found.push({ label: `$(${icon}) ${e.text}`, description: [e.art, e.where, e.cap].filter(x => x).join(' · '), detail: e.context ? `${e.kind === 'scn' ? 'requirement' : 'in'}: ${e.context}` : undefined, alwaysShow: true, e, buttons: qp.canSelectMany ? [] : itemButtons(e) });
+        // On a small line of its own: the document it is in, what it is, and its requirement or task group.
+        const detail = [e.art.toUpperCase(), KIND_NAME[e.kind] + (e.kind === 'task' && e.done ? ' (done)' : ''), e.context ? `${e.kind === 'scn' ? 'of' : 'in'} ${e.context}` : ''].filter(x => x).join('  ·  ');
+        found.push({ label: `$(${icon}) ${e.text}`, description: [e.where, e.cap].filter(x => x).join(' · '), detail, alwaysShow: true, e, buttons: qp.canSelectMany ? [] : itemButtons(e) });
       }
     }
     qp.items = found;
@@ -496,7 +516,7 @@ async function openAt(file: string, line = 0, text = '') {
 async function openDocument(file: string, as?: 'formatted' | 'preview' | 'source') {
   const how = as || settings().documents;
   const md = file.toLowerCase().endsWith('.md');
-  if (how === 'formatted' && md) { await vscode.commands.executeCommand('vscode.openWith', vscode.Uri.file(file), FormattedEditorProvider.viewType); return; }
+  if (how === 'formatted' && md) { await FormattedEditorProvider.openAt(vscode.Uri.file(file), ''); return; }
   if (how === 'preview' && md) { await vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(file)); return; }
   await openFile(file);
 }
@@ -624,6 +644,12 @@ export function activate(context: vscode.ExtensionContext): Api {
   reg('lazyspec.refresh', () => { projects = findProjects(); watch(); reload(); });
   reg('lazyspec.openFile', (file: string, line = 0) => openFile(file, line));
   reg('lazyspec.openAt', (file: string, line = 0, text = '') => openAt(file, line, text));
+  // The panes: Ctrl+; then P (Plan), S (Scope), D (Details), U (Undo), E (the document) - focused, the arrows work.
+  reg('lazyspec.focusPlan', async () => { await vscode.commands.executeCommand('lazyspec.plan.focus'); });
+  reg('lazyspec.focusScope', async () => { await vscode.commands.executeCommand('lazyspec.scope.focus'); });
+  reg('lazyspec.focusDetails', async () => { await vscode.commands.executeCommand('lazyspec.details.focus'); });
+  reg('lazyspec.focusUndo', async () => { await vscode.commands.executeCommand('lazyspec.undo.focus'); });
+  reg('lazyspec.focusEditor', async () => { await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup'); FormattedEditorProvider.focusActive(); });
   reg('lazyspec.openDocument', (file: string) => openDocument(file));
   reg('lazyspec.showPreview', (n?: Node | vscode.Uri) => { const f = fileOf(n); if (f) { return openDocument(f, 'preview'); } });
   reg('lazyspec.showSource', (n?: Node | vscode.Uri) => { const f = fileOf(n); if (f) { return openDocument(f, 'source'); } });
