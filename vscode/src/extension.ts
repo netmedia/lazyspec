@@ -22,7 +22,22 @@ function settings(): Settings {
   return { grouped: c.get<boolean>('grouped', true), showArchived: c.get<boolean>('showArchived', false) };
 }
 
-/** The workspace's projects: its folders with an openspec folder, and lazyspec.roots below them. */
+const SKIP = new Set(['node_modules', 'out', 'dist', 'bin', 'obj', 'build', 'target', 'vendor', 'kit']);
+/** Folders below $dir (up to $depth levels) with an openspec folder that has config.yaml, specs or changes. */
+function findDeeper(dir: string, depth: number, out: string[]) {
+  if (depth <= 0) { return; }
+  let entries: fs.Dirent[] = [];
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+  for (const e of entries) {
+    if (!e.isDirectory() || e.name.startsWith('.') || SKIP.has(e.name) || e.name === 'openspec') { continue; }
+    const sub = path.join(dir, e.name);
+    const os = path.join(sub, 'openspec');
+    if (['config.yaml', 'specs', 'changes'].some(x => fs.existsSync(path.join(os, x)))) { out.push(sub); continue; }
+    findDeeper(sub, depth - 1, out);
+  }
+}
+/** The workspace's projects: its folders with an openspec folder, lazyspec.roots below them; a folder
+ *  without one at its top: the ones up to three levels below it (a monorepo, apps/portal, examples/...). */
 function findProjects(): Project[] {
   const roots: string[] = [];
   const extra = vscode.workspace.getConfiguration('lazyspec').get<string[]>('roots', []);
@@ -30,6 +45,11 @@ function findProjects(): Project[] {
     const base = f.uri.fsPath;
     for (const r of [base, ...extra.map(e => path.resolve(base, e))]) {
       if (Project.isProject(r) && !roots.includes(r)) { roots.push(r); }
+    }
+    if (!roots.some(r => r === base || r.startsWith(base + path.sep))) {
+      const deeper: string[] = [];
+      findDeeper(base, 3, deeper);
+      for (const r of deeper.sort()) { if (!roots.includes(r)) { roots.push(r); } }
     }
   }
   return roots.map(r => {

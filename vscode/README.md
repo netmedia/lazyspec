@@ -43,7 +43,8 @@ By [Netmedia](https://netmedia.agency).
 
 ## What it needs
 
-- A folder with an `openspec/` folder (or set `lazyspec.roots` for projects deeper in the workspace).
+- A folder with an `openspec/` folder: at its top, or up to three levels below it (a monorepo, `apps/portal`);
+  `lazyspec.roots` names deeper ones.
 - **The OpenSpec CLI** for validate, new change and archive: `npm install -g @fission-ai/openspec`.
 - **PowerShell** for export and the terminal UI. It is built into Windows; on macOS and Linux install
   PowerShell 7 (`brew install powershell`, https://aka.ms/powershell).

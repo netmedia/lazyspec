@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- A folder without `openspec/` at its top: the projects up to three levels below it (a monorepo,
+  `apps/portal`, `examples/acme-portal`), each its own part of the Plan and the Scope.
+
 ## 0.1.1
 
 - Opening a folder with an openspec folder (`code .` there) shows LazySpec's sidebar, the Plan's first item
