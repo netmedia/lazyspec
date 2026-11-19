@@ -28,6 +28,7 @@
       launcher\launcher.cs  ->  tools\lazyspec\lazyspec.exe   (next to tools\lazyspec\lazyspec.ps1)
                             ->  initintoproject.exe           (next to initintoproject.ps1)
                             ->  install.exe                   (next to install.ps1)
+                            ->  install-vscode.exe            (next to install-vscode.ps1)
 
 .PARAMETER Help
     Display the usage guide and exit.
@@ -99,7 +100,7 @@ $text = (Get-Content (Join-Path $root 'launcher\launcher.cs') -Raw -Encoding UTF
 
 $code = 0
 try {
-    foreach ($out in @((Join-Path $root 'tools\lazyspec\lazyspec.exe'), (Join-Path $root 'initintoproject.exe'), (Join-Path $root 'install.exe'))) {
+    foreach ($out in @((Join-Path $root 'tools\lazyspec\lazyspec.exe'), (Join-Path $root 'initintoproject.exe'), (Join-Path $root 'install.exe'), (Join-Path $root 'install-vscode.exe'))) {
         $result = & $csc /nologo /optimize+ /target:exe /platform:anycpu "/out:$out" $source 2>&1
         if ($LASTEXITCODE -ne 0) { Write-Host "  $([char]0x2717) $(Split-Path $out -Leaf): $result" -ForegroundColor Red; $code = 1; continue }
         Write-Host "  $([char]0x2713) $((Resolve-Path $out -Relative)) ($version, $([int]((Get-Item $out).Length / 1KB)) KB)" -ForegroundColor Green

@@ -88,9 +88,17 @@ for the line `Phase: 1 – Launch` under the title of the change's first documen
 
 ## Install
 
-`vscode/lazyspec.vsix` in the LazySpec repository: in VS Code run **Extensions: Install from VSIX...** and pick
-it, or from a terminal `code --install-extension vscode/lazyspec.vsix` (`cursor --install-extension ...` for
-Cursor, `windsurf --install-extension ...` for Windsurf). A `git pull` and installing it again updates it.
+From the root of the LazySpec repository:
+
+```
+.\install-vscode.exe                  # Windows: every VS Code, Cursor, Windsurf, VSCodium found
+.\install-vscode.exe -Editor cursor    # only these
+./install-vscode.sh                   # macOS, Linux
+```
+
+It runs `<editor> --install-extension vscode/lazyspec.vsix --force` for each; `-Uninstall` (`--uninstall`)
+removes it. After a `git pull`, run it again to update. Or in the editor: **Extensions: Install from VSIX...**
+and pick `vscode/lazyspec.vsix`.
 
 To build it yourself: `cd vscode`, `npm install`, `npm run package`.
 
