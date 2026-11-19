@@ -258,7 +258,7 @@ export async function run(): Promise<void> {
     await new Promise(r => setTimeout(r, 500));
     assert.ok(vscode.window.tabGroups.all.flatMap(g => g.tabs).some(t => t.label === 'LazySpec: Help'));
     const pkg = vscode.extensions.getExtension('netmedia.lazyspec')!.packageJSON;
-    const same = ['f2', 'space'];
+    const same = ['f2', 'space', 'ctrl+alt+enter'];
     for (const k of pkg.contributes.keybindings) { assert.ok(k.mac || same.includes(k.key), `${k.command}: no Mac key`); }
     await vscode.commands.executeCommand('workbench.action.closeAllEditors');
   });

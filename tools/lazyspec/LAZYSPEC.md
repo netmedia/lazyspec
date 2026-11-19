@@ -76,7 +76,7 @@ section, in its text too; those found by their name or heading come first). Each
 it is in (Proposal, Specs, Design, Tasks, Models ..., as the workflow names them; Spec for the main specs).
 `Tab` narrows it by kind: all, tasks, open tasks, requirements, scenarios, sections; `Shift+Tab` by document.
 `Enter` opens it in Read, on its document's tab, scrolled to it and marked `▸`; `Esc` there goes back to the
-results. Archived changes only with `h`, as on Home. In a project with [groups](#the-screens), `g1` or
+results. Archived changes only with `.`, as on Home. In a project with [groups](#the-screens), `g1` or
 `group 1` (or the project's word: `phase 1`) with the words keeps one group's.
 
 **One item in Read** — on a tab with tasks, requirements, scenarios or sections (`## Why`, `## Decisions`, a task
@@ -207,9 +207,13 @@ See [vscode/README.md](../../vscode/README.md).
 
 ## Keys
 
+The letters are the same as LazySpec's in VS Code, where they come with `Ctrl+Alt` (Mac `⌃⌥`): `t` find, `u`
+undo, `y` out of date, `r` refresh, `a` the agent, `p` `s` `d` the plan, the scope, the details, `h` back to
+the document, `Enter` read.
+
 | Screen | Keys |
 |---|---|
-| Home | `↑` `↓` select · `Tab` scope ↔ plan · `→` into the details (`↑` `↓` scroll them), `←`/`Esc` back · `z` zoom the details to the whole width (again: the lists back) · `PgUp` `PgDn` `Home` `End` scroll the details · `Enter` read · `v` validate all · `a` archive the change · `n` new change · `x` export (PDF, Word, HTML) · `m` changes as one · `Space` choose a group · `c` fold a group · `g` the plan by group or flat · `t` find · `y` out of date: update or mark in sync · `u` undo (`Ctrl+T` `Ctrl+U` `Ctrl+Y` on any screen) · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
+| Home | `↑` `↓` select · `Tab` scope ↔ plan · `→` into the details (`↑` `↓` scroll them), `←`/`Esc` back · `z` zoom the details to the whole width (again: the lists back) · `PgUp` `PgDn` `Home` `End` scroll the details · `Enter` read · `p` `s` `d` the plan, the scope, the details · `h` back to the document last read · `v` validate all · `A` (Shift) archive the change · `n` new change · `x` export (PDF, Word, HTML) · `m` changes as one · `Space` choose a group · `c` fold a group · `g` the plan by group or flat · `t` find · `y` out of date: update or mark in sync · `u` undo (`Ctrl+T` `Ctrl+U` `Ctrl+Y` on any screen) · `e` edit · `o` sort · `.` archived · `/` filter · `r` refresh · `?` help · `q` quit |
 | Read | `↑` `↓` an item (a task, requirement, scenario or section; else scroll) · `Enter` edit it · `Space` a task done / not · `Del` delete it · `a` the agent · `PgUp` `PgDn` `Home` `End` scroll · `←` `→` document · `x` export this spec, change or changes as one · `e` the whole file in your editor · `t` find · `u` undo · `y` out of date · `r` refresh · `Esc` back |
 | Changes as one | `↑` `↓` select · `Space` mark (a saved whole: its changes) · `a` all, none · `Enter` go on (a saved whole: read it; else a title, save it?, then Read) · `d` remove a saved whole · `Esc` cancel |
 | Find | type the search · `↑` `↓` `PgUp` `PgDn` select · `Tab` all, tasks, open tasks, requirements, scenarios, sections · `Shift+Tab` the document (all, proposal, specs, design, tasks ...) · `Ctrl+U` undo · `Ctrl+Y` out of date · `Enter` open in Read, at it · `→` into the results: `Space` mark · `a` all · `g` its group · `Del` delete · `Enter` the marked: delete, change, write again, unmark · `←`/`Esc` back to typing · `Esc` back |

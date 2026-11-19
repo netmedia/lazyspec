@@ -92,9 +92,9 @@ try {
     Check ($f[1] -match 'in: Models' -and $f[1] -match '3 found' -and $f[1] -notmatch ' Tasks ') 'Shift+Tab: one document only' $f[1]
     Check ($f[2] -match '^snap edit' -and $f[2] -match 'section in openspec/changes/01-add-user-signup/proposal\.md' -and $f[2] -match '1 ## What Changes' -and $f[2] -match 'isn''t verified within 24 hours') 'Read: a section picked (## What Changes) and edited whole' $f[2]
 
-    $f = Invoke-Keys 't,text:sign-in endpoint,snap,Esc,h,t,snap'
+    $f = Invoke-Keys 't,text:sign-in endpoint,snap,Esc,.,t,snap'
     Check ($f[0] -match 'nothing found') 'archived changes hidden, as on Home' $f[0]
-    Check ($f[1] -match ([string][char]0x2713 + ' Tasks\s+.*(add-email-login|Add e-mail login).*1\.1 Sign-in endpoint')) 'h on Home: archived changes found too' $f[1]
+    Check ($f[1] -match ([string][char]0x2713 + ' Tasks\s+.*(add-email-login|Add e-mail login).*1\.1 Sign-in endpoint')) '. on Home: archived changes found too' $f[1]
 }
 finally {
     Remove-Item -LiteralPath $frames -Force -ErrorAction SilentlyContinue
