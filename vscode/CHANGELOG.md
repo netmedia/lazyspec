@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.2
+
+- A document's link without an item (Details' documents and capabilities) opened the Markdown source: now
+  the formatted editor too.
+
 ## 0.4.1
 
 - Everything formatted: tasks, task groups, requirements, scenarios, sections, find results and Details links

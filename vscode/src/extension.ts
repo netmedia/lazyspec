@@ -483,7 +483,9 @@ async function openFile(file: string, line = 0) {
 /** An item's document opened at it: in the formatted editor (scrolled to it - the nth line with its text up to
  *  its line), else the source at its line (lazyspec.documents). */
 async function openAt(file: string, line = 0, text = '') {
-  if (settings().documents !== 'formatted' || !file.toLowerCase().endsWith('.md') || !text) { await openFile(file, line); return; }
+  if (settings().documents !== 'formatted' || !file.toLowerCase().endsWith('.md')) { await openFile(file, line); return; }
+  // No item to go to (a document's link): the document, formatted.
+  if (!text) { await openDocument(file); return; }
   const lines = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').replace(/\r/g, '').split('\n') : [];
   const plain = (t: string) => t.replace(/[*_`]/g, '').toLowerCase();
   const want = plain(text).trim();
