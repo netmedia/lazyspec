@@ -4,6 +4,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { Change, itemTitle, Project, readText, section, Spec } from './model';
+import { StaleDoc } from './ops';
 
 export type Selected =
   | { kind: 'change'; project: Project; change: Change }
@@ -33,6 +34,7 @@ function summary(text: string, max = 600): string {
 export class DetailsView implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private selected: Selected = null;
+  constructor(private readonly staleOf: (p: Project, c: Change) => StaleDoc[] | undefined) { }
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
@@ -99,6 +101,21 @@ document.addEventListener('click', e => {
     let h = `<span class="chip ${chip}">${c.stage.toUpperCase()}</span><h2>${esc(itemTitle(c))}</h2><div class="path">${esc(rel)}</div>`;
     if (c.group && p.grouping) { h += `<p class="muted">${esc(p.groupTitle(c.group))}</p>`; }
     h += bar(c.done, c.total);
+    // Out of date: which documents, and what changed in what they're written from.
+    const stale = c.archived ? undefined : this.staleOf(p, c);
+    if (stale?.length) {
+      h += '<h3 class="warn">OUT OF DATE</h3>';
+      for (const st of stale) {
+        h += `<p><b>! ${esc(st.doc.title)}</b> <span class="muted">is older than:</span></p><table>`;
+        for (const d of st.diffs.slice(0, 8)) {
+          const cls = { '+': 'add', '~': 'mod', '-': 'del' }[d.mark];
+          h += `<tr><td class="${cls}">${d.mark}</td><td>${esc(d.file.replace(/^openspec\/changes\/[^/]+\//, ''))}${d.req ? ` &middot; ${esc(d.req)}` : ''}</td></tr>`;
+        }
+        if (st.diffs.length > 8) { h += `<tr><td></td><td class="muted">... ${st.diffs.length - 8} more</td></tr>`; }
+        h += '</table>';
+      }
+      h += '<div class="actions">' + button('lazyspec.sync', 'Update them (the agent)...', [{ type: 'change', root: p.root, name: c.name }]) + button('lazyspec.markInSync', 'Mark as in sync', [{ type: 'change', root: p.root, name: c.name }]) + '</div>';
+    }
     if (c.taskGroups.length) {
       h += '<h3>TASKS</h3><table>';
       for (const g of c.taskGroups) {
@@ -128,7 +145,7 @@ document.addEventListener('click', e => {
     h += '</p>';
     if (c.workflow.missing) { h += `<p class="warn">workflow '${esc(c.workflow.missing)}' not found: shown as spec-driven</p>`; }
     else if (c.workflow.name !== 'spec-driven') { h += `<p class="muted">workflow ${esc(c.workflow.name)}</p>`; }
-    h += '<div class="actions">' + button('lazyspec.openFile', 'Open', [c.path]) + button('lazyspec.exportItem', 'Export...', [{ type: 'change', root: p.root, name: c.name }]);
+    h += '<div class="actions">' + button('lazyspec.read', 'Read', [{ type: 'change', root: p.root, name: c.name }]) + button('lazyspec.openFile', 'Source', [c.path]) + button('lazyspec.exportItem', 'Export...', [{ type: 'change', root: p.root, name: c.name }]);
     if (!c.archived) { h += button('lazyspec.archive', 'Archive...', [{ type: 'change', root: p.root, name: c.name }]); }
     return h + '</div>';
   }
@@ -142,7 +159,7 @@ document.addEventListener('click', e => {
       for (const r of s.requirements) { h += `<tr><td>${link(s.path, r.name, r.line)}</td><td class="n">${r.scenarios.length}</td></tr>`; }
       h += '</table>';
     }
-    return h + '<div class="actions">' + button('lazyspec.openFile', 'Open', [s.path]) + button('lazyspec.exportItem', 'Export...', [{ type: 'spec', root: '', name: s.name, path: s.path }]) + '</div>';
+    return h + '<div class="actions">' + button('lazyspec.read', 'Read', [{ type: 'spec', root: '', name: s.name, path: s.path }]) + button('lazyspec.openFile', 'Source', [s.path]) + button('lazyspec.exportItem', 'Export...', [{ type: 'spec', root: '', name: s.name, path: s.path }]) + '</div>';
   }
 
   private group(p: Project, id: string): string {
@@ -172,7 +189,7 @@ document.addEventListener('click', e => {
       }
       h += '</table>';
     }
-    h += '<div class="actions">';
+    h += '<div class="actions">' + button('lazyspec.read', 'Read', [{ type: 'group', root: p.root, name: id }]);
     if (id) { h += button('lazyspec.exportItem', `Export this ${p.config.groupLabel.toLowerCase()}...`, [{ type: 'group', root: p.root, name: id }]); }
     if (p.config.groups.length) { h += button('lazyspec.exportGroups', `Export ${p.config.groupPlural.toLowerCase()}...`, [{ root: p.root, preselect: id ? [id] : [] }]); }
     h += button('lazyspec.openConfig', 'config.yaml', [{ root: p.root }]);

@@ -30,10 +30,15 @@ A project's **OpenSpec** specifications and changes in **one terminal screen** â
 - **Documents for the client**: PDF, Word, HTML in the company look (a theme), one spec or change, several
   changes as one, any Markdown file; written to `openspec/exports/`.
 
-**In VS Code** (and Cursor, Windsurf): the [LazySpec extension](vscode/README.md) shows the same project in the
-editor's sidebar: the Plan by group with each change's documents, tasks with checkboxes, requirements and
-scenarios to jump to; the Scope; the selected item's details; find; validate, new change, archive; the same
-exports for the client. Install it with `.\install-vscode.exe` (macOS, Linux: `./install-vscode.sh`): in every
+**In VS Code** (and Cursor, Windsurf): the [LazySpec extension](vscode/README.md) does all of it in the editor,
+on the same files. It has:
+
+- the Plan by group, the Scope, the details
+- Read, formatted, with items to edit, tick, delete or hand to the agent; or the Markdown source
+- find, out-of-date documents, undo, changes and groups as one
+- validate, new change, archive
+- the same exports for the client
+ Install it with `.\install-vscode.exe` (macOS, Linux: `./install-vscode.sh`): in every
 VS Code, Cursor, Windsurf and VSCodium found; again after a `git pull` to update it.
 
 In a project's `.gitignore`: `.lazyspec/` (LazySpec's own notes and the agent's prompts) and, unless you commit

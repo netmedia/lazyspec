@@ -1,7 +1,9 @@
 // Runs inside VS Code (run-vscode.ts): the extension activates on the project, its trees, its commands.
 
 import * as assert from 'assert';
+import * as cp from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Api } from '../src/extension';
@@ -41,7 +43,7 @@ export async function run(): Promise<void> {
   });
   await check('its commands are there', async () => {
     const all = await vscode.commands.getCommands(true);
-    for (const c of ['lazyspec.find', 'lazyspec.export', 'lazyspec.exportGroups', 'lazyspec.newChange', 'lazyspec.validate', 'lazyspec.archive', 'lazyspec.openTui', 'lazyspec.openFile']) {
+    for (const c of ['lazyspec.read', 'lazyspec.readAsOne', 'lazyspec.readGroups', 'lazyspec.editItem', 'lazyspec.deleteItems', 'lazyspec.agentItems', 'lazyspec.sync', 'lazyspec.undoItem', 'lazyspec.find', 'lazyspec.export', 'lazyspec.exportGroups', 'lazyspec.newChange', 'lazyspec.validate', 'lazyspec.archive', 'lazyspec.openTui', 'lazyspec.openFile']) {
       assert.ok(all.includes(c), c);
     }
   });
@@ -71,7 +73,9 @@ export async function run(): Promise<void> {
     const specs = api.scope.getChildren();
     assert.ok(specs.length >= 5);
     const ua = specs.find(s => api.scope.getTreeItem(s).label === 'User accounts')!;
-    assert.strictEqual(api.scope.getTreeItem(api.scope.getChildren(ua)[0]).label, 'Sign in');
+    const kids = api.scope.getChildren(ua);
+    assert.deepStrictEqual(kids.slice(0, 3).map(k => api.scope.getTreeItem(k).label), ['Purpose', 'Sign in', 'Password reset']);
+    assert.deepStrictEqual(kids.slice(0, 2).map(k => api.scope.getTreeItem(k).contextValue), ['item.sec', 'item.req']);
   });
   await check('flat on lazyspec.grouped false', async () => {
     await vscode.workspace.getConfiguration('lazyspec').update('grouped', false, vscode.ConfigurationTarget.Workspace);
@@ -101,6 +105,60 @@ export async function run(): Promise<void> {
     api.details.show({ kind: 'change', project: p, change: p.changes[0] });
     api.details.show({ kind: 'group', project: p, id: '2' });
     api.details.show({ kind: 'spec', project: p, spec: p.specs[0] });
+  });
+  await check('a document\'s sections are items; a task, a requirement, a scenario too (edit, delete, the agent)', () => {
+    const change = api.plan.getChildren(api.plan.getChildren()[0])[0];
+    const proposal = api.plan.getChildren(change)[0];
+    const secs = api.plan.getChildren(proposal).map(n => api.plan.getTreeItem(n));
+    assert.ok(secs.some(s => s.label === 'Why') && secs.every(s => s.contextValue === 'item.sec'), secs.map(s => s.label).join(', '));
+  });
+  await check('formatted: the built-in Markdown renders with source lines (Read finds its items by them)', async () => {
+    const html = await vscode.commands.executeCommand<string>('markdown.api.render', '# T\n\n- [ ] 1.1 A task\n\n### Requirement: R\n');
+    assert.ok(typeof html === 'string' && /data-line="2"/.test(html) && /data-line="4"/.test(html), String(html).slice(0, 300));
+  });
+  await check('Read opens: a change, its documents as tabs', async () => {
+    await vscode.commands.executeCommand('lazyspec.read', { type: 'change', root: api.projects()[0].root, name: '01-add-user-signup' });
+    await new Promise(r => setTimeout(r, 800));
+    const tabs = vscode.window.tabGroups.all.flatMap(g => g.tabs).map(t => t.label);
+    assert.ok(tabs.includes('01 Add user sign-up'), tabs.join(', '));
+  });
+  await check('Read\'s page: tasks with their checkboxes, each item one element (its script in a browser)', async () => {
+    const browser = ['C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Microsoft/Edge/Application/msedge.exe', 'C:/Program Files/Google/Chrome/Application/chrome.exe', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].find(b => fs.existsSync(b));
+    if (!browser) { console.log('        (no Edge or Chrome: skipped)'); return; }
+    await vscode.commands.executeCommand('lazyspec.read', { type: 'change', root: api.projects()[0].root, name: '01-add-user-signup' });
+    await new Promise(r => setTimeout(r, 500));
+    // The Tasks tab: the panel's last page is the first tab; draw the tasks' one.
+    const { ReadPanel } = require('../src/read');
+    const page = path.join(os.tmpdir(), `lazyspec-read-${Date.now()}.html`);
+    const profile = path.join(os.tmpdir(), `lazyspec-read-profile-${Date.now()}`);
+    const html = String(ReadPanel.lastHtml).replace('<head>', '<head><script>window.acquireVsCodeApi = () => ({ postMessage() {} });</script>');
+    fs.writeFileSync(page, html);
+    try {
+      const dom = cp.execFileSync(browser, ['--headless=new', '--disable-gpu', `--user-data-dir=${profile}`, '--dump-dom', 'file:///' + page.replace(/\\/g, '/')], { encoding: 'utf8', timeout: 60000 });
+      const items = (dom.match(/class="[^"]*\bitem\b[^"]*"/g) || []).length;
+      assert.ok(items >= 3, `items: ${items}`);
+      assert.ok(!/<ul[^>]*data-item=/.test(dom), 'a list is not an item, its entries are');
+      assert.ok(/<h2[^>]*data-item="\d+"[^>]*>Why/.test(dom) || /<h2[^>]*class="[^"]*item[^"]*"[^>]*>Why/.test(dom), 'the section ## Why is an item');
+    } finally { fs.rmSync(page, { force: true }); fs.rmSync(profile, { recursive: true, force: true }); }
+    // The tasks' document: checkboxes, without the [ ] text.
+    const tasksHtml = await vscode.commands.executeCommand<string>('markdown.api.render', fs.readFileSync(path.join(work, 'openspec', 'changes', '01-add-user-signup', 'tasks.md'), 'utf8'));
+    assert.ok(/<li data-line="\d+"[^>]*>\[x\] 1\.1/.test(tasksHtml), 'tasks rendered as text with their box: the page turns them into checkboxes');
+  });
+  await check('out of date: a delta spec changed after the tasks - ! in the plan, the details say what', async () => {
+    const spec = path.join(work, 'openspec', 'changes', '01-add-user-signup', 'specs', 'user-accounts', 'spec.md');
+    fs.writeFileSync(spec, fs.readFileSync(spec, 'utf8') + '\n### Requirement: Nickname\nThe system SHALL keep a nickname.\n');
+    api.reload();
+    const item = api.plan.getTreeItem(api.plan.getChildren(api.plan.getChildren()[0])[0]);
+    assert.ok(String(item.description).startsWith('! '), String(item.description));
+    assert.strictEqual(item.contextValue, 'staleChange');
+  });
+  await check('undo: the files changed since the commit, by piece', async () => {
+    api.reload();
+    const files = api.undo.getChildren();
+    const labels = files.map(f => String(api.undo.getTreeItem(f).label));
+    assert.ok(labels.some(l => l.endsWith('tasks.md')) && labels.some(l => l.endsWith('user-accounts/spec.md')), labels.join(', '));
+    const tasks = files.find(f => String(api.undo.getTreeItem(f).label).endsWith('tasks.md'))!;
+    assert.strictEqual(api.undo.getTreeItem(api.undo.getChildren(tasks)[0]).label, '1.4 Nightly removal of unverified accounts');
   });
   await check('the bundled lazyspec.ps1 is in the extension', () => {
     assert.ok(fs.existsSync(path.join(vscode.extensions.getExtension('netmedia.lazyspec')!.extensionPath, 'kit', 'lazyspec.ps1')));

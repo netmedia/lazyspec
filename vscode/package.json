@@ -1,18 +1,40 @@
 {
   "name": "lazyspec",
   "displayName": "LazySpec - OpenSpec specs and changes",
-  "description": "A project's OpenSpec in your editor: the specifications and the plan (by group), tasks to tick, requirements and scenarios to jump to, find, validate, archive, and exports for the client in the company look.",
-  "version": "0.1.2",
+  "description": "A project's OpenSpec in your editor: the specifications and the plan (by group), formatted reading, tasks, requirements, scenarios and sections to edit, tick, delete or hand to the agent, find, out-of-date documents, undo, validate, archive, and exports for the client in the company look.",
+  "version": "0.2.0",
   "publisher": "netmedia",
-  "author": { "name": "Netmedia", "email": "netmedia@netmedia.hr", "url": "https://netmedia.agency" },
+  "author": {
+    "name": "Netmedia",
+    "email": "netmedia@netmedia.hr",
+    "url": "https://netmedia.agency"
+  },
   "license": "SEE LICENSE IN LICENSE",
   "homepage": "https://github.com/netmedia/lazyspec",
-  "repository": { "type": "git", "url": "https://github.com/netmedia/lazyspec.git", "directory": "vscode" },
-  "bugs": { "url": "https://github.com/netmedia/lazyspec/issues" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/netmedia/lazyspec.git",
+    "directory": "vscode"
+  },
+  "bugs": {
+    "url": "https://github.com/netmedia/lazyspec/issues"
+  },
   "icon": "media/icon.png",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Other", "Visualization"],
-  "keywords": ["openspec", "specification", "spec-driven", "requirements", "tasks", "lazyspec"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "openspec",
+    "specification",
+    "spec-driven",
+    "requirements",
+    "tasks",
+    "lazyspec"
+  ],
   "main": "./out/src/extension.js",
   "activationEvents": [
     "workspaceContains:openspec/config.yaml",
@@ -25,76 +47,585 @@
   "contributes": {
     "viewsContainers": {
       "activitybar": [
-        { "id": "lazyspec", "title": "LazySpec", "icon": "media/lazyspec.svg" }
+        {
+          "id": "lazyspec",
+          "title": "LazySpec",
+          "icon": "media/lazyspec.svg"
+        }
       ]
     },
     "views": {
       "lazyspec": [
-        { "id": "lazyspec.plan", "name": "Plan" },
-        { "id": "lazyspec.scope", "name": "Scope" },
-        { "id": "lazyspec.details", "name": "Details", "type": "webview" }
+        {
+          "id": "lazyspec.plan",
+          "name": "Plan"
+        },
+        {
+          "id": "lazyspec.scope",
+          "name": "Scope"
+        },
+        {
+          "id": "lazyspec.details",
+          "name": "Details",
+          "type": "webview"
+        },
+        {
+          "id": "lazyspec.undo",
+          "name": "Undo (since the last commit)",
+          "visibility": "collapsed"
+        }
       ]
     },
     "viewsWelcome": [
       {
         "view": "lazyspec.plan",
-        "contents": "No openspec folder in this workspace.\nStart one in the project's root: npm install -g @fission-ai/openspec, then openspec init.\n[Open a folder](command:vscode.openFolder)"
+        "contents": "No openspec folder in this workspace (at its top, or up to three levels below it).\nStart one in the project's root: npm install -g @fission-ai/openspec, then openspec init.\n[Open a folder](command:vscode.openFolder)"
       }
     ],
     "commands": [
-      { "command": "lazyspec.refresh", "title": "Refresh", "category": "LazySpec", "icon": "$(refresh)" },
-      { "command": "lazyspec.find", "title": "Find a Task, Requirement, Scenario or Section", "category": "LazySpec", "icon": "$(search)" },
-      { "command": "lazyspec.newChange", "title": "New Change", "category": "LazySpec", "icon": "$(add)" },
-      { "command": "lazyspec.validate", "title": "Validate All", "category": "LazySpec", "icon": "$(pass)" },
-      { "command": "lazyspec.archive", "title": "Archive Change", "category": "LazySpec", "icon": "$(archive)" },
-      { "command": "lazyspec.export", "title": "Export for the Client...", "category": "LazySpec", "icon": "$(export)" },
-      { "command": "lazyspec.exportItem", "title": "Export This...", "category": "LazySpec", "icon": "$(export)" },
-      { "command": "lazyspec.exportGroups", "title": "Export Groups...", "category": "LazySpec" },
-      { "command": "lazyspec.exportMarkdown", "title": "Export Markdown as a Document...", "category": "LazySpec" },
-      { "command": "lazyspec.toggleGrouped", "title": "Plan: by Group or Flat", "category": "LazySpec", "icon": "$(list-tree)" },
-      { "command": "lazyspec.toggleArchived", "title": "Plan: Show or Hide Archived Changes", "category": "LazySpec", "icon": "$(archive)" },
-      { "command": "lazyspec.openTui", "title": "Open LazySpec (Terminal UI)", "category": "LazySpec", "icon": "$(terminal)" },
-      { "command": "lazyspec.openConfig", "title": "Open openspec/config.yaml", "category": "LazySpec" },
-      { "command": "lazyspec.openItem", "title": "Open", "category": "LazySpec", "icon": "$(go-to-file)" },
-      { "command": "lazyspec.showDetails", "title": "Show Details", "category": "LazySpec" }
+      {
+        "command": "lazyspec.refresh",
+        "title": "Refresh",
+        "category": "LazySpec",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "lazyspec.find",
+        "title": "Find a Task, Requirement, Scenario or Section",
+        "category": "LazySpec",
+        "icon": "$(search)"
+      },
+      {
+        "command": "lazyspec.read",
+        "title": "Read (Formatted)",
+        "category": "LazySpec",
+        "icon": "$(book)"
+      },
+      {
+        "command": "lazyspec.readAsOne",
+        "title": "Read Changes as One...",
+        "category": "LazySpec",
+        "icon": "$(files)"
+      },
+      {
+        "command": "lazyspec.readGroups",
+        "title": "Read Groups...",
+        "category": "LazySpec",
+        "icon": "$(layers)"
+      },
+      {
+        "command": "lazyspec.removeBundle",
+        "title": "Remove a Saved Whole...",
+        "category": "LazySpec"
+      },
+      {
+        "command": "lazyspec.newChange",
+        "title": "New Change",
+        "category": "LazySpec",
+        "icon": "$(add)"
+      },
+      {
+        "command": "lazyspec.validate",
+        "title": "Validate All",
+        "category": "LazySpec",
+        "icon": "$(pass)"
+      },
+      {
+        "command": "lazyspec.archive",
+        "title": "Archive Change",
+        "category": "LazySpec",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "lazyspec.sync",
+        "title": "Sync Out-of-Date Documents...",
+        "category": "LazySpec",
+        "icon": "$(warning)"
+      },
+      {
+        "command": "lazyspec.markInSync",
+        "title": "Mark Documents as in Sync",
+        "category": "LazySpec"
+      },
+      {
+        "command": "lazyspec.export",
+        "title": "Export for the Client...",
+        "category": "LazySpec",
+        "icon": "$(export)"
+      },
+      {
+        "command": "lazyspec.exportLanguage",
+        "title": "Export in Another Language...",
+        "category": "LazySpec"
+      },
+      {
+        "command": "lazyspec.exportItem",
+        "title": "Export This...",
+        "category": "LazySpec",
+        "icon": "$(export)"
+      },
+      {
+        "command": "lazyspec.exportGroups",
+        "title": "Export Groups...",
+        "category": "LazySpec"
+      },
+      {
+        "command": "lazyspec.exportMarkdown",
+        "title": "Export Markdown as a Document...",
+        "category": "LazySpec"
+      },
+      {
+        "command": "lazyspec.editItem",
+        "title": "Edit",
+        "category": "LazySpec",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "lazyspec.editItemInFile",
+        "title": "Edit in the File",
+        "category": "LazySpec"
+      },
+      {
+        "command": "lazyspec.deleteItems",
+        "title": "Delete...",
+        "category": "LazySpec",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "lazyspec.agentItems",
+        "title": "The Agent: Change or Write Again...",
+        "category": "LazySpec",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "lazyspec.toggleTask",
+        "title": "Task Done / Not Done",
+        "category": "LazySpec",
+        "icon": "$(check)"
+      },
+      {
+        "command": "lazyspec.readItem",
+        "title": "Read Here (Formatted)",
+        "category": "LazySpec",
+        "icon": "$(book)"
+      },
+      {
+        "command": "lazyspec.agentAnswer",
+        "title": "Answer Claude Code (Background Run)...",
+        "category": "LazySpec"
+      },
+      {
+        "command": "lazyspec.undoRefresh",
+        "title": "Refresh",
+        "category": "LazySpec",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "lazyspec.undoItem",
+        "title": "Undo...",
+        "category": "LazySpec",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "lazyspec.undoShow",
+        "title": "Show the Change",
+        "category": "LazySpec"
+      },
+      {
+        "command": "lazyspec.showPreview",
+        "title": "Show Formatted",
+        "category": "LazySpec",
+        "icon": "$(open-preview)"
+      },
+      {
+        "command": "lazyspec.showSource",
+        "title": "Show Source",
+        "category": "LazySpec",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "lazyspec.toggleGrouped",
+        "title": "Plan: by Group or Flat",
+        "category": "LazySpec",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "lazyspec.toggleArchived",
+        "title": "Plan: Show or Hide Archived Changes",
+        "category": "LazySpec",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "lazyspec.sort",
+        "title": "Plan: Sort Changes...",
+        "category": "LazySpec",
+        "icon": "$(list-ordered)"
+      },
+      {
+        "command": "lazyspec.openTui",
+        "title": "Open LazySpec (Terminal UI)",
+        "category": "LazySpec",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "lazyspec.openConfig",
+        "title": "Open openspec/config.yaml",
+        "category": "LazySpec"
+      },
+      {
+        "command": "lazyspec.openItem",
+        "title": "Open",
+        "category": "LazySpec",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "lazyspec.showDetails",
+        "title": "Show Details",
+        "category": "LazySpec"
+      },
+      {
+        "command": "lazyspec.help",
+        "title": "Help",
+        "category": "LazySpec"
+      }
     ],
     "menus": {
       "view/title": [
-        { "command": "lazyspec.find", "when": "view == lazyspec.plan || view == lazyspec.scope", "group": "navigation@1" },
-        { "command": "lazyspec.newChange", "when": "view == lazyspec.plan", "group": "navigation@2" },
-        { "command": "lazyspec.export", "when": "view == lazyspec.plan || view == lazyspec.scope", "group": "navigation@3" },
-        { "command": "lazyspec.toggleGrouped", "when": "view == lazyspec.plan && lazyspec.hasGroups", "group": "navigation@4" },
-        { "command": "lazyspec.refresh", "when": "view == lazyspec.plan || view == lazyspec.scope", "group": "navigation@9" },
-        { "command": "lazyspec.validate", "when": "view == lazyspec.plan || view == lazyspec.scope", "group": "1_cli@1" },
-        { "command": "lazyspec.toggleArchived", "when": "view == lazyspec.plan", "group": "2_view@1" },
-        { "command": "lazyspec.exportGroups", "when": "view == lazyspec.plan && lazyspec.hasGroups", "group": "3_export@1" },
-        { "command": "lazyspec.openConfig", "when": "view == lazyspec.plan || view == lazyspec.scope", "group": "4_open@1" },
-        { "command": "lazyspec.openTui", "when": "view == lazyspec.plan || view == lazyspec.scope", "group": "4_open@2" }
+        {
+          "command": "lazyspec.find",
+          "when": "(view == lazyspec.plan || view == lazyspec.scope)",
+          "group": "navigation@1"
+        },
+        {
+          "command": "lazyspec.newChange",
+          "when": "view == lazyspec.plan",
+          "group": "navigation@2"
+        },
+        {
+          "command": "lazyspec.export",
+          "when": "(view == lazyspec.plan || view == lazyspec.scope)",
+          "group": "navigation@3"
+        },
+        {
+          "command": "lazyspec.toggleGrouped",
+          "when": "view == lazyspec.plan && lazyspec.hasGroups",
+          "group": "navigation@4"
+        },
+        {
+          "command": "lazyspec.refresh",
+          "when": "(view == lazyspec.plan || view == lazyspec.scope)",
+          "group": "navigation@9"
+        },
+        {
+          "command": "lazyspec.validate",
+          "when": "(view == lazyspec.plan || view == lazyspec.scope)",
+          "group": "1_cli@1"
+        },
+        {
+          "command": "lazyspec.readAsOne",
+          "when": "view == lazyspec.plan",
+          "group": "2_read@1"
+        },
+        {
+          "command": "lazyspec.readGroups",
+          "when": "view == lazyspec.plan && lazyspec.hasGroups",
+          "group": "2_read@2"
+        },
+        {
+          "command": "lazyspec.toggleArchived",
+          "when": "view == lazyspec.plan",
+          "group": "3_view@1"
+        },
+        {
+          "command": "lazyspec.sort",
+          "when": "view == lazyspec.plan",
+          "group": "3_view@2"
+        },
+        {
+          "command": "lazyspec.exportGroups",
+          "when": "view == lazyspec.plan && lazyspec.hasGroups",
+          "group": "4_export@1"
+        },
+        {
+          "command": "lazyspec.exportLanguage",
+          "when": "(view == lazyspec.plan || view == lazyspec.scope)",
+          "group": "4_export@2"
+        },
+        {
+          "command": "lazyspec.removeBundle",
+          "when": "view == lazyspec.plan",
+          "group": "4_export@3"
+        },
+        {
+          "command": "lazyspec.agentAnswer",
+          "when": "(view == lazyspec.plan || view == lazyspec.scope)",
+          "group": "5_agent@1"
+        },
+        {
+          "command": "lazyspec.openConfig",
+          "when": "(view == lazyspec.plan || view == lazyspec.scope)",
+          "group": "6_open@1"
+        },
+        {
+          "command": "lazyspec.openTui",
+          "when": "(view == lazyspec.plan || view == lazyspec.scope)",
+          "group": "6_open@2"
+        },
+        {
+          "command": "lazyspec.help",
+          "when": "(view == lazyspec.plan || view == lazyspec.scope)",
+          "group": "6_open@3"
+        },
+        {
+          "command": "lazyspec.undoRefresh",
+          "when": "view == lazyspec.undo",
+          "group": "navigation@1"
+        }
       ],
       "view/item/context": [
-        { "command": "lazyspec.openItem", "when": "viewItem =~ /^(change|archivedChange|spec)$/", "group": "inline@1" },
-        { "command": "lazyspec.exportItem", "when": "viewItem =~ /^(change|archivedChange|spec|group)$/", "group": "inline@2" },
-        { "command": "lazyspec.openItem", "when": "viewItem =~ /^(change|archivedChange|spec)$/", "group": "1_open@1" },
-        { "command": "lazyspec.showDetails", "when": "viewItem =~ /^(change|archivedChange|spec|group)$/", "group": "1_open@2" },
-        { "command": "lazyspec.exportItem", "when": "viewItem =~ /^(change|archivedChange|spec|group)$/", "group": "2_export@1" },
-        { "command": "lazyspec.archive", "when": "viewItem == change", "group": "3_cli@1" }
+        {
+          "command": "lazyspec.sync",
+          "when": "viewItem == staleChange",
+          "group": "inline@0"
+        },
+        {
+          "command": "lazyspec.read",
+          "when": "viewItem =~ /^(change|staleChange|archivedChange|spec|group)$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "lazyspec.exportItem",
+          "when": "viewItem =~ /^(change|staleChange|archivedChange|spec|group)$/",
+          "group": "inline@3"
+        },
+        {
+          "command": "lazyspec.read",
+          "when": "viewItem =~ /^(change|staleChange|archivedChange|spec|group)$/",
+          "group": "1_open@1"
+        },
+        {
+          "command": "lazyspec.openItem",
+          "when": "viewItem =~ /^(change|staleChange|archivedChange|spec)$/",
+          "group": "1_open@2"
+        },
+        {
+          "command": "lazyspec.showDetails",
+          "when": "viewItem =~ /^(change|staleChange|archivedChange|spec|group)$/",
+          "group": "1_open@3"
+        },
+        {
+          "command": "lazyspec.exportItem",
+          "when": "viewItem =~ /^(change|staleChange|archivedChange|spec|group)$/",
+          "group": "2_export@1"
+        },
+        {
+          "command": "lazyspec.readGroups",
+          "when": "viewItem == group",
+          "group": "2_export@2"
+        },
+        {
+          "command": "lazyspec.exportGroups",
+          "when": "viewItem == group",
+          "group": "2_export@3"
+        },
+        {
+          "command": "lazyspec.sync",
+          "when": "viewItem == staleChange",
+          "group": "3_cli@1"
+        },
+        {
+          "command": "lazyspec.archive",
+          "when": "viewItem =~ /^(change|staleChange)$/",
+          "group": "3_cli@2"
+        },
+        {
+          "command": "lazyspec.showPreview",
+          "when": "viewItem == document",
+          "group": "inline@1"
+        },
+        {
+          "command": "lazyspec.showPreview",
+          "when": "viewItem == document",
+          "group": "1_open@1"
+        },
+        {
+          "command": "lazyspec.showSource",
+          "when": "viewItem == document",
+          "group": "1_open@2"
+        },
+        {
+          "command": "lazyspec.editItem",
+          "when": "viewItem =~ /^item\\./",
+          "group": "inline@1"
+        },
+        {
+          "command": "lazyspec.agentItems",
+          "when": "viewItem =~ /^item\\./",
+          "group": "inline@2"
+        },
+        {
+          "command": "lazyspec.deleteItems",
+          "when": "viewItem =~ /^item\\./",
+          "group": "inline@3"
+        },
+        {
+          "command": "lazyspec.readItem",
+          "when": "viewItem =~ /^item\\./",
+          "group": "1_item@1"
+        },
+        {
+          "command": "lazyspec.editItem",
+          "when": "viewItem =~ /^item\\./",
+          "group": "1_item@2"
+        },
+        {
+          "command": "lazyspec.editItemInFile",
+          "when": "viewItem =~ /^item\\./",
+          "group": "1_item@3"
+        },
+        {
+          "command": "lazyspec.toggleTask",
+          "when": "viewItem == item.task",
+          "group": "1_item@4"
+        },
+        {
+          "command": "lazyspec.agentItems",
+          "when": "viewItem =~ /^item\\./",
+          "group": "2_item@1"
+        },
+        {
+          "command": "lazyspec.deleteItems",
+          "when": "viewItem =~ /^item\\./",
+          "group": "3_item@1"
+        },
+        {
+          "command": "lazyspec.undoItem",
+          "when": "viewItem =~ /^undo(File|Hunk)$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "lazyspec.undoItem",
+          "when": "viewItem =~ /^undo(File|Hunk)$/",
+          "group": "1_undo@1"
+        }
       ],
       "explorer/context": [
-        { "command": "lazyspec.exportMarkdown", "when": "resourceExtname == .md", "group": "7_lazyspec@1" }
+        {
+          "command": "lazyspec.exportMarkdown",
+          "when": "resourceExtname == .md",
+          "group": "7_lazyspec@1"
+        }
       ],
       "editor/title/context": [
-        { "command": "lazyspec.exportMarkdown", "when": "resourceExtname == .md", "group": "7_lazyspec@1" }
+        {
+          "command": "lazyspec.exportMarkdown",
+          "when": "resourceExtname == .md",
+          "group": "7_lazyspec@1"
+        }
       ],
       "commandPalette": [
-        { "command": "lazyspec.archive", "when": "false" },
-        { "command": "lazyspec.exportItem", "when": "false" },
-        { "command": "lazyspec.openItem", "when": "false" },
-        { "command": "lazyspec.showDetails", "when": "false" },
-        { "command": "lazyspec.exportMarkdown", "when": "resourceExtname == .md" }
+        {
+          "command": "lazyspec.archive",
+          "when": "false"
+        },
+        {
+          "command": "lazyspec.exportItem",
+          "when": "false"
+        },
+        {
+          "command": "lazyspec.openItem",
+          "when": "false"
+        },
+        {
+          "command": "lazyspec.showDetails",
+          "when": "false"
+        },
+        {
+          "command": "lazyspec.editItem",
+          "when": "false"
+        },
+        {
+          "command": "lazyspec.editItemInFile",
+          "when": "false"
+        },
+        {
+          "command": "lazyspec.deleteItems",
+          "when": "false"
+        },
+        {
+          "command": "lazyspec.agentItems",
+          "when": "false"
+        },
+        {
+          "command": "lazyspec.toggleTask",
+          "when": "false"
+        },
+        {
+          "command": "lazyspec.readItem",
+          "when": "false"
+        },
+        {
+          "command": "lazyspec.undoItem",
+          "when": "false"
+        },
+        {
+          "command": "lazyspec.undoShow",
+          "when": "false"
+        },
+        {
+          "command": "lazyspec.undoRefresh",
+          "when": "false"
+        },
+        {
+          "command": "lazyspec.markInSync",
+          "when": "false"
+        },
+        {
+          "command": "lazyspec.exportMarkdown",
+          "when": "resourceExtname == .md"
+        }
       ]
     },
     "keybindings": [
-      { "command": "lazyspec.find", "key": "ctrl+alt+t", "mac": "cmd+alt+t" }
+      {
+        "command": "lazyspec.find",
+        "key": "ctrl+alt+t",
+        "mac": "cmd+alt+t"
+      },
+      {
+        "command": "lazyspec.deleteItems",
+        "key": "delete",
+        "mac": "cmd+backspace",
+        "when": "(focusedView == lazyspec.plan || focusedView == lazyspec.scope)"
+      },
+      {
+        "command": "lazyspec.editItem",
+        "key": "f2",
+        "when": "(focusedView == lazyspec.plan || focusedView == lazyspec.scope)"
+      },
+      {
+        "command": "lazyspec.toggleTask",
+        "key": "space",
+        "when": "(focusedView == lazyspec.plan || focusedView == lazyspec.scope)"
+      },
+      {
+        "command": "lazyspec.agentItems",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+alt+a",
+        "when": "(focusedView == lazyspec.plan || focusedView == lazyspec.scope)"
+      },
+      {
+        "command": "lazyspec.read",
+        "key": "ctrl+alt+r",
+        "mac": "cmd+alt+r",
+        "when": "(focusedView == lazyspec.plan || focusedView == lazyspec.scope)"
+      },
+      {
+        "command": "lazyspec.undoItem",
+        "key": "delete",
+        "mac": "cmd+backspace",
+        "when": "focusedView == lazyspec.undo"
+      }
     ],
     "configuration": {
       "title": "LazySpec",
@@ -116,7 +647,9 @@
         },
         "lazyspec.roots": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "markdownDescription": "Projects with an `openspec` folder deeper than the workspace's folders (paths relative to a workspace folder, e.g. `apps/portal`). Without it, a folder with no `openspec` at its top gets the ones up to three levels below it."
         },
@@ -125,8 +658,39 @@
           "default": true,
           "description": "Opening a folder with an openspec folder (code . there) shows LazySpec's sidebar: the Plan, the Scope, the details."
         },
-        "lazyspec.showArchived": { "type": "boolean", "default": false, "description": "The plan shows archived changes too." },
-        "lazyspec.grouped": { "type": "boolean", "default": true, "description": "The plan by group (in projects that group their changes)." }
+        "lazyspec.showArchived": {
+          "type": "boolean",
+          "default": false,
+          "description": "The plan shows archived changes too."
+        },
+        "lazyspec.grouped": {
+          "type": "boolean",
+          "default": true,
+          "description": "The plan by group (in projects that group their changes)."
+        },
+        "lazyspec.documents": {
+          "type": "string",
+          "enum": [
+            "preview",
+            "source"
+          ],
+          "enumDescriptions": [
+            "Formatted (the Markdown preview)",
+            "The Markdown itself, to edit"
+          ],
+          "default": "preview",
+          "description": "A document clicked in the Plan or the Scope opens formatted or as its source (right-click: the other)."
+        },
+        "lazyspec.sort": {
+          "type": "string",
+          "enum": [
+            "name",
+            "name-desc",
+            "recent"
+          ],
+          "default": "name",
+          "description": "The plan's changes: by name A-Z, Z-A, or recently modified first."
+        }
       }
     }
   },
@@ -134,7 +698,7 @@
     "kit": "node scripts/copy-kit.js",
     "compile": "npm run kit && tsc -p .",
     "watch": "tsc -watch -p .",
-    "test": "npm run compile && node --test out/test/model.test.js",
+    "test": "npm run compile && node --test out/test/model.test.js out/test/ops.test.js",
     "test:vscode": "npm run compile && node out/test/run-vscode.js",
     "package": "npm run compile && vsce package --no-dependencies -o lazyspec.vsix"
   },

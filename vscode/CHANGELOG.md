@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.0
+
+Everything LazySpec's terminal UI does, on the same files:
+
+- Read: a change, spec, group or changes as one, formatted, a tab per document; its tasks, requirements,
+  scenarios and sections selectable (Ctrl/Cmd: several): edit, done, delete, the agent; Source.
+- Items in the trees: a document's sections, a spec's sections; several selected; edit (F2; a task's text in
+  place; a main spec through a MODIFIED change), done (Space), delete (Delete; the main specs through a
+  REMOVED / MODIFIED change), the agent (change it, write it again).
+- The agent (Claude Code): here, in the background (answer it after), or the prompt saved; remembered.
+- Out of date: ! in the plan, what changed in the details, update (the agent) or mark in sync; the same
+  .lazyspec/sync.json as LazySpec.
+- Undo: the changes since the last commit by file and piece, their diffs, undone piece by piece.
+- Find: buttons per result (read, edit, done, agent, delete), by document, several at once.
+- Changes as one (saved wholes in config.yaml: read, save, remove), groups as one, export in another language,
+  sort, help; documents open formatted or as source (lazyspec.documents).
+
 ## 0.1.2
 
 - A folder without `openspec/` at its top: the projects up to three levels below it (a monorepo,
