@@ -417,7 +417,7 @@ Your answer is the default next time (`lazyspec: agent:`). Add `.lazyspec/` to `
 
 **When:** you'd rather stay in your editor than switch to a terminal.
 
-1. Install the extension once: **Extensions: Install from VSIX...** with `vscode/lazyspec.vsix` from the LazySpec repository (or `code --install-extension vscode/lazyspec.vsix`; `cursor --install-extension ...` for Cursor). A `git pull` and installing it again updates it.
+1. Install the extension once, from the LazySpec repository's root: `.\install-vscode.exe` (macOS, Linux: `./install-vscode.sh`). It installs `vscode/lazyspec.vsix` in every VS Code, Cursor, Windsurf and VSCodium it finds (`-Editor cursor`: only that one). Run it again after a `git pull` to update.
 2. Open the project's folder. The checklist icon in the activity bar opens the **Plan** (by group when the project has groups), the **Scope** and the **Details** of what you select.
 3. Expand a change to see its documents. Click a document to edit it in the editor. Tick tasks in the tree; the box is written into `tasks.md`. Expand **Specs** down to a requirement or scenario to jump to it.
 4. `Ctrl+Alt+T` (Mac `Cmd+Alt+T`) is Find: task numbers, words, `g1` for one group, and the filter button for the kind.

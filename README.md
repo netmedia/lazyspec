@@ -33,8 +33,8 @@ A project's **OpenSpec** specifications and changes in **one terminal screen** â
 **In VS Code** (and Cursor, Windsurf): the [LazySpec extension](vscode/README.md) shows the same project in the
 editor's sidebar: the Plan by group with each change's documents, tasks with checkboxes, requirements and
 scenarios to jump to; the Scope; the selected item's details; find; validate, new change, archive; the same
-exports for the client. Install `vscode/lazyspec.vsix` (Extensions: Install from VSIX..., or
-`code --install-extension vscode/lazyspec.vsix`).
+exports for the client. Install it with `.\install-vscode.exe` (macOS, Linux: `./install-vscode.sh`): in every
+VS Code, Cursor, Windsurf and VSCodium found; again after a `git pull` to update it.
 
 In a project's `.gitignore`: `.lazyspec/` (LazySpec's own notes and the agent's prompts) and, unless you commit
 what went to the client, `openspec/exports/`. The Netmedia conventions keep the document theme in
@@ -205,6 +205,7 @@ Step by step for developers, with diagrams and screenshots: [`docs/developer-gui
 |---|---|
 | `install.exe`, `install.ps1` | Installs LazySpec on this PC, not into a project (the .exe starts the .ps1) |
 | `initintoproject.exe`, `initintoproject.ps1` | Puts the kit into a project, or updates it (the .exe starts the .ps1) |
+| `install-vscode.exe`, `install-vscode.ps1`, `install-vscode.sh` | Installs the VS Code extension (`vscode/lazyspec.vsix`) in VS Code, Cursor, Windsurf, VSCodium |
 | `build-exe.ps1`, `launcher/launcher.cs` | Builds the .exe launchers |
 | `tools/lazyspec/` | The kit, as it lands in a project (and what `install` runs) |
 | `tools/lazyspec/LAZYSPEC.md` | Everything about it |
