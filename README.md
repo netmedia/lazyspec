@@ -14,6 +14,22 @@ A project's **OpenSpec** specifications and changes in **one terminal screen** �
   OpenSpec workflow schema defines), formatted for the terminal.
 - **Actions** through the OpenSpec CLI: validate all, archive a change, new change; the output in the
   same screen. Edit opens your editor.
+- **Find** (`t`, or `Ctrl+F` from any screen): a task by its number (`1.3`, `01 1.3`) or words, a requirement,
+  a scenario - in the specs and the changes; `Enter` opens it in Read, at it.
+- **Edit in place**: in Read, `↑` `↓` pick a task, requirement or scenario; `Enter` edits only it in a window
+  (`Ctrl+S`), `Space` ticks a task, `Del` deletes it, `a` hands it to the agent (Claude Code). Several at once
+  from Find: mark them, then delete, change or write them again. A main spec is changed through a change
+  (`REMOVED` / `MODIFIED`), as OpenSpec wants it.
+- **Out of date**: tasks (or a design) older than the specs they're written from get `!` and what changed;
+  `y` has the agent update them, or marks them as in sync.
+- **Undo** (`u`): every change to `openspec/` since the last git commit, piece by piece; undo one, or a whole
+  file.
+- **Documents for the client**: PDF, Word, HTML in the company look (a theme), one spec or change, several
+  changes as one, any Markdown file; written to `openspec/exports/`.
+
+In a project's `.gitignore`: `.lazyspec/` (LazySpec's own notes and the agent's prompts) and, unless you commit
+what went to the client, `openspec/exports/`. The Netmedia conventions keep the document theme in
+`openspec/artifacts/` (`document-theme.yaml`, used when `documentTheme:` isn't set).
 
 **Windows and macOS.** Windows PowerShell 5.1 or PowerShell 7 on Windows, PowerShell 7 on macOS; no
 modules. The OpenSpec CLI for the actions (`npm install -g @fission-ai/openspec`). It works alongside other
