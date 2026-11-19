@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- Sync Out-of-Date Documents, update them: the agent done, the change marked as in sync by itself (background:
+  exit code 0 and openspec validate passes; here: Claude Code as the terminal itself, asked when it ends; a
+  saved prompt done outside: offered), against what the agent was given (<prompt>.sync.json, the same as
+  LazySpec's): a document it left unchanged is in sync, a spec edited meanwhile still shows.
+
 ## 0.2.1
 
 - The built-in LazySpec (export, the terminal UI): after the agent brings a change's documents up to date,

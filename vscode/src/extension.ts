@@ -7,11 +7,11 @@ import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { answer, agentTask } from './agent';
+import { answer, agentTask, offerDoneSync, onSynced, runningSyncs } from './agent';
 import { DetailsView, Selected } from './details';
 import { agentItems, deleteItems, editItem, ItemContext, openBlock, toggleTask } from './items';
 import { Change, Entry, find, FindKind, itemTitle, Project, searchIndex, Spec } from './model';
-import { setConfigBundle, setConfigValue, setInSync, slug, StaleDoc, syncPrompt, syncState } from './ops';
+import { doneSyncPrompts, saveSyncSnapshot, setConfigBundle, setConfigValue, setInSync, slug, StaleDoc, syncPrompt, syncState } from './ops';
 import { ReadPanel, ReadTarget } from './read';
 import { entryOf, Node, PlanTree, ScopeTree, Settings } from './tree';
 import { HeadContent, showUndo, undo, UndoNode, UndoTree } from './undo';
@@ -24,6 +24,7 @@ let output: vscode.OutputChannel;
 let ctx: vscode.ExtensionContext;
 const stale = new Map<string, Map<string, StaleDoc[]>>();
 const syncAsked = new Set<string>();
+const syncOffered = new Set<string>();
 
 function settings(): Settings {
   const c = vscode.workspace.getConfiguration('lazyspec');
@@ -435,7 +436,8 @@ async function syncCommand(arg?: unknown) {
     { label: '$(check) Mark them as in sync', description: 'as they are now', v: 'mark' },
   ], { placeHolder: `${t.change.name}: ${docs.map(d => d.doc.title).join(', ')} older than what they are written from` });
   if (pick?.v === 'mark') { setInSync(t.project, t.change); reload(); }
-  if (pick?.v === 'update') { await agentTask(t.project, `Update ${t.change.name}`, `sync-${t.change.name}`, syncPrompt(t.project, t.change, docs)); }
+  // The agent done: the change marked as in sync against what it was given (the prompt's snapshot).
+  if (pick?.v === 'update') { await agentTask(t.project, `Update ${t.change.name}`, `sync-${t.change.name}`, syncPrompt(t.project, t.change, docs), rel => saveSyncSnapshot(t.project, t.change!, docs, rel)); }
 }
 
 // --- the views ---------------------------------------------------------------------------------------------------
@@ -467,6 +469,15 @@ function reload() {
     try { p.load(); } catch (e) { output.appendLine(`${p.root}: ${(e as Error).message}`); }
     try { stale.set(p.root, syncState(p)); } catch (e) { output.appendLine(`out of date, ${p.root}: ${(e as Error).message}`); }
     void askSyncCheck(p);
+    // A sync prompt saved for later and done by the agent outside: marked? (once a session)
+    if (p.config.values['syncCheck'] === 'on') {
+      for (const f of doneSyncPrompts(p, stale.get(p.root) || new Map())) {
+        if (syncOffered.has(f) || runningSyncs.has(f)) { continue; }
+        syncOffered.add(f);
+        void offerDoneSync(p, f);
+        break;
+      }
+    }
   }
   void vscode.commands.executeCommand('setContext', 'lazyspec.hasGroups', projects.some(p => p.grouping));
   void vscode.commands.executeCommand('setContext', 'lazyspec.hasProject', projects.length > 0);
@@ -535,6 +546,7 @@ export function activate(context: vscode.ExtensionContext): Api {
   output = vscode.window.createOutputChannel('LazySpec');
   projects = findProjects();
   const hooks = { stale: (p: Project, c: Change) => !!staleOf(p, c)?.length };
+  onSynced(() => reload());
   plan = new PlanTree(() => projects, settings, hooks);
   scope = new ScopeTree(() => projects, settings, hooks);
   details = new DetailsView(staleOf);
