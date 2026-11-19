@@ -18,7 +18,7 @@ A project's **OpenSpec** specifications and changes in **one terminal screen** �
   scenario, a section (`## Why` ...) - in the specs and the changes, with the document each is in (filter by kind
   `Tab`, by document `Shift+Tab`); `Enter` opens it in Read, at it.
 - **The same keys everywhere**: `t` find, `u` undo, `y` out of date - the letter where nothing is typed,
-  `Ctrl+T` `Ctrl+U` `Ctrl+Y` on any screen.
+  `Ctrl+T` `Ctrl+U` `Ctrl+Y` on any screen (`Alt+` too; on a Mac `⌃` or `⌥`).
 - **Edit in place**: in Read, `↑` `↓` pick a task, requirement, scenario or section; `Enter` edits only it in a window
   (`Ctrl+S`), `Space` ticks a task, `Del` deletes it, `a` hands it to the agent (Claude Code). Several at once
   from Find: mark them, then delete, change or write them again. A main spec is changed through a change
@@ -54,6 +54,7 @@ The program is the same `.ps1` on both; only how it starts and what the exports 
 | Word export, theme or template | LazySpec writes it; Word fills in the contents' page numbers | LazySpec writes it; page numbers: open it in Word, right-click the contents, Update Field |
 | Data-model diagram | a picture in Word made by Edge/Chrome; vector in PDF and HTML | the same (Chrome or Edge) |
 | Your per-user data (translation cache) | `%LOCALAPPDATA%\LazySpec` | `~/Library/Application Support/LazySpec` |
+| Keys | `Ctrl+T` `Ctrl+U` `Ctrl+Y` `Ctrl+S` (or `Alt+`) | `⌃T` `⌃U` `⌃Y` `⌃S` (LazySpec turns the terminal's own uses off while it runs), or `⌥` with *Option as Meta*; `Del` is `fn ⌫` |
 
 ### Starting on macOS
 

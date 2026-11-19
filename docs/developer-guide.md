@@ -65,6 +65,8 @@ The `.exe` launchers and `install` are for Windows; on macOS start the `.ps1` wi
    - fish: `alias --save lazyspec 'pwsh -NoProfile -File ~/Development/LazySpec/tools/lazyspec/lazyspec.ps1'`
 5. Put the kit into a project with `pwsh initintoproject.ps1 <project>`.
 
+Keys on a Mac: `⌃T` `⌃U` `⌃Y` `⌃S` (Control) work as on Windows - LazySpec turns the terminal's own uses of them off while it runs; or `⌥T` `⌥U` `⌥Y` `⌥S` (Option) once the terminal sends Option as Meta (Terminal: *Use Option as Meta key*; iTerm2: *Left Option key: Esc+*). `Del` is `fn ⌫`, `Home` `End` `PgUp` `PgDn` are `fn` with the arrows; the help shows them that way.
+
 Differences from Windows: PDF needs Chrome or Edge in `/Applications`; Word in the default look needs pandoc; a Word document with a theme or template gets its contents' page numbers when you open it in Word (right-click the contents, Update Field); per-user data (the translation cache) is in `~/Library/Application Support/LazySpec`. Paths in `openspec/config.yaml` may use `/` or `\` on both systems.
 
 ### Verify
@@ -141,7 +143,7 @@ In PowerShell always type `.\lazyspec.exe` (or `.\lazyspec`): PowerShell never r
 
 ## The screens and keys
 
-**The same keys everywhere:** `t` find, `u` undo, `y` out of date - the letter on every screen where nothing is typed, and `Ctrl+T`, `Ctrl+U`, `Ctrl+Y` on every screen, also while typing. In the item editor, save (`Ctrl+S`) or leave it (`Esc`) first. `Esc` brings you back to where you were.
+**The same keys everywhere:** `t` find, `u` undo, `y` out of date - the letter on every screen where nothing is typed, and `Ctrl+T`, `Ctrl+U`, `Ctrl+Y` on every screen, also while typing (`Alt+` the same; on a Mac `⌃` or `⌥`, see *On macOS*). In the item editor, save (`Ctrl+S`) or leave it (`Esc`) first. `Esc` brings you back to where you were.
 
 LazySpec has five screens; Home is where you start and `?` always shows the keys.
 

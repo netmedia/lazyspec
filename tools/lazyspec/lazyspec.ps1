@@ -264,6 +264,9 @@ function Show-Usage {
     & $d '    y out of date (! in the plan): the agent updates the documents, or mark them as in sync'
     & $d '    u undo: the changes since the last commit, piece by piece (needs git)'
     & $d '    t u y: the letter where nothing is typed, Ctrl+T Ctrl+U Ctrl+Y on any screen (also while typing)'
+    & $d '    Alt+T Alt+U Alt+Y Alt+S: the same as Ctrl+. On a Mac: Control (^T ^U ^Y ^S: LazySpec turns the'
+    & $d '    terminal''s own uses of them off while it runs) or Option (Terminal: Use Option as Meta key;'
+    & $d '    iTerm2: Left Option key Esc+); Del is fn+Delete, Home/End/PgUp/PgDn are fn+arrows.'
     & $d '    h show/hide archived   / filter   r refresh   ? help   q quit'
     & $y '  Read'
     & $d '    Up/Down a task, requirement, scenario or section (## Why ...; else scroll)   PgUp/PgDn Home/End'
@@ -5007,7 +5010,7 @@ function Border-Line([int]$W, [string]$Left, [string]$Mid, [string]$Right, [int]
 }
 function Border-Bottom([int]$W, $Hints, [int]$Split) {
     $segs = @((S ($g.bl + $g.h + ' ') $st.border))
-    foreach ($h in $Hints) { $segs += (S $h[0] $st.key); $segs += (S " $($h[1])  " $st.muted) }
+    foreach ($h in $Hints) { $segs += (S (Show-Key $h[0]) $st.key); $segs += (S " $($h[1])  " $st.muted) }
     $len = 0
     foreach ($s in $segs) { $len += $s.T.Length }
     $rest = $W - $len - 1
@@ -7040,7 +7043,9 @@ function Open-InEditor([string]$Path) {
     if ($editor) {
         # A terminal editor gets the console: leave the UI's screen, edit, come back.
         [Console]::Out.Write("$E[0m$E[?25h$E[?1049l")
+        Set-TerminalKeys $false
         try { & cmd.exe /c "$editor `"$Path`"" } catch { try { & $editor $Path } catch { } }
+        Set-TerminalKeys $true
         [Console]::Out.Write("$E[?1049h$E[?25l$E[2J")
         $script:prev = @()
         Reload
@@ -7092,7 +7097,7 @@ function Draw-Help([int]$W, [int]$H) {
     $section = {
         param([string]$Title, $Rows)
         [void]$lines.Add(@(S "  $Title" $st.title))
-        foreach ($r in $Rows) { [void]$lines.Add(@((S ('    ' + (Pad $r[0] 14)) $st.key), (S $r[1] $st.text))) }
+        foreach ($r in $Rows) { [void]$lines.Add(@((S ('    ' + (Pad (Show-Key $r[0]) 14)) $st.key), (S $r[1] $st.text))) }
         [void]$lines.Add(@())
     }
     & $section 'HOME' @(
@@ -7110,6 +7115,7 @@ function Draw-Help([int]$W, [int]$H) {
         @('y', 'a change out of date (! in the plan): its documents updated by the agent, or marked as in sync'),
         @('u', 'undo: what changed in openspec/ since the last commit, piece by piece (git; a commit empties it)'),
         @('  Ctrl+U Ctrl+Y', 'undo, out of date: the same from any screen, also while typing (u, y where nothing is typed)'),
+        @('  Alt+T U Y S', 'the same as Ctrl+ (a Mac: Option, with "Use Option as Meta key" in Terminal, Esc+ in iTerm2)'),
         @('e', 'edit: open the spec or the proposal in your editor'),
         @('s', 'sort changes: name A-Z, name Z-A, recently modified'), @('h', 'show or hide archived changes'),
         @('/', 'filter specs and changes by name (Enter keeps it, Esc clears it)'), @('r', 'refresh (it also refreshes by itself when files change)'),
@@ -7276,7 +7282,7 @@ function On-Key($K) {
     # letter on any screen (also while typing). Not while a question is asked; in the editor: save or leave
     # first (its changes would be lost). Esc there comes back here.
     $ctrlAct = @{ CtrlT = 't'; CtrlU = 'u'; CtrlY = 'y' }[[string]$name]
-    if ($ctrlAct -and $script:screen -eq 'edit' -and -not ($script:confirm -or $script:choose)) { $script:message = 'Save it first (Ctrl+S), or leave it (Esc).'; return }
+    if ($ctrlAct -and $script:screen -eq 'edit' -and -not ($script:confirm -or $script:choose)) { $script:message = "Save it first ($(Show-Key 'Ctrl+S')), or leave it (Esc)."; return }
     if (-not ($script:confirm -or $script:choose -or $script:input -or $script:filtering) -and $script:screen -notin @('edit', 'none')) {
         $letterScreens = @('home', 'read', 'pick', 'undo', 'help')
         $runDone = $script:screen -eq 'run' -and $script:run -and $script:run.Done
@@ -7458,15 +7464,44 @@ function On-Key($K) {
     if ($name -eq 'Esc') { $run.ConfirmStop = $true }
 }
 
+# macOS and Linux: the terminal's own uses of Ctrl+T (status), Ctrl+Y (delayed suspend), Ctrl+S / Ctrl+Q (flow
+# control), Ctrl+O (discard), Ctrl+V (literal next) off while LazySpec runs, so those keys reach it; as they
+# were again on the way out (and while an editor in the terminal has it).
+$script:sttySaved = ''
+function Set-TerminalKeys([bool]$On) {
+    if ($env:OS -eq 'Windows_NT' -or $harness) { return }
+    $stty = Get-Command stty -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $stty) { return }
+    $ErrorActionPreference = 'Continue'
+    try {
+        if ($On) {
+            if (-not $script:sttySaved) { $script:sttySaved = ((& $stty.Source -g 2>$null) | Out-String).Trim() }
+            & $stty.Source -ixon 2>$null | Out-Null
+            foreach ($c in 'status', 'dsusp', 'discard', 'lnext') { & $stty.Source $c undef 2>$null | Out-Null }
+        }
+        elseif ($script:sttySaved) { & $stty.Source $script:sttySaved 2>$null | Out-Null }
+    } catch { }
+}
+# A key as this computer's keyboard says it: on a Mac, Ctrl+T as ^T (the control sign), Shift+Tab, Del as fn and
+# the delete sign (a Mac has no Del key).
+$onMac = [bool](Get-Variable IsMacOS -ValueOnly -ErrorAction SilentlyContinue)
+function Show-Key([string]$K) {
+    if (-not $onMac) { return $K }
+    $k = $K.Replace('Ctrl+', [string][char]0x2303).Replace('Shift+Tab', [string][char]0x21E7 + 'Tab')
+    return [regex]::Replace($k, '(?<![\w])Del(?![\w])', 'fn' + [string][char]0x232B)
+}
 $keyNames = @{ UpArrow = 'Up'; DownArrow = 'Down'; LeftArrow = 'Left'; RightArrow = 'Right'; Enter = 'Enter'; Escape = 'Esc'; Tab = 'Tab'; PageUp = 'PgUp'; PageDown = 'PgDn'; Home = 'Home'; End = 'End'; Backspace = 'Back'; Delete = 'Del' }
 function Read-Keys {
     $out = @()
     while ([Console]::KeyAvailable) {
         $k = [Console]::ReadKey($true)
         if ($k.Key -eq 'C' -and ($k.Modifiers -band [ConsoleModifiers]::Control)) { $out += [pscustomobject]@{ Name = 'CtrlC'; Char = $null }; continue }
-        if ($k.Key -eq 'S' -and ($k.Modifiers -band [ConsoleModifiers]::Control)) { $out += [pscustomobject]@{ Name = 'CtrlS'; Char = $null }; continue }
+        # Alt (macOS: Option, with "Option as Meta") the same as Ctrl for S, T, U, Y: on a Mac's terminal Ctrl
+        # can be taken by the terminal, and Cmd never reaches an app.
+        $mod = [ConsoleModifiers]::Control -bor [ConsoleModifiers]::Alt
+        if ($k.Key -eq 'S' -and ($k.Modifiers -band $mod)) { $out += [pscustomobject]@{ Name = 'CtrlS'; Char = $null }; continue }
         # Ctrl+T find, Ctrl+U undo, Ctrl+Y out of date: on any screen, also where letters are typed.
-        if (@('T', 'U', 'Y') -contains $k.Key.ToString() -and ($k.Modifiers -band [ConsoleModifiers]::Control)) { $out += [pscustomobject]@{ Name = "Ctrl$($k.Key)"; Char = $null }; continue }
+        if (@('T', 'U', 'Y') -contains $k.Key.ToString() -and ($k.Modifiers -band $mod)) { $out += [pscustomobject]@{ Name = "Ctrl$($k.Key)"; Char = $null }; continue }
         if ($k.Key -eq 'Tab' -and ($k.Modifiers -band [ConsoleModifiers]::Shift)) { $out += [pscustomobject]@{ Name = 'ShiftTab'; Char = $null }; continue }
         $name = $keyNames[$k.Key.ToString()]
         if ($k.Key -eq 'Spacebar') { $name = 'Space' }
@@ -7548,6 +7583,7 @@ try {
         Enable-Ansi
         [Console]::OutputEncoding = [Text.Encoding]::UTF8
         [Console]::TreatControlCAsInput = $true
+        Set-TerminalKeys $true
         [Console]::Out.Write("$E[?1049h$E[?25l$E[2J")
     }
     $size = Get-Size
@@ -7590,6 +7626,7 @@ try {
     }
     if (-not $harness) {
         [Console]::TreatControlCAsInput = $false
+        Set-TerminalKeys $false
         [Console]::Out.Write("$E[0m$E[?25h$E[?1049l")
     }
 }
