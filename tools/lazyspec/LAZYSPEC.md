@@ -62,6 +62,13 @@ typed (Home, Read, changes as one, undo, help, a finished run), and `Ctrl+T`, `C
 also while typing (in Find, in a question's text). In the item editor they wait: save it (`Ctrl+S`) or leave it
 (`Esc`) first. `Esc` in what they open comes back to where you were.
 
+`Alt+T`, `Alt+U`, `Alt+Y`, `Alt+S` do the same as `Ctrl+`. **On a Mac:** `⌃T` `⌃U` `⌃Y` `⌃S` (Control; LazySpec turns
+the terminal's own uses of them - status, delayed suspend, flow control - off while it runs and back on when it
+ends), or `⌥T` `⌥U` `⌥Y` `⌥S` (Option) once the terminal sends Option as Meta (Terminal: Settings, Profiles,
+Keyboard, *Use Option as Meta key*; iTerm2: Profiles, Keys, *Left Option key: Esc+*). `⌘` never reaches a
+terminal app. `Del` is `fn ⌫`; `Home` `End` `PgUp` `PgDn` are `fn` with the arrows. On a Mac the help and the
+hints show the keys that way (`⌃T`, `⇧Tab`, `fn⌫`).
+
 **Find** (`t`, `Ctrl+T`) — a task, a requirement, a scenario or a section (`## Why`, `### ADR-001` ...) anywhere
 in the project, as you type: a task's number (`1.3`: that task in every change; `01 1.3` or `signup 1.3`: that
 change's), or words (all of them in the item, its group, its capability, its change's name or title - or, for a
