@@ -256,6 +256,7 @@ function Show-Usage {
     & $d '    Enter read it, PgUp/PgDn/Home/End scroll the details'
     & $d '    v validate all   a archive the change   n new change   e edit   s sort changes'
     & $d '    m changes as one (mark them with Space, Enter: a title, then read them; x there: export)'
+    & $d '    t find: a task (1.3, 01 1.3, words), a requirement, a scenario; Enter: Read, at it'
     & $d '    h show/hide archived   / filter   r refresh   ? help   q quit'
     & $y '  Read'
     & $d '    Up/Down PgUp/PgDn Home/End scroll   Left/Right document   e edit   Esc back'
@@ -966,6 +967,11 @@ $script:choose = $null
 $script:input = $null
 $script:pick = $null
 $script:lastPick = @()
+$script:search = $null
+$script:searchIndex = $null
+$script:searchKey = ''
+$script:readMark = $null
+$script:readBack = 'home'
 $script:lastPickTitle = ''
 $script:run = $null
 $script:quit = $false
@@ -5159,7 +5165,7 @@ function Home-Hints {
     if ($script:filtering) { return , @(@('type', 'filter'), @('Enter', 'keep'), @('Esc', 'clear')) }
     if ($script:zoom) { return , @(@("$($g.up)$($g.down) PgUp PgDn", 'scroll'), @('z Esc', 'show the lists'), @('Enter', 'read'), @('e', 'edit'), @('?', 'help'), @('q', 'quit')) }
     if ($script:pane -eq 'details') { return , @(@("$($g.up)$($g.down) PgUp PgDn", 'scroll'), @("$([string][char]0x2190) Esc", 'lists'), @('z', 'zoom'), @('Enter', 'read'), @('e', 'edit'), @('?', 'help'), @('q', 'quit')) }
-    return , @(@("$($g.up)$($g.down)", 'select'), @('Enter', 'open'), @('Tab', 'scope/plan'), @('v', 'validate'), @('a', 'archive'), @('n', 'new'), @('x', 'export'), @('m', 'as one'), @('e', 'edit'), @('s', 'sort'), @('/', 'filter'), @('?', 'help'), @('q', 'quit'))
+    return , @(@("$($g.up)$($g.down)", 'select'), @('Enter', 'open'), @('Tab', 'scope/plan'), @('v', 'validate'), @('a', 'archive'), @('n', 'new'), @('x', 'export'), @('m', 'as one'), @('t', 'find'), @('e', 'edit'), @('s', 'sort'), @('/', 'filter'), @('?', 'help'), @('q', 'quit'))
 }
 
 function Home-Status([int]$Active, [int]$Lines, [int]$Rows) {
@@ -5373,7 +5379,13 @@ function Draw-Read([int]$W, [int]$H) {
     if ($script:readScroll -gt $max) { $script:readScroll = $max }
     $lines = New-Object Collections.ArrayList
     foreach ($l in $head) { [void]$lines.Add($l) }
-    for ($i = $script:readScroll; $i -lt [Math]::Min($doc.Count, $script:readScroll + $bodyRows); $i++) { [void]$lines.Add(@(S '  ') + @($doc[$i])) }
+    # A found line (t): marked.
+    $mk = $script:readMark
+    for ($i = $script:readScroll; $i -lt [Math]::Min($doc.Count, $script:readScroll + $bodyRows); $i++) {
+        $pre = S '  '
+        if ($mk -and $mk.Name -eq $item.Name -and $mk.Tab -eq $script:readTab -and $mk.Line -eq $i) { $pre = S "$($g.tri) " $st.accent }
+        [void]$lines.Add(@($pre) + @($doc[$i]))
+    }
     $title = Get-ItemTitle $item
     $pos = 'all'
     if ($max -gt 0) { $pos = "$([int][Math]::Round(100 * $script:readScroll / $max))%" }
@@ -5568,6 +5580,182 @@ function Use-Pick([string]$Then, [string]$Names, [string]$Title, [string]$Id) {
     $item = $list[0]
     if ($list.Count -gt 1) { $item = Get-ChangeBundle $list $Title $Id }
     $script:readItem = $item; $script:readTab = 0; $script:readScroll = 0; $script:screen = 'read'
+}
+
+# Find (t on Home): the tasks of the plan's changes, and the requirements and scenarios of the specs and of
+# the changes' delta specs. A task number (1.3), words, a change's name or number; Enter: Read, at it.
+function Add-SpecSearchEntries($List, $Item, [string]$Path, [string]$Cap, [string]$Where) {
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    $req = ''
+    $lines = (Read-Text $Path).Replace("`r", '').Split("`n")
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $l = $lines[$i]
+        $kind = ''; $text = ''
+        if ($l -match '^###\s+(Requirement|Zahtjev|Anforderung):\s*(.+?)\s*$') { $kind = 'req'; $text = Plain-Inline $Matches[2]; $req = $text }
+        elseif ($l -match '^####\s+(Scenario|Scenarij|Szenario):\s*(.+?)\s*$') { $kind = 'scn'; $text = Plain-Inline $Matches[2] }
+        if (-not $kind) { continue }
+        $context = ''
+        if ($kind -eq 'scn') { $context = $req }
+        [void]$List.Add([pscustomobject]@{
+                Kind = $kind; Item = $Item; Where = $Where; Cap = $Cap; Group = $context; Num = ''; Text = $text; Done = $false; Path = $Path; Line = $i + 1
+                After = $Cap; Needle = $text; Hay = "$($Item.Name) $Where $Cap $context $text".ToLower()
+            })
+    }
+}
+function Get-SearchIndex {
+    $key = "$($script:signature)/$($script:showArchived)/$($script:specs.Count)/$($script:changes.Count)"
+    if ($script:searchIndex -and $script:searchKey -eq $key) { return $script:searchIndex }
+    $list = New-Object Collections.ArrayList
+    $changes = @($script:changes | Where-Object { -not $_.Archived } | Sort-Object Name) + @($script:changes | Where-Object { $_.Archived -and $script:showArchived } | Sort-Object Name)
+    foreach ($c in $changes) {
+        $where = Get-ItemTitle $c
+        # Its tasks: the file its workflow tracks (tasks.md by default).
+        $tracked = @($c.Docs | Where-Object { $c.Workflow.Tracks -and $_.Generates -eq $c.Workflow.Tracks -and $_.Files.Count })
+        if (-not $tracked.Count) { $tracked = @($c.Docs | Where-Object { $_.Id -eq 'tasks' -and $_.Files.Count }) }
+        foreach ($f in @($tracked | ForEach-Object { $_.Files })) {
+            $group = ''
+            $lines = (Read-Text $f).Replace("`r", '').Split("`n")
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+                $l = $lines[$i]
+                if ($l -match '^##\s+(.+?)\s*$') { $group = Plain-Inline $Matches[1]; continue }
+                if ($l -notmatch '^\s*[-*]\s+\[([ xX])\]\s+(.+?)\s*$') { continue }
+                $done = $Matches[1] -ne ' '
+                $text = Plain-Inline $Matches[2]
+                $num = ''
+                if ($text -match '^(\d+(?:\.\d+)+)\.?\s') { $num = $Matches[1] }
+                [void]$list.Add([pscustomobject]@{
+                        Kind = 'task'; Item = $c; Where = $where; Cap = ''; Group = $group; Num = $num; Text = $text; Done = $done; Path = $f; Line = $i + 1
+                        After = $group; Needle = $text; Hay = "$($c.Name) $where $group $text".ToLower()
+                    })
+            }
+        }
+        foreach ($cap in $c.Caps) { Add-SpecSearchEntries $list $c $cap.Path $cap.Name $where }
+    }
+    foreach ($sp in $script:specs) { Add-SpecSearchEntries $list $sp $sp.Path '' (Get-ItemTitle $sp) }
+    $script:searchIndex = @($list)
+    $script:searchKey = $key
+    return $script:searchIndex
+}
+$searchKinds = @('all', 'tasks', 'open tasks', 'requirements', 'scenarios')
+# Every token must match: a task number (1.3; also its sub-tasks 1.3.1) a task's, any other word a part of
+# its change's or spec's name or title, its group, its requirement or its own text.
+function Find-Search([string]$Query, [string]$Kind) {
+    $toks = @($Query.ToLower().Split(' ', [StringSplitOptions]::RemoveEmptyEntries))
+    if (-not $toks.Count) { return @() }
+    $out = New-Object Collections.ArrayList
+    foreach ($e in (Get-SearchIndex)) {
+        if ($Kind -eq 'tasks' -and $e.Kind -ne 'task') { continue }
+        if ($Kind -eq 'open tasks' -and ($e.Kind -ne 'task' -or $e.Done)) { continue }
+        if ($Kind -eq 'requirements' -and $e.Kind -ne 'req') { continue }
+        if ($Kind -eq 'scenarios' -and $e.Kind -ne 'scn') { continue }
+        $ok = $true
+        foreach ($t in $toks) {
+            if ($t -match '^\d+(\.\d+)+\.?$') {
+                $n = $t.TrimEnd('.')
+                if ($e.Kind -ne 'task' -or -not ($e.Num -eq $n -or $e.Num.StartsWith("$n."))) { $ok = $false; break }
+            }
+            elseif (-not $e.Hay.Contains($t)) { $ok = $false; break }
+        }
+        if ($ok) { [void]$out.Add($e) }
+    }
+    return @($out)
+}
+function Start-Search {
+    if (-not $script:search) { $script:search = [pscustomobject]@{ Query = ''; Kind = 'all'; Index = 0 } }
+    $script:search.Index = 0
+    $script:message = ''
+    $script:screen = 'search'
+}
+function Draw-Search([int]$W, [int]$H) {
+    $s = $script:search
+    $res = @(Find-Search $s.Query $s.Kind)
+    if ($s.Index -ge $res.Count) { $s.Index = [Math]::Max(0, $res.Count - 1) }
+    $lines = New-Object Collections.ArrayList
+    [void]$lines.Add(@())
+    $chip = $st.chip
+    if ($s.Kind -ne 'all') { $chip = $st.chipOn }
+    [void]$lines.Add(@((S '  find ' $st.title), (S "$($s.Query)$($g.cursor)" $st.accent), (S '   '), (S " $($s.Kind) " $chip)))
+    [void]$lines.Add(@())
+    $bodyRows = $H - 4
+    if (-not $s.Query.Trim()) {
+        foreach ($l in (Wrap 'Type a task number (1.3), a change and a number (01 1.3, signup 1.3), or words: the tasks of the plan, and the requirements and scenarios of the specs and of the changes, that contain them all. Tab: all, tasks, open tasks, requirements, scenarios. Enter opens it in Read, at it.' ($W - 8))) { [void]$lines.Add(@(S "  $l" $st.muted)) }
+    }
+    elseif (-not $res.Count) { [void]$lines.Add(@(S '  nothing found' $st.faint)) }
+    else {
+        $room = $bodyRows - $lines.Count
+        $top = [Math]::Max(0, [Math]::Min($s.Index - [int]($room / 2), $res.Count - $room))
+        $ww = [Math]::Min(30, [int]($W * 0.28))
+        for ($i = $top; $i -lt [Math]::Min($res.Count, $top + $room); $i++) {
+            $e = $res[$i]
+            $mark = '  '
+            $style = $st.text
+            if ($i -eq $s.Index) { $mark = "$($g.tri) "; $style = $st.bold }
+            switch ($e.Kind) {
+                'task' { if ($e.Done) { $glyph = S "$($g.check) " $st.ok } else { $glyph = S "$($g.ring) " $st.faint } }
+                'req' { $glyph = S "$($g.diamond) " $st.accent }
+                default { $glyph = S "$($g.tri) " $st.shared }
+            }
+            $where = $e.Where
+            if ($e.Cap) { $where = "$where $($g.mid) $($e.Cap)" }
+            $row = @((S "  $mark" $st.accent), $glyph, (S (Pad (Short $where $ww) $ww) $st.muted), (S '  '))
+            $tw = [Math]::Max(10, $W - $ww - 12)
+            if ($e.Kind -eq 'scn' -and $e.Group) { $row += (S (Short $e.Text $tw) $style); $row += (S "  $($g.mid) $($e.Group)" $st.faint) }
+            elseif ($e.Kind -eq 'task' -and $e.Group) { $row += (S (Short $e.Text $tw) $style); $row += (S "  $($g.mid) $($e.Group)" $st.faint) }
+            else { $row += (S (Short $e.Text $tw) $style) }
+            [void]$lines.Add($row)
+        }
+    }
+    $status = 'tasks, requirements, scenarios'
+    if ($s.Query.Trim()) { $status = "$($res.Count) found" }
+    $rows = New-Object Collections.ArrayList
+    [void]$rows.Add((Border-Top $W "$projectName $($g.mid) find" $status 0))
+    foreach ($r in (Full-Rows ($H - 2) $W $lines)) { [void]$rows.Add($r) }
+    [void]$rows.Add((Border-Bottom $W @(@('type', 'find'), @("$($g.up)$($g.down)", 'select'), @('Tab', "kind: $($s.Kind)"), @('Enter', 'open'), @('Esc', 'back')) 0))
+    return , $rows
+}
+function On-SearchKey($K) {
+    $s = $script:search
+    $name = $K.Name; $ch = $K.Char
+    if ($name -eq 'Esc') { $script:screen = 'home'; return }
+    if ($name -eq 'Back') { if ($s.Query.Length) { $s.Query = $s.Query.Substring(0, $s.Query.Length - 1) }; $s.Index = 0; return }
+    if ($name -eq 'Tab') { $s.Kind = $searchKinds[([array]::IndexOf($searchKinds, $s.Kind) + 1) % $searchKinds.Count]; $s.Index = 0; return }
+    if ($name -eq 'Up') { $s.Index = [Math]::Max(0, $s.Index - 1); return }
+    if ($name -eq 'Down') { $s.Index++; return }
+    if ($name -eq 'PgUp') { $s.Index = [Math]::Max(0, $s.Index - 10); return }
+    if ($name -eq 'PgDn') { $s.Index += 10; return }
+    if ($name -eq 'Home') { $s.Index = 0; return }
+    if ($name -eq 'End') { $s.Index = 1000000; return }
+    if ($name -eq 'Enter') {
+        $res = @(Find-Search $s.Query $s.Kind)
+        if ($res.Count) { Open-SearchResult $res[[Math]::Min($s.Index, $res.Count - 1)] }
+        return
+    }
+    if ($name -eq 'Space' -or [string]$ch -eq ' ') { $s.Query += ' '; $s.Index = 0; return }
+    if ($ch -and [int][char]$ch -ge 32) { $s.Query += [string]$ch; $s.Index = 0 }
+}
+# A result in Read: its document's tab (the tasks, or the delta specs), scrolled to it and marked.
+function Open-SearchResult($E) {
+    $item = $E.Item
+    $tabs = @(Get-ReadTabs $item)
+    $ti = 0
+    for ($i = 0; $i -lt $tabs.Count; $i++) {
+        if ($E.Kind -eq 'task' -and $tabs[$i].Path -eq $E.Path) { $ti = $i; break }
+        if ($E.Kind -ne 'task' -and $item.Type -eq 'change' -and $tabs[$i].Title -like 'Specs*') { $ti = $i; break }
+    }
+    $doc = Render-Markdown $tabs[$ti].Text ((Get-Size)[0] - 6)
+    $plain = @($doc | ForEach-Object { (To-Plain $_).ToLower() })
+    $start = 0
+    if ($E.After) { for ($i = 0; $i -lt $plain.Count; $i++) { if ($plain[$i].Contains($E.After.ToLower())) { $start = $i; break } } }
+    $needle = $E.Needle.ToLower()
+    if ($needle.Length -gt 30) { $needle = $needle.Substring(0, 30) }
+    $at = -1
+    for ($i = $start; $i -lt $plain.Count; $i++) { if ($plain[$i].Contains($needle)) { $at = $i; break } }
+    if ($at -lt 0) { for ($i = 0; $i -lt $plain.Count; $i++) { if ($plain[$i].Contains($needle)) { $at = $i; break } } }
+    $script:readItem = $item; $script:readTab = $ti; $script:readScroll = [Math]::Max(0, $at - 3)
+    $script:readMark = $null
+    if ($at -ge 0) { $script:readMark = [pscustomobject]@{ Name = $item.Name; Tab = $ti; Line = $at } }
+    $script:readBack = 'search'
+    $script:screen = 'read'
 }
 
 # --- the OpenSpec CLI ----------------------------------------------------------------------------------
@@ -5802,6 +5990,7 @@ function Draw([int]$W, [int]$H) {
         'help' { return Draw-Help $W $H }
         'read' { return Draw-Read $W $H }
         'pick' { return Draw-Pick $W $H }
+        'search' { return Draw-Search $W $H }
         'run' { return Draw-Run $W $H }
         default { return Draw-Home $W $H }
     }
@@ -5830,7 +6019,8 @@ function Draw-Help([int]$W, [int]$H) {
         @('a', 'archive the selected change (asked first; merges its delta specs into openspec/specs)'),
         @('n', 'new change (asks its name: kebab-case, e.g. add-user-login)'),
         @('x', 'export the specification for the client: PDF, Word or HTML (export\ in the project; opens it)'),
-        @('m', 'changes as one: mark the ones that go to the client as one whole, read them together (x there: export)'), @('e', 'edit: open the spec or the proposal in your editor'),
+        @('m', 'changes as one: mark the ones that go to the client as one whole, read them together (x there: export)'),
+        @('t', 'find: tasks (1.3, 01 1.3, words), requirements and scenarios; Enter opens it in Read, at it'), @('e', 'edit: open the spec or the proposal in your editor'),
         @('s', 'sort changes: name A-Z, name Z-A, recently modified'), @('h', 'show or hide archived changes'),
         @('/', 'filter specs and changes by name (Enter keeps it, Esc clears it)'), @('r', 'refresh (it also refreshes by itself when files change)'),
         @('?', 'this help'), @('q', 'quit'))
@@ -6044,6 +6234,7 @@ function On-Key($K) {
         return
     }
     if ($script:screen -eq 'pick') { On-PickKey $K; return }
+    if ($script:screen -eq 'search') { On-SearchKey $K; return }
     if ([string]$ch -eq '?' -and @('home', 'read') -contains $script:screen) { $script:helpBack = $script:screen; $script:helpScroll = 0; $script:screen = 'help'; return }
     if ($script:screen -eq 'home') {
         $script:message = ''
@@ -6063,7 +6254,7 @@ function On-Key($K) {
         if ($name -eq 'End') { $script:detailScroll = 1000000; return }
         if ($name -eq 'Enter') {
             $sel = Get-Selected
-            if ($sel) { $script:readItem = $sel; $script:readTab = 0; $script:readScroll = 0; $script:screen = 'read' }
+            if ($sel) { $script:readItem = $sel; $script:readTab = 0; $script:readScroll = 0; $script:readMark = $null; $script:readBack = 'home'; $script:screen = 'read' }
             return
         }
         if ($name -eq 'Esc') {
@@ -6083,6 +6274,7 @@ function On-Key($K) {
             'n' { Start-NewChange }
             'x' { Start-ExportMenu }
             'm' { Start-Pick 'read' }
+            't' { Start-Search }
             'e' { $sel = Get-Selected; if ($sel) { Open-InEditor $sel.Path } }
             's' { $script:sort = $sortModes[([array]::IndexOf($sortModes, $script:sort) + 1) % $sortModes.Count]; $script:changeIndex = 0; $script:message = "Changes sorted by $($sortLabels[$script:sort])." }
             'h' { $script:showArchived = -not $script:showArchived; $script:changeIndex = 0 }
@@ -6104,7 +6296,7 @@ function On-Key($K) {
         elseif ($name -eq 'Left') { $script:readTab = ($script:readTab - 1 + $tabs.Count) % $tabs.Count; $script:readScroll = 0 }
         elseif ([string]$ch -eq 'e') { Open-InEditor $tabs[[Math]::Min($script:readTab, $tabs.Count - 1)].Path }
         elseif ([string]$ch -eq 'x') { Start-ItemExportMenu $script:readItem }
-        elseif ($name -eq 'Esc' -or $name -eq 'Back' -or ([string]$ch) -in @('q', 'd')) { $script:screen = 'home' }
+        elseif ($name -eq 'Esc' -or $name -eq 'Back' -or ([string]$ch) -in @('q', 'd')) { $script:screen = $script:readBack; $script:readBack = 'home'; $script:readMark = $null }
         return
     }
     # The run.
