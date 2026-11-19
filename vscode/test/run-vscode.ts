@@ -1,6 +1,7 @@
 // The extension in a real VS Code (downloaded into .vscode-test), on a copy of the demo project with groups
 // added: npm run test:vscode.
 
+import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -16,6 +17,10 @@ async function main() {
   fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8') + '\ngroupLabel: "Phase"\ngroups:\n  - id: 1\n    name: "Accounts"\n  - id: 2\n    name: "Orders"\n    requires: [1]\n');
   fs.writeFileSync(path.join(work, 'openspec', 'changes', '01-add-user-signup', '.openspec.yaml'), 'schema: spec-driven\nx-group: 1\n');
   fs.writeFileSync(path.join(work, 'openspec', 'changes', '03-add-order-history', '.openspec.yaml'), 'schema: spec-driven\nx-group: 2\n');
+  // In git (undo), out-of-date documents watched.
+  fs.writeFileSync(cfg, fs.readFileSync(cfg, 'utf8').replace('lazyspec:\n', 'lazyspec:\n  syncCheck: on\n'));
+  const g = (...a: string[]) => cp.execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd: work, stdio: 'ignore' });
+  g('init', '-q'); g('add', '-A'); g('commit', '-q', '-m', 'start');
   try {
     await runTests({
       extensionDevelopmentPath: ext,

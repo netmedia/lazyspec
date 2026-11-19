@@ -418,13 +418,15 @@ Your answer is the default next time (`lazyspec: agent:`). Add `.lazyspec/` to `
 **When:** you'd rather stay in your editor than switch to a terminal.
 
 1. Install the extension once, from the LazySpec repository's root: `.\install-vscode.exe` (macOS, Linux: `./install-vscode.sh`). It installs `vscode/lazyspec.vsix` in every VS Code, Cursor, Windsurf and VSCodium it finds (`-Editor cursor`: only that one). Run it again after a `git pull` to update.
-2. Open the project's folder. The checklist icon in the activity bar opens the **Plan** (by group when the project has groups), the **Scope** and the **Details** of what you select.
-3. Expand a change to see its documents. Click a document to edit it in the editor. Tick tasks in the tree; the box is written into `tasks.md`. Expand **Specs** down to a requirement or scenario to jump to it.
-4. `Ctrl+Alt+T` (Mac `Cmd+Alt+T`) is Find: task numbers, words, `g1` for one group, and the filter button for the kind.
-5. The views' title bars hold New Change, Find, Export and Refresh; the `...` menu holds Validate, archived changes, Export Groups and the terminal UI. Right-click a change to archive or export it. Right-click any `.md` in the Explorer to export it as a document.
-6. Export uses the project's own `tools/lazyspec/lazyspec.ps1` when it has one, else the copy built into the extension; on macOS install PowerShell 7 (`brew install powershell`).
-
-For undo, out-of-date documents and the agent, use **Open LazySpec (Terminal UI)**: the full LazySpec in an editor tab.
+2. Open the project's folder (`code .` there). The LazySpec sidebar opens by itself. It has the **Plan** (by group when the project has groups; `!` on out-of-date changes), the **Scope**, the **Details** of what you select, and **Undo**.
+3. **Read** (the book button, `Ctrl+Alt+R`) shows a change, spec, group or changes as one, formatted, with a tab per document. Click a task, requirement, scenario or section (`Ctrl`-click for several), then use **Edit**, **Done**, **Delete** or **Agent...**. **Source** opens the Markdown.
+4. In the trees, every document has its sections, tasks have checkboxes, and specs open down to requirements and scenarios. On an item: `F2` edits, `Space` ticks a task, `Delete` deletes (asked first; from the main specs through a change), and `Ctrl+Alt+A` hands it to the agent. Select several with `Ctrl`/`Shift`. A document clicked opens formatted or as source (`lazyspec.documents`; right-click for the other).
+5. The agent (Claude Code) runs here (a terminal, it may ask), in the background (answer it after), or only saves the prompt. The choice is remembered per project, as in the terminal version.
+6. Out of date: **Sync Out-of-Date Documents** on a change with `!` lets the agent update its documents, or marks them as in sync. It uses the same `.lazyspec/sync.json` as the terminal version.
+7. **Undo** lists every change to `openspec/` since the last commit, by piece. Click one for its diff; the discard button undoes it.
+8. `Ctrl+Alt+T` (Mac `Cmd+Alt+T`) is Find: task numbers, words, `g1` for one group, the kind and document filters, and actions on each result or on several at once.
+9. The `...` menu of the Plan holds Validate, Read Changes as One, Read Groups, archived, sort, Export Groups, Export in Another Language, saved wholes and the terminal UI. Right-click any `.md` in the Explorer to export it as a document.
+10. Export uses the project's own `tools/lazyspec/lazyspec.ps1` when it has one, else the copy built into the extension; on macOS install PowerShell 7 (`brew install powershell`).
 
 ## Configuration and integrations
 
