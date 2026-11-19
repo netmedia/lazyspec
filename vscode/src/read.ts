@@ -104,6 +104,7 @@ export class ReadPanel {
         break;
       }
       case 'export': void this.actions.exportTarget(this.target); break;
+      case 'refresh': void vscode.commands.executeCommand('lazyspec.refresh'); break;
       case 'link': {
         // A link to another document of the project: that one; else the browser.
         const href = m.href || '';
@@ -183,6 +184,7 @@ li.done-task { color: var(--vscode-descriptionForeground); }
   <span style="width:10px"></span>
   <button data-act="source" title="The Markdown itself">Source</button>
   <button data-act="export">Export...</button>
+  <button data-act="refresh" title="Read it again from openspec/">Refresh</button>
   <span class="hint" id="hint">Click a task, requirement, scenario or section (Ctrl/Cmd: several)</span>
 </div></div>
 ${body}

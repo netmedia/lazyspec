@@ -83,7 +83,7 @@ button { background: var(--vscode-button-secondaryBackground); color: var(--vsco
 button:hover { background: var(--vscode-button-secondaryHoverBackground); }
 p { margin: 4px 0; line-height: 1.4; }
 .warn { color: var(--vscode-charts-yellow); }
-</style></head><body>${body}
+</style></head><body><div style="text-align:right"><a href="#" data-run="lazyspec.refresh" data-args="[]" title="Read everything again from openspec/">&#8635; Refresh</a></div>${body}
 <script>
 const vscode = acquireVsCodeApi();
 document.addEventListener('click', e => {

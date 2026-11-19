@@ -203,6 +203,17 @@ export async function run(): Promise<void> {
     api.reload();
     assert.strictEqual(ops.syncState(p).size, 0, 'both in sync');
   });
+  await check('a document opens in the formatted editor (lazyspec.documents: formatted); the title bar\'s options', async () => {
+    const file = path.join(work, 'openspec', 'changes', '01-add-user-signup', 'proposal.md');
+    await vscode.commands.executeCommand('lazyspec.openDocument', file);
+    await new Promise(r => setTimeout(r, 1500));
+    const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    assert.ok(tab && tab.input instanceof vscode.TabInputCustom && tab.input.viewType === 'lazyspec.formatted', `active: ${tab?.label}`);
+    const pkg = vscode.extensions.getExtension('netmedia.lazyspec')!.packageJSON;
+    assert.ok(pkg.contributes.menus['lazyspec.mdOptions'].some((m: { command: string }) => m.command === 'lazyspec.showSource'));
+    assert.ok(fs.existsSync(path.join(vscode.extensions.getExtension('netmedia.lazyspec')!.extensionPath, 'out', 'webview', 'editor.js')), 'the editor bundled');
+    await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+  });
   await check('the bundled lazyspec.ps1 is in the extension', () => {
     assert.ok(fs.existsSync(path.join(vscode.extensions.getExtension('netmedia.lazyspec')!.extensionPath, 'kit', 'lazyspec.ps1')));
   });

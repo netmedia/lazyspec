@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0
+
+- A formatted editor (Milkdown): Edit opens the item alone, formatted, with Save / Cancel; documents open in it
+  too. A bar for headings, bold, italic, strikethrough, code, lists, task lists, links, tables, code blocks,
+  quotes, rules; Markdown shortcuts. Only the lines you edit change in the file; the rest stays byte for byte.
+- The title bar of any Markdown file: Formatted, and a LazySpec menu (formatted editor, source, preview, Read,
+  export as a document).
+- Refresh in Read and in Details (the views' title bars had it).
+
 ## 0.3.1
 
 - Sync All Out-of-Date Changes... (the Plan's title bar, the status bar's count), and Sync on several selected

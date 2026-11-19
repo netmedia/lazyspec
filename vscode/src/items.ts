@@ -7,7 +7,7 @@ import { agentTask } from './agent';
 import { Entry, Project, setTaskDone } from './model';
 import { itemBlock, kindWord, newModifyChange, removeEntries, revisionPrompt, setTaskText } from './ops';
 
-export interface ItemContext { projectOfFile(file: string): Project | undefined; reload(): void; openFile(file: string, line?: number): Promise<void> }
+export interface ItemContext { projectOfFile(file: string): Project | undefined; reload(): void; openFile(file: string, line?: number): Promise<void>; formatted?(e: Entry, viaChange: boolean): void }
 
 /** The item's lines selected in its file (the editor: the item's block, as LazySpec's edit window). */
 export async function openBlock(e: Entry) {
@@ -20,6 +20,8 @@ export async function openBlock(e: Entry) {
   editor.revealRange(editor.selection, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
 }
 
+/** Edit: in the formatted editor (lazyspec.editor: formatted, the default), else the Markdown itself. */
+function formattedOn(): boolean { return vscode.workspace.getConfiguration('lazyspec').get<string>('editor', 'formatted') !== 'source'; }
 export async function editItem(ctx: ItemContext, e: Entry) {
   const p = ctx.projectOfFile(e.path);
   if (!p) { return; }
@@ -31,6 +33,8 @@ export async function editItem(ctx: ItemContext, e: Entry) {
       { label: '$(edit) Edit it directly', description: 'in openspec/specs', v: 'direct' },
     ], { placeHolder: `A main spec's ${kindWord(e.kind)}: "${e.text}"` });
     if (!how) { return; }
+    // The formatted editor: the item alone; saved through the change or directly.
+    if (ctx.formatted && formattedOn()) { ctx.formatted(e, how.v === 'change'); return; }
     if (how.v === 'change') {
       const { name, file } = newModifyChange(p, e);
       ctx.reload();
@@ -41,6 +45,7 @@ export async function editItem(ctx: ItemContext, e: Entry) {
       return;
     }
   }
+  if (ctx.formatted && formattedOn()) { ctx.formatted(e, false); return; }
   // A task's text: in place (its box and number kept); the whole task (with what's under it) in the file.
   if (e.kind === 'task') {
     const lineText = (await vscode.workspace.openTextDocument(e.path)).lineAt(e.line - 1).text;

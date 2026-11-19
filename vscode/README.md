@@ -38,6 +38,33 @@ by itself.
   - The discard button undoes it. On a file it puts the whole file back as committed, or deletes a new file.
 - **Status bar**: the tasks done, and how many changes are out of date.
 
+## Editing formatted
+
+Markdown is edited as formatted text, like a word processor: no `**` or `#` to type, unless you want to.
+
+- **Edit** on a task, requirement, scenario or section (`F2`, the pencil, Read's **Edit**) opens it alone in
+  the **formatted editor**. Its bar has **Save** (`Ctrl+S`), **Cancel** and **Edit in the File** (the Markdown
+  with its lines selected). A main spec's requirement or scenario is saved through a new change
+  (`MODIFIED`), or directly, as you choose.
+- A **document** clicked in the Plan or the Scope opens in the formatted editor too; save it with `Ctrl+S`.
+- The **formatting bar** on top has a heading level (H1-H6, text), bold, italic, strikethrough, inline code,
+  bullet, numbered and task lists, link, table, code block, quote and a rule. Selected text gets a small bar
+  too. Markdown shortcuts work as you type: `**bold**`, `# ` for a heading, `- [ ] ` for a task.
+- **Only what you edit changes in the file.** The editor writes Markdown its own way (a blank line after a
+  heading, padded tables), so LazySpec writes back only the lines you changed; everything else stays as it
+  was, byte for byte. A document you open and don't edit is never rewritten.
+- **The buttons in the title bar** of any open Markdown file: **Formatted** (the pencil) opens it in the
+  formatted editor, and the **LazySpec** menu next to it switches between Formatted Editor, Source and
+  Preview, opens it in LazySpec's Read, or exports it as a document.
+- `lazyspec.documents` (`formatted`, `preview`, `source`) says how a clicked document opens;
+  `lazyspec.editor` (`formatted`, `source`) says how Edit opens an item.
+
+## Refresh
+
+LazySpec picks up changes to the files by itself: an editor, git or the agent. To read everything again
+anyway, use **⟳** in the Plan's, Scope's or Undo's title bar, or **Refresh** in Read and in Details. Refresh
+also checks again which documents are out of date.
+
 ## Reading: formatted or the source
 
 - **Read** (the book button on a change, spec or group, or `Ctrl+Alt+R` / `Cmd+Alt+R`) opens a formatted view
@@ -58,7 +85,7 @@ use the keys.
 
 | | Keys | |
 |---|---|---|
-| Edit | `F2` | A task's text in place; anything else in its file with its lines selected. A requirement or scenario of the **main specs**: through a new change (`MODIFIED`, archive it to apply it), or directly. |
+| Edit | `F2` | The item alone in the formatted editor (Save, Cancel); **Edit in the File** for its Markdown. A requirement or scenario of the **main specs**: through a new change (`MODIFIED`, archive it to apply it), or directly. |
 | Done / not | `Space`, or its checkbox | Writes `[x]` / `[ ]` into the tasks file. |
 | Delete | `Delete` (Mac `Cmd+Backspace`) | Asked first. In a change's documents, it is taken out; a delta spec left empty is deleted. From the main specs, a new change `remove-from-specs-<date>` gets `REMOVED` (a requirement) or `MODIFIED` (a requirement without the scenario), as OpenSpec wants it. Undo puts it back. |
 | The agent | `Ctrl+Alt+A` | **Change it** (your note says how) or **write it again** (to match the current specs, proposal and design). |
@@ -156,7 +183,8 @@ every other project setting work the same as in LazySpec; see
 | Setting | Default | |
 |---|---|---|
 | `lazyspec.openOnStartup` | `true` | Opening a folder with `openspec/` (`code .` there) shows LazySpec's sidebar |
-| `lazyspec.documents` | `preview` | A document clicked opens formatted (`preview`) or as its Markdown (`source`) |
+| `lazyspec.documents` | `formatted` | A document clicked opens in the formatted editor (`formatted`), the preview (`preview`) or as its Markdown (`source`) |
+| `lazyspec.editor` | `formatted` | Edit on an item: the item alone in the formatted editor (`formatted`), or its lines in the Markdown (`source`) |
 | `lazyspec.grouped` | `true` | The plan by group (in projects that group their changes) |
 | `lazyspec.showArchived` | `false` | Archived changes at the end of the plan |
 | `lazyspec.sort` | `name` | `name`, `name-desc`, `recent` |

@@ -289,6 +289,7 @@ function Show-Usage {
     & $d '    Enter edit the picked item in a window (Ctrl+S save, Esc cancel)   Space a task done/not'
     & $d '    Del delete it (asked first)   a the agent: change it or write it again'
     & $d '    Left/Right document   e the whole file in your editor   x export   t find   u undo   y out of date'
+    & $d '    r refresh: read it again from openspec/ (it also does by itself when files change)'
     & $d '    Esc back'
     & $y '  Run'
     & $d '    PgUp/PgDn Home/End scroll   Esc stop (asked first); when done: Enter or Esc back'
@@ -5629,7 +5630,7 @@ function Home-Hints {
     if ($script:pane -eq 'details') { return , @(@("$($g.up)$($g.down) PgUp PgDn", 'scroll'), @("$([string][char]0x2190) Esc", 'lists'), @('z', 'zoom'), @('Enter', 'read'), @('e', 'edit'), @('?', 'help'), @('q', 'quit')) }
     $sel = Get-Selected
     if ($sel -and $sel.PSObject.Properties['IsGroup']) { return , @(@("$($g.up)$($g.down)", 'select'), @('Space', 'choose'), @('Enter', 'read'), @('x', 'export'), @('c', 'fold'), @('g', 'flat'), @('e', 'groups'), @('t', 'find'), @('?', 'help'), @('q', 'quit')) }
-    return , @(@("$($g.up)$($g.down)", 'select'), @('Enter', 'open'), @('Tab', 'scope/plan'), @('v', 'validate'), @('a', 'archive'), @('n', 'new'), @('x', 'export'), @('m', 'as one'), @('t', 'find'), @('y', 'sync'), @('u', 'undo'), @('e', 'edit'), @('s', 'sort'), @('/', 'filter'), @('?', 'help'), @('q', 'quit'))
+    return , @(@("$($g.up)$($g.down)", 'select'), @('Enter', 'open'), @('Tab', 'scope/plan'), @('r', 'refresh'), @('v', 'validate'), @('a', 'archive'), @('n', 'new'), @('x', 'export'), @('m', 'as one'), @('t', 'find'), @('y', 'sync'), @('u', 'undo'), @('e', 'edit'), @('s', 'sort'), @('/', 'filter'), @('?', 'help'), @('q', 'quit'))
 }
 
 function Home-Status([int]$Active, [int]$Lines, [int]$Rows) {
@@ -5912,12 +5913,12 @@ function Draw-Read([int]$W, [int]$H) {
         if ($items[$script:readSel].Kind -eq 'task') { $hints += , @('Space', 'done') }
         $hints += , @('Del', 'delete'); $hints += , @('a', 'agent'); $hints += , @('PgUp PgDn', 'scroll')
         if ($tabs.Count -gt 1) { $hints += , @("$([string][char]0x2190)$([string][char]0x2192)", 'document') }
-        $hints += , @('t', 'find'); $hints += , @('e', 'edit file'); $hints += , @('x', 'export'); $hints += , @('Esc', 'back')
+        $hints += , @('t', 'find'); $hints += , @('e', 'edit file'); $hints += , @('x', 'export'); $hints += , @('r', 'refresh'); $hints += , @('Esc', 'back')
     }
     else {
         $hints = @(@("$($g.up)$($g.down) PgUp PgDn", 'scroll'), @('Home End', 'top, end'))
         if ($tabs.Count -gt 1) { $hints += , @("$([string][char]0x2190)$([string][char]0x2192)", 'document') }
-        $hints += , @('t', 'find'); $hints += , @('x', 'export'); $hints += , @('e', 'edit'); $hints += , @('?', 'help'); $hints += , @('Esc', 'back')
+        $hints += , @('t', 'find'); $hints += , @('x', 'export'); $hints += , @('e', 'edit'); $hints += , @('r', 'refresh'); $hints += , @('?', 'help'); $hints += , @('Esc', 'back')
     }
     [void]$rows.Add((Border-Bottom $W $hints 0))
     return , $rows
@@ -7758,7 +7759,7 @@ function Draw-Help([int]$W, [int]$H) {
         @("$($g.up) $($g.down)", 'with tasks, requirements, scenarios: pick one (PgUp PgDn scroll)'),
         @('Enter', 'edit the picked item - a task, requirement, scenario or section (## Why ...) - in a window (Ctrl+S save, Esc cancel)'), @('Space', 'a task: done / not done'),
         @('Del', 'delete the picked item (asked first)'), @('a', 'the agent: change it (your note) or write it again'),
-        @('x', 'export this spec, change or changes as one: PDF, Word or HTML'), @('e', 'edit the whole file in your editor'), @('Esc', 'back'))
+        @('x', 'export this spec, change or changes as one: PDF, Word or HTML'), @('e', 'edit the whole file in your editor'), @('r', 'refresh: read it again from openspec/'), @('Esc', 'back'))
     & $section 'RUN' @(@('PgUp PgDn', 'scroll the output (Home, End: top, bottom)'), @('Esc', 'stop (asked first); when done: back'))
     & $section 'LOOK' @(
         @("$($g.diamond) $($g.dot)", 'a platform page (platform-*: overview, costs...), a capability spec'),
@@ -8122,6 +8123,8 @@ function On-Key($K) {
         elseif ($name -eq 'Left') { $script:readTab = ($script:readTab - 1 + $tabs.Count) % $tabs.Count; $script:readScroll = 0; $script:readSel = 0 }
         elseif ([string]$ch -eq 'e') { Open-InEditor $tabs[[Math]::Min($script:readTab, $tabs.Count - 1)].Path }
         elseif ([string]$ch -eq 'x') { Start-ItemExportMenu $script:readItem }
+        # r: read again - the specs and documents as they are on disk now (an editor, git, the agent changed them).
+        elseif ([string]$ch -eq 'r') { Update-ReadItem; $script:readScroll = [Math]::Min($script:readScroll, 1000000); $script:message = 'Refreshed: read again from openspec/.' }
         elseif ($name -eq 'Esc' -or $name -eq 'Back' -or ([string]$ch) -in @('q')) { $script:screen = $script:readBack; $script:readBack = 'home'; $script:readMark = $null }
         return
     }
