@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- Sync All Out-of-Date Changes... (the Plan's title bar, the status bar's count), and Sync on several selected
+  changes: one agent run for all of them (each validated and marked after), or all marked as in sync.
+
 ## 0.3.0
 
 - Sync Out-of-Date Documents, update them: the agent done, the change marked as in sync by itself (background:

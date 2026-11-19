@@ -12,7 +12,7 @@ import { Entry, Project, searchIndex } from '../src/model';
 import {
   blockEnd, doneSyncPrompts, hunkSummary, itemBlock, newModifyChange, removeEntries, revisionPrompt, saveSyncSnapshot,
   savePrompt, setConfigBundle, setConfigValue, setInSync, setInSyncFromFile, setTaskText, syncPrompt, syncState, undoFile,
-  undoHunk, undoRows, writeItemEdit,
+  undoHunk, undoRows, writeItemEdit, syncPromptMany,
 } from '../src/ops';
 
 const repo = path.resolve(__dirname, '..', '..', '..');
@@ -220,6 +220,26 @@ test('the agent\'s sync: a snapshot the extension saved is LazySpec\'s too (it o
     assert.ok(f.includes('marked as in sync'), 'y: marked');
     assert.ok(!fs.existsSync(file));
     assert.strictEqual(syncState(load(dir)).size, 0, 'in sync for the extension too');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('several out-of-date changes in one prompt: each one\'s part, a snapshot each', () => {
+  const dir = copyDemo();
+  try {
+    setConfigValue(load(dir), 'syncCheck', 'on');
+    syncState(load(dir));
+    for (const c of ['01-add-user-signup', '03-add-order-history']) { fs.appendFileSync(path.join(dir, 'openspec', 'changes', c, 'proposal.md'), '\nA late note.\n'); }
+    const p = load(dir);
+    const st = syncState(p);
+    const items = ['01-add-user-signup', '03-add-order-history'].map(n => ({ change: p.changes.find(c => c.name === n)!, stale: st.get(n)! }));
+    assert.ok(items.every(i => i.stale?.length));
+    const prompt = syncPromptMany(p, items);
+    assert.ok(prompt.startsWith('# LazySpec: bring documents of 2 changes up to date') && prompt.includes('openspec validate 01-add-user-signup') && prompt.includes('openspec validate 03-add-order-history'));
+    const rel = savePrompt(p, 'sync-2-changes', prompt);
+    const files = items.map(i => saveSyncSnapshot(p, i.change, i.stale, rel, true));
+    assert.deepStrictEqual(files.map(f => path.basename(f).replace(/^\d{8}-\d{6}-/, '')), ['sync-2-changes.01-add-user-signup.sync.json', 'sync-2-changes.03-add-order-history.sync.json']);
+    for (const f of files) { setInSyncFromFile(p, f); }
+    assert.strictEqual(syncState(load(dir)).size, 0, 'both marked');
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 

@@ -320,7 +320,7 @@ export function setInSync(p: Project, c: Change, snap?: Record<string, Record<st
 // from others, with its own hash and what it's written from, both as they are now (stale: the out-of-date ones
 // the prompt names); asked: the files of those (what the agent is to update).
 interface SyncSnapshot { change: string; prompt: string; asked: string[]; docs: Record<string, { self: string; stale: boolean; up: Record<string, Snap> }> }
-export function saveSyncSnapshot(p: Project, c: Change, stale: StaleDoc[], promptRel: string): string {
+export function saveSyncSnapshot(p: Project, c: Change, stale: StaleDoc[], promptRel: string, many = false): string {
   const staleIds = stale.map(s => s.doc.id);
   const docs: SyncSnapshot['docs'] = {};
   const asked: string[] = [];
@@ -329,7 +329,8 @@ export function saveSyncSnapshot(p: Project, c: Change, stale: StaleDoc[], promp
     docs[dep.doc.id] = { self: selfHash(dep.doc.files), stale: isStale, up: snapshot(p, dep.ups) };
     if (isStale) { asked.push(...dep.doc.files.map(f => relPath(p.root, f))); }
   }
-  const file = path.join(p.root, promptRel.replace(/\.md$/i, '.sync.json'));
+  // Several changes in one prompt: a snapshot each (<prompt>.<change>.sync.json).
+  const file = path.join(p.root, promptRel.replace(/\.md$/i, many ? `.${c.name}.sync.json` : '.sync.json'));
   write(file, JSON.stringify({ change: c.name, prompt: promptRel, asked, docs }, null, 2));
   return file;
 }
@@ -375,6 +376,12 @@ export function doneSyncPrompts(p: Project, stale: Map<string, StaleDoc[]>): str
       return d.stale && doc && selfHash(doc.files) !== d.self;
     });
   });
+}
+/** Several changes brought up to date in one go: each change's prompt, one after the other. */
+export function syncPromptMany(p: Project, items: { change: Change; stale: StaleDoc[] }[]): string {
+  if (items.length === 1) { return syncPrompt(p, items[0].change, items[0].stale); }
+  return `# LazySpec: bring documents of ${items.length} changes up to date\n\nDo each part below, one change after the other: ${items.map(i => i.change.name).join(', ')}.\n\n`
+    + items.map(i => syncPrompt(p, i.change, i.stale)).join('\n---\n\n');
 }
 export function syncPrompt(p: Project, c: Change, stale: StaleDoc[]): string {
   let sb = `# LazySpec: bring documents of the change ${c.name} up to date\n\nProject root: the current folder. The change: openspec/changes/${c.name}/.\n\n`;
