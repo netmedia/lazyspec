@@ -14,9 +14,12 @@ A project's **OpenSpec** specifications and changes in **one terminal screen** �
   OpenSpec workflow schema defines), formatted for the terminal.
 - **Actions** through the OpenSpec CLI: validate all, archive a change, new change; the output in the
   same screen. Edit opens your editor.
-- **Find** (`t`, or `Ctrl+F` from any screen): a task by its number (`1.3`, `01 1.3`) or words, a requirement,
-  a scenario - in the specs and the changes; `Enter` opens it in Read, at it.
-- **Edit in place**: in Read, `↑` `↓` pick a task, requirement or scenario; `Enter` edits only it in a window
+- **Find** (`t`, or `Ctrl+T` on any screen): a task by its number (`1.3`, `01 1.3`) or words, a requirement, a
+  scenario, a section (`## Why` ...) - in the specs and the changes, with the document each is in (filter by kind
+  `Tab`, by document `Shift+Tab`); `Enter` opens it in Read, at it.
+- **The same keys everywhere**: `t` find, `u` undo, `y` out of date - the letter where nothing is typed,
+  `Ctrl+T` `Ctrl+U` `Ctrl+Y` on any screen.
+- **Edit in place**: in Read, `↑` `↓` pick a task, requirement, scenario or section; `Enter` edits only it in a window
   (`Ctrl+S`), `Space` ticks a task, `Del` deletes it, `a` hands it to the agent (Claude Code). Several at once
   from Find: mark them, then delete, change or write them again. A main spec is changed through a change
   (`REMOVED` / `MODIFIED`), as OpenSpec wants it.

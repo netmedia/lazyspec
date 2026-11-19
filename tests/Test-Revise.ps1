@@ -97,6 +97,10 @@ try {
     $f = Invoke-Keys 'Tab,y,u,snap,r,wait:done,snap'
     Check ($f[0] -match 'Save the prompt for later') 'asked again, the remembered one first' $f[0]
     Check ($f[1] -match 'STAND-IN AGENT -p "Read the file \.lazyspec/prompts/' -and $f[1] -match 'acceptEdits') 'run: the agent gets the prompt' $f[1]
+    # From Read too: the change being read out of date at the top, y there.
+    $f = Invoke-Keys 'Tab,Enter,snap,y,snap,Esc'
+    Check ($f[0] -match '! out of date: y') 'Read: out of date said at the top' $f[0]
+    Check ($f[1] -match 'Update them \(the agent\)') 'y in Read: the change being read' $f[1]
     $f = Invoke-Keys 'Tab,y,m,snap'
     Check ($f[0] -match 'marked as in sync' -and $f[0] -notmatch 'OUT OF DATE') 'mark as in sync: no longer out of date' $f[0]
 
@@ -119,7 +123,8 @@ try {
     Check ($ct -match '> Use the design system' -and $ct -match '2\.1 Sign-up page' -and $ct -match '2\.2 "Check your e-mail"' -and $ct -match 'tasks\.md \(line \d+\)') 'c: the prompt with the note and each item'
 
     # 7. Read: a task picked (Up, Down), edited in the window (Ctrl+S), ticked (Space), deleted (Del).
-    $f = Invoke-Keys 'Tab,Enter,Right,Right,Right,Down,Down,snap,Enter,snap,End,text: (also the API),CtrlS,snap,Down,Space,Down,Del,y,snap'
+    # (The tasks tab's items: its groups as sections, then their tasks: ## 1. Backend, 1.1, 1.2, 1.3, ## 2. ...)
+    $f = Invoke-Keys 'Tab,Enter,Right,Right,Right,Down,Down,Down,snap,Enter,snap,End,text: (also the API),CtrlS,snap,Down,Down,Space,Down,Del,y,snap'
     Check ($f[0] -match ([string][char]0x25B8 + ' ' + [string][char]0x2713 + ' 1\.3 Verification endpoint') -and $f[0] -match 'Enter edit it') 'Read: Down picks the next task, marked' $f[0]
     Check ($f[1] -match '^snap edit' -and $f[1] -match '1 - \[x\] 1\.3 Verification endpoint' -and $f[1] -match 'Ctrl\+S save') 'Enter: the task alone in the editor' $f[1]
     $t = Read-File $tasks
@@ -141,6 +146,8 @@ try {
     Check (@(Get-ChildItem -LiteralPath (Join-Path $proj 'openspec\exports') -Filter '*.html' -ErrorAction SilentlyContinue).Count -eq 1) 'an export: in openspec/exports by default'
     $f = Invoke-Keys 'u,snap'
     Check ($f[0] -notmatch 'exports') 'undo: not the exports' $f[0]
+    $f = Invoke-Keys 'Tab,Enter,u,snap,Esc,snap'
+    Check ($f[0] -match '^snap undo' -and $f[1] -match '^snap read') 'u in Read: undo, Esc back to Read'
     Check ($f[0] -match 'undo' -and $f[0] -match 'tasks\.md  changed' -and $f[0] -match '-\d+\s+\+\d+' -and $f[0] -match 'remove-from-specs-.+  new') 'u: the changes since the commit, piece by piece' $f[0]
     # Each piece and each new file, undone (Enter, y) until none is left.
     $f = Invoke-Keys ('u' + (',Enter,y' * 30) + ',snap')

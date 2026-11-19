@@ -141,6 +141,8 @@ In PowerShell always type `.\lazyspec.exe` (or `.\lazyspec`): PowerShell never r
 
 ## The screens and keys
 
+**The same keys everywhere:** `t` find, `u` undo, `y` out of date - the letter on every screen where nothing is typed, and `Ctrl+T`, `Ctrl+U`, `Ctrl+Y` on every screen, also while typing. In the item editor, save (`Ctrl+S`) or leave it (`Esc`) first. `Esc` brings you back to where you were.
+
 LazySpec has five screens; Home is where you start and `?` always shows the keys.
 
 | Screen | How you get there | What it shows |
@@ -148,7 +150,7 @@ LazySpec has five screens; Home is where you start and `?` always shows the keys
 | Home | Start | Left: **Scope** (specs) and **Plan** (changes). Right: a summary of the selected item |
 | Read | `Enter` | The whole spec, or a change's documents as tabs (proposal, delta specs, models, design, tasks ...) |
 | Changes as one | `m` | Saved bundles on top, active changes below; mark changes that go to the client together |
-| Find | `t` | Tasks, requirements and scenarios matching what you type; `Enter` opens one in Read, at it |
+| Find | `t` (`Ctrl+T` anywhere) | Tasks, requirements, scenarios and sections matching what you type, with the document each is in; `Enter` opens one in Read, at it |
 | Undo | `u` | Every change to `openspec/` since the last commit, piece by piece; undo one, or a whole file |
 | Run | `v`, `a`, `n`, `x` | OpenSpec CLI or export output, coloured (✓ passed, ✗ failed, ⚠ warnings) |
 | Help | `?` | Keys and credits |
@@ -182,9 +184,9 @@ The screenshots below come from LazySpec itself, run on a made-up demo project (
 | Screen | Keys |
 | --- | --- |
 | Home | `↑` `↓` select · `Tab` Scope ↔ Plan · `→` into details, `←`/`Esc` back · `z` zoom details · `PgUp` `PgDn` `Home` `End` scroll details · `Enter` read · `v` validate all · `a` archive change · `n` new change · `x` export · `m` changes as one · `t` find · `y` out of date · `u` undo · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
-| Read | `↑` `↓` pick a task, requirement or scenario (else scroll) · `Enter` edit it · `Space` done/not · `Del` delete · `a` agent · `PgUp` `PgDn` scroll · `←` `→` previous/next document · `x` export this item · `e` the whole file · `Esc` back |
+| Read | `↑` `↓` pick a task, requirement, scenario or section (else scroll) · `Enter` edit it · `Space` done/not · `Del` delete · `a` agent · `PgUp` `PgDn` scroll · `←` `→` previous/next document · `x` export this item · `e` the whole file · `t` find · `u` undo · `y` out of date · `Esc` back |
 | Changes as one | `↑` `↓` select · `Space` mark · `a` all/none · `Enter` continue · `d` remove saved bundle · `Esc` cancel |
-| Find | type · `↑` `↓` select · `Tab` all / tasks / open tasks / requirements / scenarios · `Enter` open in Read · `→` mark (`Space`, `a`, `g`), then `Del` delete or `Enter` delete / change / write again · `Esc` back |
+| Find | type · `↑` `↓` select · `Tab` all / tasks / open tasks / requirements / scenarios / sections · `Shift+Tab` the document · `Enter` open in Read · `→` mark (`Space`, `a`, `g`), then `Del` delete or `Enter` delete / change / write again · `Esc` back |
 | Edit | type · arrows `Home` `End` move · `Enter` new line · `Ctrl+S` save · `Esc` cancel |
 | Undo | `↑` `↓` select · `Enter` undo it · `r` refresh · `Esc` back |
 | Run | `PgUp` `PgDn` `Home` `End` scroll · `Esc` stop (asked first); when done `Enter`/`Esc` back |
@@ -351,8 +353,8 @@ Command line: `lazyspec -Export Word -Item add-user-signup,add-online-payments -
 
 **When:** "where is task 1.3?", "which change handles refunds?", a standup, a question from the client.
 
-1. `t` (on any screen where nothing is typed; `Ctrl+F` anywhere but the editor), and type: a task number (`1.3`: in every change), a change and a number (`01 1.3`, `signup 1.3`), or words (`verification`, `refund e-mail`): every task, requirement and scenario that contains them all.
-2. `Tab` narrows it: all, tasks, open tasks, requirements, scenarios.
+1. `t` (on any screen where nothing is typed; `Ctrl+T` on any screen, also while typing), and type: a task number (`1.3`: in every change), a change and a number (`01 1.3`, `signup 1.3`), or words (`verification`, `refund e-mail`): every task, requirement, scenario and section (`## Why`, `### ADR-001` ..., by its text too) that contains them all. Each result shows the document it is in (Proposal, Specs, Design, Tasks, Models ...).
+2. `Tab` narrows it by kind (all, tasks, open tasks, requirements, scenarios, sections), `Shift+Tab` by document.
 3. `Enter` opens it in Read, on the tasks or the specs tab, scrolled to it and marked `▸`; `Esc` returns to the results, `Esc` again to the screen you came from.
 4. Archived changes are searched only when shown on Home (`h`).
 
@@ -360,7 +362,7 @@ Command line: `lazyspec -Export Word -Item add-user-signup,add-online-payments -
 
 **When:** specs and tasks came from a prototype, a workshop or an agent, and some of it has to go or be redone.
 
-**One item:** open the spec or change (`Enter`), go to its tab (`←` `→`), and `↑` `↓` pick the task, requirement or scenario (marked `▸`).
+**One item:** open the spec or change (`Enter`), go to its tab (`←` `→`), and `↑` `↓` pick the task, requirement, scenario or section such as the proposal's `## Why` (marked `▸`).
 
 - `Enter` edits only that item in a window (`Ctrl+S` saves it into its file, `Esc` cancels). In a main spec you choose: directly, or through a change (`MODIFIED`), as OpenSpec prefers.
 - `Space` ticks a task done or not done; `Del` deletes the item (asked first); `a` hands it to the agent (change it with your note, or write it again).
