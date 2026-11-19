@@ -1,0 +1,22 @@
+{
+  "name": "lazyspec-desktop",
+  "private": true,
+  "version": "0.5.0",
+  "description": "LazySpec for Claude: a project's OpenSpec specs and changes as MCP tools (Claude Desktop extension, Claude Code plugin).",
+  "license": "SEE LICENSE IN ../LICENSE",
+  "scripts": {
+    "check": "tsc -p .",
+    "build": "node build.js",
+    "test": "node build.js && node --test test/server.test.js",
+    "pack": "node build.js --pack"
+  },
+  "dependencies": {
+    "@fission-ai/openspec": "1.15.0"
+  },
+  "devDependencies": {
+    "@anthropic-ai/mcpb": "2.1.2",
+    "@types/node": "^20.11.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.6.0"
+  }
+}

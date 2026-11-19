@@ -67,8 +67,32 @@ async function load(markdown: string): Promise<string> {
   return md;
 }
 
+/** Scrolled to the block with this text (headings, list items, paragraphs, cells; the nth such), marked. */
+function reveal(text: string, nth: number) {
+  const norm = (t: string) => t.replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const want = norm(text);
+  if (!want) { return; }
+  const root = document.getElementById('editor')!;
+  const blocks = [...root.querySelectorAll('.ProseMirror h1, .ProseMirror h2, .ProseMirror h3, .ProseMirror h4, .ProseMirror h5, .ProseMirror h6, .ProseMirror li, .ProseMirror p, .ProseMirror td')] as HTMLElement[];
+  // The innermost blocks that contain it (a list item, not the list around it).
+  const hits = blocks.filter(b => norm(b.textContent || '').includes(want) && !blocks.some(c => c !== b && b.contains(c) && norm(c.textContent || '').includes(want)));
+  const el = hits[Math.min(nth, hits.length - 1)];
+  if (!el) { return; }
+  el.scrollIntoView({ block: 'center' });
+  // A mark over it, not on it (the editor puts its own elements back as they were).
+  document.querySelectorAll('.lazyspec-hit').forEach(x => x.remove());
+  const r = el.getBoundingClientRect();
+  const mark = document.createElement('div');
+  mark.className = 'lazyspec-hit';
+  Object.assign(mark.style, { position: 'absolute', left: `${r.left + window.scrollX - 4}px`, top: `${r.top + window.scrollY - 2}px`, width: `${r.width + 8}px`, height: `${r.height + 4}px`, pointerEvents: 'none', zIndex: '10' });
+  mark.dataset.text = (el.textContent || '').trim().slice(0, 80);
+  document.body.appendChild(mark);
+  setTimeout(() => mark.remove(), 2500);
+}
+
 window.addEventListener('message', e => {
-  const m = e.data as { type: string; markdown?: string; buttons?: Button[]; note?: string };
+  const m = e.data as { type: string; markdown?: string; buttons?: Button[]; note?: string; text?: string; nth?: number };
+  if (m.type === 'reveal') { setTimeout(() => reveal(m.text || '', m.nth || 0), 50); }
   if (m.type === 'load') { buttons = m.buttons || []; bar(m.note || ''); void load(m.markdown || ''); }
   if (m.type === 'get') { vscode.postMessage({ type: 'markdown', markdown: crepe ? crepe.getMarkdown() : '' }); }
 });

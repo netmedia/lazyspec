@@ -24,11 +24,25 @@ function page(webview: vscode.Webview, ext: vscode.Uri, title: string): string {
 /** Markdown files opened formatted (Open With..., or LazySpec's "Formatted"): saved as the file itself. */
 export class FormattedEditorProvider implements vscode.CustomTextEditorProvider {
   static readonly viewType = 'lazyspec.formatted';
+  private static panels = new Map<string, vscode.WebviewPanel>();
+  private static pending = new Map<string, { text: string; nth: number }>();
   constructor(private readonly ext: vscode.Uri) { }
+
+  /** The document in the formatted editor, scrolled to an item (its text; nth: which one, when the same text
+   *  is there more than once) and marked. */
+  static async openAt(uri: vscode.Uri, text: string, nth = 0) {
+    const key = uri.toString();
+    const panel = FormattedEditorProvider.panels.get(key);
+    if (text) { FormattedEditorProvider.pending.set(key, { text, nth }); }
+    await vscode.commands.executeCommand('vscode.openWith', uri, FormattedEditorProvider.viewType);
+    if (panel && text) { FormattedEditorProvider.pending.delete(key); void panel.webview.postMessage({ type: 'reveal', text, nth }); }
+  }
 
   resolveCustomTextEditor(doc: vscode.TextDocument, panel: vscode.WebviewPanel): void {
     panel.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.ext, 'out', 'webview'), vscode.Uri.joinPath(doc.uri, '..')] };
     panel.webview.html = page(panel.webview, this.ext, doc.fileName);
+    const key = doc.uri.toString();
+    FormattedEditorProvider.panels.set(key, panel);
     let original = '', before = '', applying = false, lastSent = '';
     const load = () => {
       original = doc.getText().replace(/\r/g, '');
@@ -44,10 +58,16 @@ export class FormattedEditorProvider implements vscode.CustomTextEditorProvider 
       if (doc.getText().replace(/\r/g, '') === lastSent) { return; }
       load();
     });
-    panel.onDidDispose(() => sub.dispose());
+    panel.onDidDispose(() => { sub.dispose(); FormattedEditorProvider.panels.delete(key); });
     panel.webview.onDidReceiveMessage(async (m: Msg) => {
       if (m.type === 'init') { load(); }
-      else if (m.type === 'ready') { before = m.markdown || ''; }
+      else if (m.type === 'ready') {
+        if (!before) {
+          const at = FormattedEditorProvider.pending.get(key);
+          if (at) { FormattedEditorProvider.pending.delete(key); void panel.webview.postMessage({ type: 'reveal', ...at }); }
+        }
+        before = m.markdown || '';
+      }
       else if (m.type === 'change' && before) {
         // Only what was edited: the rest of the file as it was.
         let text = mergeEdit(original, before, m.markdown || '');

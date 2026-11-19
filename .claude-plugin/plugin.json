@@ -1,0 +1,26 @@
+{
+  "name": "lazyspec",
+  "version": "0.5.0",
+  "description": "LazySpec: a project's OpenSpec specs and changes as tools - read, find, edit, tick, out of date, undo, validate, archive, export, save as a pull request.",
+  "author": {
+    "name": "Netmedia",
+    "email": "netmedia@netmedia.hr",
+    "url": "https://netmedia.agency"
+  },
+  "homepage": "https://github.com/netmedia/lazyspec",
+  "repository": "https://github.com/netmedia/lazyspec",
+  "license": "SEE LICENSE IN LICENSE",
+  "keywords": [
+    "openspec",
+    "specification",
+    "spec-driven"
+  ],
+  "mcpServers": {
+    "lazyspec": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/desktop/dist/server.js"
+      ]
+    }
+  }
+}

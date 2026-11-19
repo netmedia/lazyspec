@@ -1,0 +1,60 @@
+# LazySpec for Claude (desktop/): on every push and pull request, typecheck, test, and check that the committed
+# desktop/dist/server.js (what the Claude Code plugin runs) is built from the sources. On a tag v*: the Claude
+# Desktop extension lazyspec.mcpb and the VS Code extension lazyspec.vsix as a GitHub release.
+name: LazySpec for Claude
+
+on:
+  push:
+    branches: [develop, main]
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install
+        run: |
+          npm ci --prefix vscode
+          npm install --prefix desktop --no-audit --no-fund
+
+      - name: Typecheck
+        run: npx --prefix desktop tsc -p desktop
+
+      - name: Build and test
+        run: |
+          git config --global user.name ci
+          git config --global user.email ci@localhost
+          npm test --prefix desktop
+
+      - name: dist/server.js is up to date
+        run: git diff --exit-code -- desktop/dist .claude-plugin || (echo "::error::Run 'npm run build --prefix desktop' and commit desktop/dist and .claude-plugin" && exit 1)
+
+      - name: The tag matches the version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          v=$(node -p "require('./desktop/package.json').version")
+          [ "v$v" = "${GITHUB_REF_NAME}" ] || (echo "::error::tag ${GITHUB_REF_NAME} but desktop/package.json is $v" && exit 1)
+
+      - name: Pack the Claude Desktop extension
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npm run pack --prefix desktop
+
+      - name: Package the VS Code extension
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npm run package --prefix vscode
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" desktop/lazyspec.mcpb vscode/lazyspec.vsix \
+            --title "LazySpec ${GITHUB_REF_NAME}" --generate-notes

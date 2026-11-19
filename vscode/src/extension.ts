@@ -387,7 +387,7 @@ async function findCommand() {
     const sel = (many ? qp.selectedItems : qp.activeItems).map(i => i.e).filter((e): e is Entry => !!e);
     if (!sel.length) { return; }
     qp.hide();
-    if (!many) { await openFile(sel[0].path, sel[0].line); return; }
+    if (!many) { await openAt(sel[0].path, sel[0].line, sel[0].text); return; }
     const act = await vscode.window.showQuickPick([
       { label: '$(trash) Delete them', v: 'delete' }, { label: '$(sparkle) The agent: change them, or write them again', v: 'agent' },
       ...(sel.some(e => e.kind === 'task') ? [{ label: '$(check) Tasks: done', v: 'done' }, { label: '$(circle-outline) Tasks: not done', v: 'undone' }] : []),
@@ -480,6 +480,16 @@ async function openFile(file: string, line = 0) {
   const pos = new vscode.Position(Math.max(0, line - 1), 0);
   await vscode.window.showTextDocument(doc, { selection: new vscode.Range(pos, pos), preview: line > 0 });
 }
+/** An item's document opened at it: in the formatted editor (scrolled to it - the nth line with its text up to
+ *  its line), else the source at its line (lazyspec.documents). */
+async function openAt(file: string, line = 0, text = '') {
+  if (settings().documents !== 'formatted' || !file.toLowerCase().endsWith('.md') || !text) { await openFile(file, line); return; }
+  const lines = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').replace(/\r/g, '').split('\n') : [];
+  const plain = (t: string) => t.replace(/[*_`]/g, '').toLowerCase();
+  const want = plain(text).trim();
+  const nth = Math.max(0, lines.slice(0, Math.max(0, line - 1)).filter(l => plain(l).includes(want)).length);
+  await FormattedEditorProvider.openAt(vscode.Uri.file(file), text, nth);
+}
 /** A document: in the formatted editor, the Markdown preview or its source, as lazyspec.documents says. */
 async function openDocument(file: string, as?: 'formatted' | 'preview' | 'source') {
   const how = as || settings().documents;
@@ -566,6 +576,19 @@ function docFile(n: Node): string {
   return '';
 }
 
+/** lazyspec.openMarkdownFormatted: the formatted editor the default for openspec's Markdown, wherever it is
+ *  opened from (the Explorer, Ctrl+P): workbench.editorAssociations (the user's settings), added or taken out. */
+const ASSOC = '**/openspec/**/*.md';
+async function syncEditorAssociation() {
+  const on = vscode.workspace.getConfiguration('lazyspec').get<boolean>('openMarkdownFormatted', true);
+  const wb = vscode.workspace.getConfiguration('workbench');
+  const now = { ...(wb.inspect<Record<string, string>>('editorAssociations')?.globalValue || {}) };
+  if (on && now[ASSOC] !== FormattedEditorProvider.viewType) { now[ASSOC] = FormattedEditorProvider.viewType; }
+  else if (!on && now[ASSOC] === FormattedEditorProvider.viewType) { delete now[ASSOC]; }
+  else { return; }
+  try { await wb.update('editorAssociations', now, vscode.ConfigurationTarget.Global); } catch (e) { output.appendLine(`editorAssociations: ${(e as Error).message}`); }
+}
+
 export interface Api { projects(): Project[]; plan: PlanTree; scope: ScopeTree; details: DetailsView; undo: UndoTree; reload(): void }
 
 export function activate(context: vscode.ExtensionContext): Api {
@@ -598,6 +621,7 @@ export function activate(context: vscode.ExtensionContext): Api {
   const fileOf = (n?: Node | vscode.Uri) => (n instanceof vscode.Uri ? n.fsPath : n && 'kind' in n ? docFile(n) : vscode.window.activeTextEditor?.document.uri.fsPath || '');
   reg('lazyspec.refresh', () => { projects = findProjects(); watch(); reload(); });
   reg('lazyspec.openFile', (file: string, line = 0) => openFile(file, line));
+  reg('lazyspec.openAt', (file: string, line = 0, text = '') => openAt(file, line, text));
   reg('lazyspec.openDocument', (file: string) => openDocument(file));
   reg('lazyspec.showPreview', (n?: Node | vscode.Uri) => { const f = fileOf(n); if (f) { return openDocument(f, 'preview'); } });
   reg('lazyspec.showSource', (n?: Node | vscode.Uri) => { const f = fileOf(n); if (f) { return openDocument(f, 'source'); } });
@@ -722,11 +746,13 @@ export function activate(context: vscode.ExtensionContext): Api {
     }),
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('lazyspec.roots')) { projects = findProjects(); watch(); }
+      if (e.affectsConfiguration('lazyspec.openMarkdownFormatted')) { void syncEditorAssociation(); }
       if (e.affectsConfiguration('lazyspec')) { reload(); }
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => { projects = findProjects(); watch(); reload(); }),
   );
   reload();
+  if (projects.length) { void syncEditorAssociation(); }
   // A folder with openspec/ opened (code . there): LazySpec's sidebar shown, the Plan's first group or change selected.
   if (projects.length && vscode.workspace.getConfiguration('lazyspec').get<boolean>('openOnStartup', true)) {
     void vscode.commands.executeCommand('workbench.view.extension.lazyspec').then(() => {
