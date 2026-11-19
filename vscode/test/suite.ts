@@ -228,6 +228,13 @@ export async function run(): Promise<void> {
     await new Promise(r => setTimeout(r, 500));
     const assoc = vscode.workspace.getConfiguration('workbench').get<Record<string, string>>('editorAssociations') || {};
     assert.strictEqual(assoc['**/openspec/**/*.md'], 'lazyspec.formatted', JSON.stringify(assoc));
+    // A document's link (Details' DOCUMENTS: no item to go to): formatted too.
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    const design = path.join(work, 'openspec', 'changes', '01-add-user-signup', 'design.md');
+    await vscode.commands.executeCommand('lazyspec.openAt', design, 0, '');
+    await new Promise(r => setTimeout(r, 1500));
+    tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+    assert.ok(tab && tab.input instanceof vscode.TabInputCustom && tab.input.viewType === 'lazyspec.formatted' && tab.input.uri.fsPath.toLowerCase() === design.toLowerCase(), `a document's link: ${tab?.label}`);
     await vscode.commands.executeCommand('lazyspec.showSource', vscode.Uri.file(tasks));
     await new Promise(r => setTimeout(r, 800));
     assert.ok(vscode.window.activeTextEditor?.document.uri.fsPath.toLowerCase() === tasks.toLowerCase(), 'Source: the Markdown in the text editor');
