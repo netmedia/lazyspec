@@ -10,6 +10,7 @@ import * as vscode from 'vscode';
 import { answer, agentTask, offerDoneSync, onSynced, runningSyncs } from './agent';
 import { DetailsView, Selected } from './details';
 import { editItemFormatted, FormattedEditorProvider } from './formatted';
+import { showHelp } from './help';
 import { agentItems, deleteItems, editItem, ItemContext, openBlock, toggleTask } from './items';
 import { Change, Entry, find, FindKind, itemTitle, Project, searchIndex, Spec } from './model';
 import { doneSyncPrompts, saveSyncSnapshot, setConfigBundle, setConfigValue, setInSync, slug, StaleDoc, syncPromptMany, syncState } from './ops';
@@ -757,7 +758,7 @@ export function activate(context: vscode.ExtensionContext): Api {
     const t = vscode.window.createTerminal({ name: `LazySpec${projects.length > 1 ? `: ${p.name}` : ''}`, shellPath: powershell(), shellArgs: psArgs(kitScript(p), ['-Root', p.root]), cwd: p.root, location: vscode.TerminalLocation.Editor });
     t.show();
   });
-  reg('lazyspec.help', () => vscode.commands.executeCommand('markdown.showPreview', vscode.Uri.file(ctx.asAbsolutePath('README.md'))));
+  reg('lazyspec.help', () => showHelp(vscode.Uri.file(ctx.asAbsolutePath('README.md'))));
 
   context.subscriptions.push(
     output, status, planView, scopeView, undoView, { dispose: () => watchers.forEach(w => w.dispose()) },

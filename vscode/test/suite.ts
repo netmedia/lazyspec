@@ -246,6 +246,15 @@ export async function run(): Promise<void> {
     assert.deepStrictEqual(['lazyspec.focusPlan', 'lazyspec.focusScope', 'lazyspec.focusDetails', 'lazyspec.focusUndo', 'lazyspec.focusEditor'].map(c => keys[c]), ['ctrl+; p', 'ctrl+; s', 'ctrl+; d', 'ctrl+; u', 'ctrl+; e']);
     for (const c of ['lazyspec.focusPlan', 'lazyspec.focusScope', 'lazyspec.focusDetails', 'lazyspec.focusUndo', 'lazyspec.focusPlan']) { await vscode.commands.executeCommand(c); }
   });
+  await check('Help and Keys opens; every key has its Mac one (or is the same there)', async () => {
+    await vscode.commands.executeCommand('lazyspec.help');
+    await new Promise(r => setTimeout(r, 500));
+    assert.ok(vscode.window.tabGroups.all.flatMap(g => g.tabs).some(t => t.label === 'LazySpec: Help'));
+    const pkg = vscode.extensions.getExtension('netmedia.lazyspec')!.packageJSON;
+    const same = ['f2', 'space'];
+    for (const k of pkg.contributes.keybindings) { assert.ok(k.mac || same.includes(k.key), `${k.command}: no Mac key`); }
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+  });
   await check('the bundled lazyspec.ps1 is in the extension', () => {
     assert.ok(fs.existsSync(path.join(vscode.extensions.getExtension('netmedia.lazyspec')!.extensionPath, 'kit', 'lazyspec.ps1')));
   });

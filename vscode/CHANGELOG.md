@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1
+
+- Help and Keys (the ? in the Plan's title bar, the LazySpec menu of a document): every key, Windows / Linux and
+  Mac side by side (this computer's marked), Find's filters, the formatted editor; a link to change them.
+
 ## 0.5.0
 
 - Find: each result's document (TASKS, DESIGN ...) and kind on a small line of its own; in:<document> and

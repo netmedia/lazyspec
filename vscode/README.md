@@ -130,25 +130,36 @@ document was written from in `.lazyspec/sync.json`, and the extension reads and 
 
 ## Keys: the panes
 
+All of LazySpec's keys, Windows / Linux and Mac side by side: **Help and Keys** (the `?` in the Plan's title
+bar, or the LazySpec menu of an open document).
+
 `Ctrl+;` then a letter (Mac `Cmd+;`), wherever you are. The view gets the keyboard, so the arrows, `PgUp`
 and `PgDn` work right away; the Plan keeps its selection.
 
-| | Goes to |
-|---|---|
-| `Ctrl+;` `P` | the Plan |
-| `Ctrl+;` `S` | the Scope |
-| `Ctrl+;` `D` | the Details |
-| `Ctrl+;` `U` | Undo |
-| `Ctrl+;` `E` | the open document (the formatted editor: its text) |
+| Windows, Linux | Mac | Goes to |
+|---|---|---|
+| `Ctrl+;` `P` | `⌘;` `P` | the Plan |
+| `Ctrl+;` `S` | `⌘;` `S` | the Scope |
+| `Ctrl+;` `D` | `⌘;` `D` | the Details |
+| `Ctrl+;` `U` | `⌘;` `U` | Undo |
+| `Ctrl+;` `E` | `⌘;` `E` | the open document (the formatted editor: its text) |
 
-In a view: `↑` `↓` select, `→` `←` open and close, `Enter` opens (a document or an item, formatted, focused
-at it), `F2` edits, `Space` ticks a task, `Delete` deletes. `Ctrl+Alt+T` finds, `Ctrl+Alt+R` reads,
-`Ctrl+Alt+A` hands the selection to the agent. VS Code's own: `Ctrl+B` shows or hides the side bar, `Ctrl+0`
-goes to it, `Ctrl+1` to the editor, `F6` around the window's parts.
+| Windows, Linux | Mac | In the Plan and the Scope |
+|---|---|---|
+| `↑` `↓`, `→` `←`, `Enter` | the same | select; open and close a node; open (a document, or an item's document, formatted, at it) |
+| `F2` | `F2` (`fn`+`F2` on a laptop) | edit the item |
+| `Space` | `Space` | a task done / not done |
+| `Delete` | `⌘⌫` | delete (asked first) |
+| `Ctrl+Alt+A` | `⌘⌥A` | the agent |
+| `Ctrl+Alt+R` | `⌘⌥R` | Read |
+| `Ctrl+Alt+T` | `⌘⌥T` | Find (anywhere) |
+
+VS Code's own: `Ctrl+B` / `⌘B` shows or hides the side bar, `Ctrl+0` / `⌘0` goes to it, `Ctrl+1` / `⌘1`
+to the editor.
 
 ## Find
 
-`Ctrl+Alt+T` (Mac `Cmd+Alt+T`) finds tasks, requirements, scenarios and sections as you type.
+`Ctrl+Alt+T` (Mac `⌘⌥T`) finds tasks, requirements, scenarios and sections as you type.
 
 - Each result has a small second line: the document it is in (TASKS, DESIGN, SPECS, OPEN QUESTIONS ...),
   what it is (task, requirement, scenario, section) and its requirement or task group.

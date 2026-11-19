@@ -2,7 +2,7 @@
   "name": "lazyspec",
   "displayName": "LazySpec - OpenSpec specs and changes",
   "description": "A project's OpenSpec in your editor: the specifications and the plan (by group), formatted reading, tasks, requirements, scenarios and sections to edit, tick, delete or hand to the agent, find, out-of-date documents, undo, validate, archive, and exports for the client in the company look.",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "publisher": "netmedia",
   "author": {
     "name": "Netmedia",
@@ -291,8 +291,9 @@
       },
       {
         "command": "lazyspec.help",
-        "title": "Help",
-        "category": "LazySpec"
+        "title": "Help and Keys",
+        "category": "LazySpec",
+        "icon": "$(question)"
       },
       {
         "command": "lazyspec.openFormatted",
@@ -425,14 +426,19 @@
           "group": "6_open@2"
         },
         {
-          "command": "lazyspec.help",
-          "when": "(view == lazyspec.plan || view == lazyspec.scope)",
-          "group": "6_open@3"
-        },
-        {
           "command": "lazyspec.undoRefresh",
           "when": "view == lazyspec.undo",
           "group": "navigation@1"
+        },
+        {
+          "command": "lazyspec.help",
+          "when": "view == lazyspec.plan",
+          "group": "navigation@10"
+        },
+        {
+          "command": "lazyspec.help",
+          "when": "view == lazyspec.scope || view == lazyspec.undo",
+          "group": "6_open@3"
         }
       ],
       "view/item/context": [
@@ -679,6 +685,10 @@
         {
           "command": "lazyspec.exportMarkdown",
           "group": "3_export@1"
+        },
+        {
+          "command": "lazyspec.help",
+          "group": "9_help@1"
         }
       ]
     },
