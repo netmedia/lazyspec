@@ -185,7 +185,7 @@ The screenshots below come from LazySpec itself, run on a made-up demo project (
 
 | Screen | Keys |
 | --- | --- |
-| Home | `↑` `↓` select · `Tab` Scope ↔ Plan · `→` into details, `←`/`Esc` back · `z` zoom details · `PgUp` `PgDn` `Home` `End` scroll details · `Enter` read · `v` validate all · `a` archive change · `n` new change · `x` export · `m` changes as one · `t` find · `y` out of date · `u` undo · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
+| Home | `↑` `↓` select · `Tab` Scope ↔ Plan · `→` into details, `←`/`Esc` back · `z` zoom details · `PgUp` `PgDn` `Home` `End` scroll details · `Enter` read · `v` validate all · `a` archive change · `n` new change · `x` export · `m` changes as one · `Space` choose a group · `c` fold a group · `g` grouped/flat · `t` find · `y` out of date · `u` undo · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
 | Read | `↑` `↓` pick a task, requirement, scenario or section (else scroll) · `Enter` edit it · `Space` done/not · `Del` delete · `a` agent · `PgUp` `PgDn` scroll · `←` `→` previous/next document · `x` export this item · `e` the whole file · `t` find · `u` undo · `y` out of date · `Esc` back |
 | Changes as one | `↑` `↓` select · `Space` mark · `a` all/none · `Enter` continue · `d` remove saved bundle · `Esc` cancel |
 | Find | type · `↑` `↓` select · `Tab` all / tasks / open tasks / requirements / scenarios / sections · `Shift+Tab` the document · `Enter` open in Read · `→` mark (`Space`, `a`, `g`), then `Del` delete or `Enter` delete / change / write again · `Esc` back |
@@ -298,6 +298,18 @@ Command line: `lazyspec -Export Pdf -Item add-user-login`.
 
 Command line: `lazyspec -Export Word -Item add-user-signup,add-online-payments -Title "Online payments"`, or `-Item <bundle-key>`.
 
+### Groups: phases, modules, packages
+
+**When:** the client chooses what to order by phase or module (groups 1, 3 and 7 now, the rest later).
+
+1. List the groups in `openspec/config.yaml` (top level): `groups:` with `id`, `name`, optional `description` and `requires: [<ids>]`. `groupLabel` / `groupLabelPlural` say what they're called (default Group/Groups; e.g. Phase/Phases).
+2. Each change names its group: `x-group: <id>` in its `.openspec.yaml` (fallbacks: the line `Group: <id> – <name>` under its first document's title, the folder prefix `g<id>-`). The schema's `grouping: [group]` turns grouping on.
+3. Home shows the plan by group: a row per group with its changes and task progress. `c` folds a group, `g` toggles grouped/flat; the group's details list what it requires, its capabilities and cross-group dependencies.
+4. `Space` chooses groups; the groups they require come along (`+`). `Enter` reads them, `x` exports one document: a part per group, its changes under it, the group names on the cover.
+5. Find in one group: `t`, then `g1` or `group 1` with your words.
+
+Command line: `lazyspec -Export Pdf -Groups 1,3` (with the groups they require), `-Item group:2` (that group alone). A saved bundle can hold `groups: 1, 3` instead of `changes:`.
+
 ### 10. Turn any Markdown into a branded document
 
 **When:** meeting notes, summaries, letters to the client.
@@ -359,6 +371,7 @@ Command line: `lazyspec -Export Word -Item add-user-signup,add-online-payments -
 2. `Tab` narrows it by kind (all, tasks, open tasks, requirements, scenarios, sections), `Shift+Tab` by document.
 3. `Enter` opens it in Read, on the tasks or the specs tab, scrolled to it and marked `▸`; `Esc` returns to the results, `Esc` again to the screen you came from.
 4. Archived changes are searched only when shown on Home (`h`).
+5. With groups: `g1` or `group 1` (or the project's word, `phase 1`) next to your words keeps one group.
 
 ### 17. Clean up: remove, change or redo tasks, requirements and scenarios
 

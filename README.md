@@ -115,7 +115,10 @@ of the whole specification: a cover, the contents, a chapter per spec. See
 [Export for the client](tools/lazyspec/LAZYSPEC.md#export-for-the-client). Changes that go to the client as
 one whole: `m` (mark them, read them together, `x` exports them; saved as a named whole in
 `openspec/config.yaml` for next time) or `lazyspec -Export Word -Item <change>,<change> -Title "<title>"`
-(a saved one: `-Item <its key>`). Word documents in the company's
+(a saved one: `-Item <its key>`). Projects that group their changes (phases, modules: `groups:` in
+`openspec/config.yaml`, `x-group: <id>` in a change's `.openspec.yaml`) see the plan by group; `Space` chooses
+groups (with the ones they require) and `x` exports them, or `lazyspec -Export Pdf -Groups 1,3`; see
+[Groups](tools/lazyspec/LAZYSPEC.md#the-screens). Word documents in the company's
 layout: `documentTemplate: <path to a .docx>` under `lazyspec:` in the project's `openspec/config.yaml`
 (relative to the project's root), or `-Template <path>` for one export; see
 [Word document template](tools/lazyspec/LAZYSPEC.md#word-document-template). The same company look in PDF,
