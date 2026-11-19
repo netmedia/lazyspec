@@ -18,6 +18,18 @@ export async function run(): Promise<void> {
   const ext = vscode.extensions.getExtension<Api>('netmedia.lazyspec')!;
   const api = await ext.activate();
 
+  if (process.env.LAZYSPEC_TEST_DEEP) {
+    await check('a project below the opened folder (apps/portal): found, node_modules skipped, the sidebar shown', async () => {
+      assert.deepStrictEqual(api.projects().map(p => path.relative(work, p.root)), [path.join('apps', 'portal')]);
+      await new Promise(r => setTimeout(r, 500));
+      assert.ok(api.details.current(), 'the first item selected');
+    });
+    console.log(`
+  ${passed} passed, ${failures.length} failed
+`);
+    if (failures.length) { throw new Error(failures.join('; ')); }
+    return;
+  }
   await check('activates on a workspace with openspec/', () => {
     assert.strictEqual(api.projects().length, 1);
     assert.strictEqual(api.projects()[0].name, 'Acme Portal');

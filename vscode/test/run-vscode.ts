@@ -23,6 +23,18 @@ async function main() {
       launchArgs: [work, '--disable-extensions', '--skip-welcome', '--skip-release-notes'],
       extensionTestsEnv: { LAZYSPEC_TEST_WORKSPACE: work },
     });
+    // The project two levels below the opened folder (a monorepo): found, the sidebar shown.
+    const mono = fs.mkdtempSync(path.join(os.tmpdir(), 'lazyspec-vscode-mono-'));
+    fs.cpSync(work, path.join(mono, 'apps', 'portal'), { recursive: true });
+    fs.mkdirSync(path.join(mono, 'node_modules', 'x', 'openspec', 'specs'), { recursive: true });
+    try {
+      await runTests({
+        extensionDevelopmentPath: ext,
+        extensionTestsPath: path.join(__dirname, 'suite.js'),
+        launchArgs: [mono, '--disable-extensions', '--skip-welcome', '--skip-release-notes'],
+        extensionTestsEnv: { LAZYSPEC_TEST_WORKSPACE: mono, LAZYSPEC_TEST_DEEP: '1' },
+      });
+    } finally { fs.rmSync(mono, { recursive: true, force: true }); }
   } finally { fs.rmSync(work, { recursive: true, force: true }); }
 }
 main().catch(e => { console.error(e); process.exit(1); });

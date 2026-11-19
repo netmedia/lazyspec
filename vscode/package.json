@@ -2,7 +2,7 @@
   "name": "lazyspec",
   "displayName": "LazySpec - OpenSpec specs and changes",
   "description": "A project's OpenSpec in your editor: the specifications and the plan (by group), tasks to tick, requirements and scenarios to jump to, find, validate, archive, and exports for the client in the company look.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "netmedia",
   "author": { "name": "Netmedia", "email": "netmedia@netmedia.hr", "url": "https://netmedia.agency" },
   "license": "SEE LICENSE IN LICENSE",
@@ -17,7 +17,10 @@
   "activationEvents": [
     "workspaceContains:openspec/config.yaml",
     "workspaceContains:openspec/specs",
-    "workspaceContains:openspec/changes"
+    "workspaceContains:openspec/changes",
+    "workspaceContains:*/openspec/config.yaml",
+    "workspaceContains:*/*/openspec/config.yaml",
+    "workspaceContains:*/*/*/openspec/config.yaml"
   ],
   "contributes": {
     "viewsContainers": {
@@ -115,7 +118,7 @@
           "type": "array",
           "items": { "type": "string" },
           "default": [],
-          "markdownDescription": "Projects with an `openspec` folder deeper than the workspace's folders (paths relative to a workspace folder, e.g. `apps/portal`)."
+          "markdownDescription": "Projects with an `openspec` folder deeper than the workspace's folders (paths relative to a workspace folder, e.g. `apps/portal`). Without it, a folder with no `openspec` at its top gets the ones up to three levels below it."
         },
         "lazyspec.openOnStartup": {
           "type": "boolean",
