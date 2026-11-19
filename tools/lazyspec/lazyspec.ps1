@@ -257,6 +257,9 @@ function Show-Usage {
     & $d '    v validate all   a archive the change   n new change   e edit   s sort changes'
     & $d '    m changes as one (mark them with Space, Enter: a title, then read them; x there: export)'
     & $d '    t find: a task (1.3, 01 1.3, words), a requirement, a scenario; Enter: Read, at it'
+    & $d '      Right: mark them (Space, a all, g its group); x remove, c change, r redo (the agent)'
+    & $d '    y out of date (! in the plan): the agent updates the documents, or mark them as in sync'
+    & $d '    u undo: the changes since the last commit, piece by piece (needs git)'
     & $d '    h show/hide archived   / filter   r refresh   ? help   q quit'
     & $y '  Read'
     & $d '    Up/Down PgUp/PgDn Home/End scroll   Left/Right document   e edit   Esc back'
@@ -727,10 +730,10 @@ $specOrder = [string[]]$specOrder
 # As the CLI: the change's .openspec.yaml "schema:", else openspec/config.yaml "schema:", else spec-driven;
 # found in openspec/schemas/<name>/, then the user's schemas (%LOCALAPPDATA%\openspec\schemas, or
 # $env:XDG_DATA_HOME\openspec\schemas), then the CLI's built-in ones. Without any: spec-driven as built in here.
-function New-Artifact([string]$Id, [string]$Generates) { return [pscustomobject]@{ Id = $Id; Generates = $Generates } }
+function New-Artifact([string]$Id, [string]$Generates, [string[]]$Requires = @()) { return [pscustomobject]@{ Id = $Id; Generates = $Generates; Requires = @($Requires) } }
 $defaultWorkflow = [pscustomobject]@{
     Name = 'spec-driven'; Tracks = 'tasks.md'; Missing = ''; Language = ''
-    Artifacts = @((New-Artifact 'proposal' 'proposal.md'), (New-Artifact 'specs' 'specs/**/*.md'), (New-Artifact 'design' 'design.md'), (New-Artifact 'tasks' 'tasks.md'))
+    Artifacts = @((New-Artifact 'proposal' 'proposal.md'), (New-Artifact 'specs' 'specs/**/*.md' @('proposal')), (New-Artifact 'design' 'design.md' @('proposal')), (New-Artifact 'tasks' 'tasks.md' @('specs', 'design')))
 }
 $script:workflows = @{}
 $script:projectSchema = $null
@@ -763,12 +766,19 @@ function Read-Workflow([string]$File, [string]$Name) {
         if ($section -eq 'artifacts') {
             if ($line -match '^(\s*)-\s+([\w-]+):\s*(.*)$' -and ($itemIndent -lt 0 -or $Matches[1].Length -eq $itemIndent)) {
                 $itemIndent = $Matches[1].Length; $keyIndent = $line.IndexOf($Matches[2])
-                $cur = New-Artifact '' ''; $artifacts += $cur
+                $cur = New-Artifact '' ''; $artifacts += $cur; $listKey = ''
                 $k = $Matches[2]; $v = $Matches[3]
             }
-            elseif ($cur -and $indent -eq $keyIndent -and $line -match '^\s*([\w-]+):\s*(.*)$') { $k = $Matches[1]; $v = $Matches[2] }
+            elseif ($cur -and $indent -eq $keyIndent -and $line -match '^\s*([\w-]+):\s*(.*)$') { $k = $Matches[1]; $v = $Matches[2]; $listKey = '' }
+            # requires: as a list under it ("- proposal").
+            elseif ($cur -and $listKey -eq 'requires' -and $indent -gt $keyIndent -and $line -match '^\s*-\s+([\w-]+)\s*$') { $cur.Requires += $Matches[1]; continue }
             else { continue }
             if ($k -eq 'id') { $cur.Id = Unquote $v } elseif ($k -eq 'generates') { $cur.Generates = Unquote $v }
+            elseif ($k -eq 'requires') {
+                $listKey = 'requires'
+                $iv = Unquote $v
+                if ($iv -match '^\[(.*)\]$') { $cur.Requires = @($Matches[1].Split(',') | ForEach-Object { $_.Trim().Trim('"', "'") } | Where-Object { $_ }) }
+            }
         }
         elseif ($section -eq 'apply') {
             if ($keyIndent -lt 0) { $keyIndent = $indent }
@@ -885,7 +895,7 @@ function Get-ChangeInfo($Dir, [bool]$Archived) {
     foreach ($a in $wf.Artifacts) {
         $files = @(Get-ArtifactFiles $Dir.FullName $a.Generates)
         foreach ($f in $files) { $claimed[$f.ToLower()] = $true }
-        $docs += [pscustomobject]@{ Id = $a.Id; Title = (Get-ArtifactTitle $a.Id); Generates = $a.Generates; Files = $files; IsSpecs = $a.Generates.Replace('\', '/').TrimStart('.', '/').StartsWith('specs/') }
+        $docs += [pscustomobject]@{ Id = $a.Id; Title = (Get-ArtifactTitle $a.Id); Generates = $a.Generates; Files = $files; Requires = @($a.Requires); IsSpecs = $a.Generates.Replace('\', '/').TrimStart('.', '/').StartsWith('specs/') }
     }
     # Other documents in the change's folder that the workflow doesn't name: shown after its own.
     foreach ($f in @(Get-ChildItem -LiteralPath $Dir.FullName -File -Filter '*.md' -ErrorAction SilentlyContinue | Sort-Object Name)) {
@@ -972,6 +982,10 @@ $script:searchIndex = $null
 $script:searchKey = ''
 $script:readMark = $null
 $script:readBack = 'home'
+$script:stale = @{}
+$script:syncAsked = $false
+$script:pendingAsk = $null
+$script:undo = $null
 $script:lastPickTitle = ''
 $script:run = $null
 $script:quit = $false
@@ -996,6 +1010,7 @@ function Reload {
     $script:specs = @(Load-Specs)
     $script:changes = @(Load-Changes)
     $script:readCache = @{}
+    try { Update-SyncState } catch { $script:stale = @{} }
     $script:signature = Get-Signature
     Select-ByName $keepSpec $keepChange
     if (-not $script:specs.Count -and $script:changes.Count) { $script:focus = 'changes' }
@@ -1069,6 +1084,48 @@ function Get-Bundles {
 function Get-Slug([string]$Text) {
     $t = ([regex]::Replace($Text.ToLower().Normalize([Text.NormalizationForm]::FormD), '\p{Mn}', '')).Replace([string][char]0x111, 'd')
     return ($t -replace '[^a-z0-9]+', '-').Trim('-')
+}
+# A "key: value" straight under lazyspec: in openspec/config.yaml, written (replaced when it's there): what
+# LazySpec remembers for the project (agent:, syncCheck:). The rest of the file stays as it is.
+function Set-ConfigValue([string]$Key, [string]$Value) {
+    $path = Join-Path $osDir 'config.yaml'
+    $bytes = [byte[]]@()
+    if (Test-Path -LiteralPath $path) { $bytes = [IO.File]::ReadAllBytes($path) }
+    $bom = $bytes.Count -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+    $raw = (New-Object Text.UTF8Encoding $false).GetString($bytes)
+    if ($bom) { $raw = $raw.Substring(1) }
+    $nl = "`n"
+    if ($raw.Contains("`r`n")) { $nl = "`r`n" }
+    $lines = New-Object Collections.Generic.List[string]
+    if ($raw) { $lines.AddRange([string[]]($raw.Replace("`r", '').Split("`n"))) }
+    $endsNl = $lines.Count -and $lines[$lines.Count - 1] -eq ''
+    if ($endsNl) { $lines.RemoveAt($lines.Count - 1) }
+    $indentOf = { param($l) $l.Length - $l.TrimStart().Length }
+    $start = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^lazyspec:\s*(#.*)?$') { $start = $i; break } }
+    if ($start -lt 0) {
+        while ($lines.Count -and -not $lines[$lines.Count - 1].Trim()) { $lines.RemoveAt($lines.Count - 1) }
+        if ($lines.Count) { $lines.Add('') }
+        $lines.Add('lazyspec:'); $start = $lines.Count - 1
+    }
+    $end = $lines.Count
+    for ($i = $start + 1; $i -lt $lines.Count; $i++) { $l = $lines[$i]; if ($l.Trim() -and -not $l.TrimStart().StartsWith('#') -and (& $indentOf $l) -eq 0) { $end = $i; break } }
+    $ki = 2
+    for ($i = $start + 1; $i -lt $end; $i++) { if ($lines[$i].Trim() -and (& $indentOf $lines[$i]) -gt 0) { $ki = & $indentOf $lines[$i]; break } }
+    $line = (' ' * $ki) + "${Key}: $Value"
+    $done = $false
+    for ($i = $start + 1; $i -lt $end; $i++) { if ($lines[$i] -match ('^' + (' ' * $ki) + [regex]::Escape($Key) + ':')) { $lines[$i] = $line; $done = $true; break } }
+    if (-not $done) {
+        $last = $start
+        for ($i = $start + 1; $i -lt $end; $i++) { if ($lines[$i].Trim() -and (& $indentOf $lines[$i]) -gt 0) { $last = $i } }
+        $lines.Insert($last + 1, $line)
+    }
+    $text = ($lines -join $nl)
+    if ($endsNl) { $text += $nl }
+    $out = (New-Object Text.UTF8Encoding $false).GetBytes($text)
+    if ($bom) { $out = [byte[]](@(0xEF, 0xBB, 0xBF) + $out) }
+    [IO.File]::WriteAllBytes($path, $out)
+    $script:projectConfig = $null
 }
 # Saves a named whole in openspec/config.yaml (its entry replaced when it's there); no changes: removes it.
 # The rest of the file stays as it is.
@@ -5033,6 +5090,23 @@ function Get-ChangeDetails($Change, [int]$Width) {
     $barW = [Math]::Max(10, [Math]::Min(40, $Width - 26))
     [void]$lines.Add(@(S ' ') + (Bar $Change.Done $Change.Total $barW $look[1]) + @((S "  $pct%" "1;$($look[1])"), (S "   $($Change.Done) of $($Change.Total) tasks" $st.muted)))
     [void]$lines.Add(@())
+    # Out of date: which documents, and what changed in what they're written from.
+    if (Test-Stale $Change) {
+        Section-Head $lines 'OUT OF DATE' ''
+        foreach ($sd in $script:stale[$Change.Name]) {
+            [void]$lines.Add(@((S '  ! ' $st.warn), (S "$($sd.Doc.Title)" $st.bold), (S ' is older than:' $st.muted)))
+            foreach ($d in @($sd.Diffs | Select-Object -First 8)) {
+                $style = @{ '+' = $st.ok; '~' = $st.warn; '-' = $st.err }[$d.Mark]
+                $where = $d.File -replace '^openspec/changes/[^/]+/', ''
+                $label = $where
+                if ($d.Req) { $label = "$where $($g.mid) $($d.Req)" }
+                [void]$lines.Add(@((S "    $($d.Mark) " $style), (S (Short $label ($Width - 8)) $st.text)))
+            }
+            if (@($sd.Diffs).Count -gt 8) { [void]$lines.Add(@(S "    ... $(@($sd.Diffs).Count - 8) more" $st.faint)) }
+        }
+        [void]$lines.Add(@((S '  y ' $st.key), (S 'update them (the agent), or mark them as in sync' $st.muted)))
+        [void]$lines.Add(@())
+    }
     # Tasks by group: "## 1. Schema" and its checkboxes.
     if ($Change.Tasks) {
         Section-Head $lines 'TASKS' ''
@@ -5165,7 +5239,7 @@ function Home-Hints {
     if ($script:filtering) { return , @(@('type', 'filter'), @('Enter', 'keep'), @('Esc', 'clear')) }
     if ($script:zoom) { return , @(@("$($g.up)$($g.down) PgUp PgDn", 'scroll'), @('z Esc', 'show the lists'), @('Enter', 'read'), @('e', 'edit'), @('?', 'help'), @('q', 'quit')) }
     if ($script:pane -eq 'details') { return , @(@("$($g.up)$($g.down) PgUp PgDn", 'scroll'), @("$([string][char]0x2190) Esc", 'lists'), @('z', 'zoom'), @('Enter', 'read'), @('e', 'edit'), @('?', 'help'), @('q', 'quit')) }
-    return , @(@("$($g.up)$($g.down)", 'select'), @('Enter', 'open'), @('Tab', 'scope/plan'), @('v', 'validate'), @('a', 'archive'), @('n', 'new'), @('x', 'export'), @('m', 'as one'), @('t', 'find'), @('e', 'edit'), @('s', 'sort'), @('/', 'filter'), @('?', 'help'), @('q', 'quit'))
+    return , @(@("$($g.up)$($g.down)", 'select'), @('Enter', 'open'), @('Tab', 'scope/plan'), @('v', 'validate'), @('a', 'archive'), @('n', 'new'), @('x', 'export'), @('m', 'as one'), @('t', 'find'), @('y', 'sync'), @('u', 'undo'), @('e', 'edit'), @('s', 'sort'), @('/', 'filter'), @('?', 'help'), @('q', 'quit'))
 }
 
 function Home-Status([int]$Active, [int]$Lines, [int]$Rows) {
@@ -5177,6 +5251,8 @@ function Home-Status([int]$Active, [int]$Lines, [int]$Rows) {
     return $status
 }
 function Draw-Home([int]$W, [int]$H) {
+    # A question waiting (watch for out-of-date documents?): asked when nothing else is.
+    if ($script:pendingAsk -and -not ($script:confirm -or $script:choose -or $script:input)) { $script:choose = $script:pendingAsk; $script:pendingAsk = $null }
     $bottom = Bottom-Line $W 0
     $bodyRows = $H - 3 - $bottom.Count
     $active = @($script:changes | Where-Object { -not $_.Archived }).Count
@@ -5234,7 +5310,10 @@ function Draw-Home([int]$W, [int]$H) {
         if ($c.Archived) { $style = $st.faint }
         $countStyle = $st.muted
         if ($c.Stage -eq 'Completed') { $countStyle = $st.ok }
-        [void]$left.Add(@((S " $mark" $st.accent), (S "$($look[0]) " $look[1]), (S (Pad (Short (Get-ItemTitle $c) $cw) $cw) $style), (S (PadL "$($c.Done)/$($c.Total)" 6) $countStyle)))
+        # Out of date (documents older than what they're written from): a ! before its count.
+        $count = S (PadL "$($c.Done)/$($c.Total)" 6) $countStyle
+        if (Test-Stale $c) { $count = S (PadL "! $($c.Done)/$($c.Total)" 6) $st.warn }
+        [void]$left.Add(@((S " $mark" $st.accent), (S "$($look[0]) " $look[1]), (S (Pad (Short (Get-ItemTitle $c) $cw) $cw) $style), $count))
     }
     [void]$left.Add(@())
     [void]$left.Add(@((S '   s' $st.key), (S ' sort: ' $st.muted), (S $sortLabels[$script:sort] $st.accent)))
@@ -5661,7 +5740,8 @@ function Find-Search([string]$Query, [string]$Kind) {
     return @($out)
 }
 function Start-Search {
-    if (-not $script:search) { $script:search = [pscustomobject]@{ Query = ''; Kind = 'all'; Index = 0 } }
+    if (-not $script:search) { $script:search = [pscustomobject]@{ Query = ''; Kind = 'all'; Index = 0; Focus = 'type'; Marked = [ordered]@{} } }
+    $script:search.Focus = 'type' 
     $script:search.Index = 0
     $script:message = ''
     $script:screen = 'search'
@@ -5674,7 +5754,9 @@ function Draw-Search([int]$W, [int]$H) {
     [void]$lines.Add(@())
     $chip = $st.chip
     if ($s.Kind -ne 'all') { $chip = $st.chipOn }
-    [void]$lines.Add(@((S '  find ' $st.title), (S "$($s.Query)$($g.cursor)" $st.accent), (S '   '), (S " $($s.Kind) " $chip)))
+    $cur = ''
+    if ($s.Focus -eq 'type') { $cur = $g.cursor }
+    [void]$lines.Add(@((S '  find ' $st.title), (S "$($s.Query)$cur" $st.accent), (S '   '), (S " $($s.Kind) " $chip)))
     [void]$lines.Add(@())
     $bodyRows = $H - 4
     if (-not $s.Query.Trim()) {
@@ -5690,6 +5772,8 @@ function Draw-Search([int]$W, [int]$H) {
             $mark = '  '
             $style = $st.text
             if ($i -eq $s.Index) { $mark = "$($g.tri) "; $style = $st.bold }
+            $box = S '  '
+            if ($s.Marked.Contains("$($e.Path)|$($e.Line)")) { $box = S "$($g.bullet) " $st.warn }
             switch ($e.Kind) {
                 'task' { if ($e.Done) { $glyph = S "$($g.check) " $st.ok } else { $glyph = S "$($g.ring) " $st.faint } }
                 'req' { $glyph = S "$($g.diamond) " $st.accent }
@@ -5697,7 +5781,7 @@ function Draw-Search([int]$W, [int]$H) {
             }
             $where = $e.Where
             if ($e.Cap) { $where = "$where $($g.mid) $($e.Cap)" }
-            $row = @((S "  $mark" $st.accent), $glyph, (S (Pad (Short $where $ww) $ww) $st.muted), (S '  '))
+            $row = @((S "  $mark" $st.accent), $box, $glyph, (S (Pad (Short $where $ww) $ww) $st.muted), (S '  '))
             $tw = [Math]::Max(10, $W - $ww - 12)
             if ($e.Kind -eq 'scn' -and $e.Group) { $row += (S (Short $e.Text $tw) $style); $row += (S "  $($g.mid) $($e.Group)" $st.faint) }
             elseif ($e.Kind -eq 'task' -and $e.Group) { $row += (S (Short $e.Text $tw) $style); $row += (S "  $($g.mid) $($e.Group)" $st.faint) }
@@ -5707,15 +5791,23 @@ function Draw-Search([int]$W, [int]$H) {
     }
     $status = 'tasks, requirements, scenarios'
     if ($s.Query.Trim()) { $status = "$($res.Count) found" }
+    if ($s.Marked.Count) { $status = "$($s.Marked.Count) marked $($g.mid) $status" }
     $rows = New-Object Collections.ArrayList
     [void]$rows.Add((Border-Top $W "$projectName $($g.mid) find" $status 0))
-    foreach ($r in (Full-Rows ($H - 2) $W $lines)) { [void]$rows.Add($r) }
-    [void]$rows.Add((Border-Bottom $W @(@('type', 'find'), @("$($g.up)$($g.down)", 'select'), @('Tab', "kind: $($s.Kind)"), @('Enter', 'open'), @('Esc', 'back')) 0))
+    $bottom = Bottom-Line $W 0
+    foreach ($r in (Full-Rows ($H - 2 - @($bottom).Count) $W $lines)) { [void]$rows.Add($r) }
+    foreach ($r in $bottom) { [void]$rows.Add($r) }
+    if ($script:confirm -or $script:choose -or $script:input) { $hints = Home-Hints }
+    elseif ($s.Focus -eq 'list') { $hints = @(@("$($g.up)$($g.down)", 'select'), @('Space', 'mark'), @('a', 'all'), @('g', 'its group'), @('x', 'remove'), @('c', 'change'), @('r', 'redo'), @('Enter', 'open'), @("$([string][char]0x2190) Esc", 'type')) }
+    else { $hints = @(@('type', 'find'), @("$($g.up)$($g.down)", 'select'), @("$([string][char]0x2192)", 'mark, revise'), @('Tab', "kind: $($s.Kind)"), @('Enter', 'open'), @('Esc', 'back')) }
+    [void]$rows.Add((Border-Bottom $W $hints 0))
     return , $rows
 }
 function On-SearchKey($K) {
     $s = $script:search
     $name = $K.Name; $ch = $K.Char
+    if ($s.Focus -eq 'list') { On-SearchListKey $K; return }
+    if ($name -eq 'Right') { if (@(Find-Search $s.Query $s.Kind).Count) { $s.Focus = 'list' }; return }
     if ($name -eq 'Esc') { $script:screen = 'home'; return }
     if ($name -eq 'Back') { if ($s.Query.Length) { $s.Query = $s.Query.Substring(0, $s.Query.Length - 1) }; $s.Index = 0; return }
     if ($name -eq 'Tab') { $s.Kind = $searchKinds[([array]::IndexOf($searchKinds, $s.Kind) + 1) % $searchKinds.Count]; $s.Index = 0; return }
@@ -5732,6 +5824,72 @@ function On-SearchKey($K) {
     }
     if ($name -eq 'Space' -or [string]$ch -eq ' ') { $s.Query += ' '; $s.Index = 0; return }
     if ($ch -and [int][char]$ch -ge 32) { $s.Query += [string]$ch; $s.Index = 0 }
+}
+# The results' focus (Right): letters are commands. Space marks one (the marks stay across searches), a all of
+# them, g its group (a task's group, a requirement's or scenario's capability: every item of it in that file);
+# x removes the marked (else the selected), c changes them (a note for the agent), r has them written again.
+function On-SearchListKey($K) {
+    $s = $script:search
+    $name = $K.Name; $ch = [string]$K.Char
+    $res = @(Find-Search $s.Query $s.Kind)
+    $cur = $null
+    if ($res.Count) { $cur = $res[[Math]::Min($s.Index, $res.Count - 1)] }
+    if ($name -eq 'Left' -or $name -eq 'Esc' -or $name -eq 'Back') { $s.Focus = 'type'; return }
+    if ($name -eq 'Up') { $s.Index = [Math]::Max(0, $s.Index - 1); return }
+    if ($name -eq 'Down') { $s.Index = [Math]::Min([Math]::Max(0, $res.Count - 1), $s.Index + 1); return }
+    if ($name -eq 'PgUp') { $s.Index = [Math]::Max(0, $s.Index - 10); return }
+    if ($name -eq 'PgDn') { $s.Index = [Math]::Min([Math]::Max(0, $res.Count - 1), $s.Index + 10); return }
+    if ($name -eq 'Enter') { if ($cur) { Open-SearchResult $cur }; return }
+    if ($name -eq 'Space' -or $ch -eq ' ') {
+        if ($cur) { $key = "$($cur.Path)|$($cur.Line)"; if ($s.Marked.Contains($key)) { $s.Marked.Remove($key) } else { $s.Marked[$key] = $cur } }
+        return
+    }
+    if ($ch -eq 'a') {
+        $all = @($res | Where-Object { -not $s.Marked.Contains("$($_.Path)|$($_.Line)") }).Count -eq 0
+        foreach ($e in $res) { $key = "$($e.Path)|$($e.Line)"; if ($all) { $s.Marked.Remove($key) } else { $s.Marked[$key] = $e } }
+        return
+    }
+    if ($ch -eq 'g' -and $cur) {
+        $same = @(Get-SearchIndex | Where-Object { $_.Path -eq $cur.Path -and ($cur.Kind -ne 'task' -or ($_.Kind -eq 'task' -and $_.Group -eq $cur.Group)) -and ($cur.Kind -eq 'task' -or $_.Kind -ne 'task') })
+        foreach ($e in $same) { $s.Marked["$($e.Path)|$($e.Line)"] = $e }
+        $script:message = ''
+        return
+    }
+    if (@('x', 'c', 'r') -contains $ch) {
+        $items = @($s.Marked.Values)
+        if (-not $items.Count -and $cur) { $items = @($cur) }
+        if (-not $items.Count) { return }
+        $n = @{ task = 0; req = 0; scn = 0 }
+        foreach ($e in $items) { $n[$e.Kind]++ }
+        $what = (@(@("$($n.task) task(s)", "$($n.req) requirement(s)", "$($n.scn) scenario(s)") | Where-Object { $_ -notmatch '^0 ' })) -join ', '
+        if ($ch -eq 'x') {
+            $main = @($items | Where-Object { $_.Item.Type -eq 'spec' }).Count
+            $text = "Remove $($what)?"
+            if ($main) { $text = "Remove $($what)? ($main in the main specs: through a new change)" }
+            $script:confirm = [pscustomobject]@{ Text = $text; Choice = 1; Items = $items; Do = {
+                    param($c)
+                    $report = Remove-Entries $c.Items
+                    $script:search.Marked = [ordered]@{}
+                    Reload
+                    # What it did, then the validation of it all.
+                    Start-Cli 'Remove, then validate' @('validate', '--all', '--strict', '--no-interactive')
+                    foreach ($l in $report) { Add-RunLog $l $st.muted }
+                    Add-RunLog '' ''
+                } }
+            return
+        }
+        if ($ch -eq 'c') {
+            $script:input = [pscustomobject]@{ Label = "Change $($what):"; Value = ''; Hint = 'what to change (the agent does it)'; Free = $true; Items = $items; Do = {
+                    param($v, $i)
+                    if (-not $v) { $script:message = 'Nothing to change: no note.'; return }
+                    $script:search.Marked = [ordered]@{}
+                    Start-AgentTask "Change $(@($i.Items).Count) item(s)" 'change' (Get-RevisionPrompt $i.Items 'change' $v)
+                } }
+            return
+        }
+        $s.Marked = [ordered]@{}
+        Start-AgentTask "Redo $(@($items).Count) item(s)" 'redo' (Get-RevisionPrompt $items 'redo' '')
+    }
 }
 # A result in Read: its document's tab (the tasks, or the delta specs), scrolled to it and marked.
 function Open-SearchResult($E) {
@@ -5756,6 +5914,547 @@ function Open-SearchResult($E) {
     if ($at -ge 0) { $script:readMark = [pscustomobject]@{ Name = $item.Name; Tab = $ti; Line = $at } }
     $script:readBack = 'search'
     $script:screen = 'read'
+}
+
+# --- revisions and the agent ----------------------------------------------------------------------------
+# Work for the agent (Claude Code): the prompt is saved in .lazyspec\prompts\ (the project's root) in any case;
+# then it runs now, in the run screen, or it waits for you (the command to give it). Asked each time; the last
+# answer is the project's default (lazyspec: agent: run | prompt in openspec/config.yaml).
+function Get-AgentInstruction([string]$Rel) { return "Read the file $Rel and do exactly what it says." }
+function Start-AgentTask([string]$Label, [string]$Name, [string]$Prompt) {
+    $dir = Join-Path $Root '.lazyspec\prompts'
+    [void](New-Item -ItemType Directory -Force -Path $dir)
+    $file = Join-Path $dir ("$(Get-Date -Format 'yyyyMMdd-HHmmss')-$Name.md")
+    [IO.File]::WriteAllText($file, $Prompt, (New-Object Text.UTF8Encoding $false))
+    $rel = $file.Substring($Root.TrimEnd('\', '/').Length + 1).Replace('\', '/')
+    $choice = 0
+    if ([string](Get-ProjectConfig).Values['agent'] -eq 'prompt') { $choice = 1 }
+    $script:choose = [pscustomobject]@{ Text = "${Label}:"; Options = @('Run Claude Code now', 'Save the prompt for later'); Short = @('run it', 'save it'); Keys = @('r', 's'); Choice = $choice
+        Rel = $rel; Label = $Label; Do = {
+            param($k, $c)
+            $mode = @('run', 'prompt')[$k]
+            if ([string](Get-ProjectConfig).Values['agent'] -ne $mode) { try { Set-ConfigValue 'agent' $mode } catch { } }
+            if ($k -eq 0) { Start-Agent $c.Label $c.Rel } else { Show-AgentPrompt $c.Rel '' }
+        } }
+}
+function Show-AgentPrompt([string]$Rel, [string]$Why) {
+    $cmd = "claude `"$(Get-AgentInstruction $Rel)`""
+    $copied = ''
+    if (-not $harness) { try { Set-Clipboard -Value $cmd; $copied = ' (copied)' } catch { } }
+    $script:message = "$($Why)Prompt saved: $Rel - give it to the agent: $cmd$copied"
+}
+function Start-Agent([string]$Label, [string]$Rel) {
+    $instr = Get-AgentInstruction $Rel
+    # LAZYSPEC_AGENT: another command instead of claude (the tests).
+    $tool = $env:LAZYSPEC_AGENT
+    if (-not $tool) { $c = Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; if ($c) { $tool = [string]$c.Source } }
+    if (-not $tool) { Show-AgentPrompt $Rel 'Claude Code (claude) is not installed. '; return }
+    New-Run $Label "claude -p `"$instr`" --permission-mode acceptEdits"
+    $argLine = "-p $(Quote-Arg $instr) --permission-mode acceptEdits"
+    if ($tool -match '\.(cmd|bat)$') {
+        $shell = $env:ComSpec
+        if (-not $shell) { $shell = 'cmd.exe' }
+        Start-RunProcess $shell "/d /s /c `"`"$tool`" $argLine`""
+    } else { Start-RunProcess $tool $argLine }
+}
+# A block of a document: a task (its line and the lines indented under it), a requirement (to the next
+# heading of its level or above), a scenario (to the next heading of its level or above). The index after it.
+function Get-BlockEnd($Lines, [int]$At, [string]$Kind) {
+    $j = $At + 1
+    if ($Kind -eq 'task') {
+        $ind = $Lines[$At].Length - $Lines[$At].TrimStart().Length
+        while ($j -lt $Lines.Count -and $Lines[$j].Trim() -and ($Lines[$j].Length - $Lines[$j].TrimStart().Length) -gt $ind) { $j++ }
+        return $j
+    }
+    $stop = '^#{1,3}\s'
+    if ($Kind -eq 'scn') { $stop = '^#{1,4}\s' }
+    while ($j -lt $Lines.Count -and $Lines[$j] -notmatch $stop) { $j++ }
+    return $j
+}
+function Read-Lines([string]$Path) { return , ([IO.File]::ReadAllText($Path).Replace("`r", '').Split("`n")) }
+function Write-Lines([string]$Path, $Lines) {
+    $nl = "`n"
+    if ([IO.File]::ReadAllText($Path).Contains("`r`n")) { $nl = "`r`n" }
+    # No two blank lines in a row where a block was taken out.
+    $out = New-Object Collections.Generic.List[string]
+    foreach ($l in $Lines) { if (-not $l.Trim() -and $out.Count -and -not $out[$out.Count - 1].Trim()) { continue }; $out.Add($l) }
+    [IO.File]::WriteAllText($Path, ($out -join $nl), (New-Object Text.UTF8Encoding $false))
+}
+# Removes tasks, requirements and scenarios. In a change's documents: taken out of them (a delta spec left
+# without requirements: deleted; a section left empty: its heading too). In the main specs (openspec/specs),
+# as OpenSpec wants it: a new change with REMOVED (a requirement) or MODIFIED (a requirement without the
+# removed scenarios) delta specs. What it did, as lines.
+function Remove-Entries($Entries) {
+    $report = New-Object Collections.ArrayList
+    $direct = @($Entries | Where-Object { $_.Item.Type -ne 'spec' })
+    $main = @($Entries | Where-Object { $_.Item.Type -eq 'spec' })
+    foreach ($grp in @($direct | Group-Object Path)) {
+        $path = $grp.Name
+        if (-not (Test-Path -LiteralPath $path)) { continue }
+        $lines = New-Object Collections.Generic.List[string]
+        $lines.AddRange([string[]](Read-Lines $path))
+        $byLine = @($grp.Group | Sort-Object Line -Descending)
+        # A scenario whose requirement goes too: only the requirement.
+        $reqLines = @($byLine | Where-Object { $_.Kind -eq 'req' } | ForEach-Object { $_.Line })
+        foreach ($e in $byLine) {
+            $at = $e.Line - 1
+            if ($at -ge $lines.Count -or -not (Plain-Inline $lines[$at]).Contains(($e.Needle -replace '\s+$', ''))) { [void]$report.Add("! not found any more, left as it is: $($e.Text)"); continue }
+            if ($e.Kind -eq 'scn' -and @($reqLines | Where-Object { $_ -lt $e.Line -and $_ -gt 0 }).Count) {
+                # Inside a requirement that is removed as well (that one is lower in the list, removed after).
+                $owner = @($byLine | Where-Object { $_.Kind -eq 'req' -and $_.Line -lt $e.Line } | Sort-Object Line -Descending | Select-Object -First 1)
+                if ($owner.Count -and (Get-BlockEnd $lines ($owner[0].Line - 1) 'req') -gt $at) { continue }
+            }
+            $end = Get-BlockEnd $lines $at $e.Kind
+            $lines.RemoveRange($at, $end - $at)
+            [void]$report.Add("- $(@{ task = 'task'; req = 'requirement'; scn = 'scenario' }[$e.Kind]) $($e.Text) ($($e.Where))")
+        }
+        $isDelta = $path.Replace('\', '/') -match '/changes/.+/specs/'
+        if ($isDelta) {
+            # Sections left empty: their headings out.
+            for ($i = $lines.Count - 1; $i -ge 0; $i--) {
+                if ($lines[$i] -notmatch '^##\s+\w+\s+Requirements\s*$') { continue }
+                $j = $i + 1
+                while ($j -lt $lines.Count -and $lines[$j] -notmatch '^##\s') { if ($lines[$j] -match '^###\s') { break }; $j++ }
+                if ($j -ge $lines.Count -or $lines[$j] -match '^##\s') { $lines.RemoveRange($i, $j - $i) }
+            }
+            if (-not @($lines | Where-Object { $_ -match '^###\s' }).Count) {
+                Remove-Item -LiteralPath $path -Force
+                $dir = Split-Path $path -Parent
+                if (-not @(Get-ChildItem -LiteralPath $dir -Force).Count) { Remove-Item -LiteralPath $dir -Force }
+                [void]$report.Add("- the delta spec $((Split-Path $dir -Leaf)) of $((Split-Path (Split-Path (Split-Path $dir -Parent) -Parent) -Leaf)): nothing left, deleted")
+                continue
+            }
+        }
+        Write-Lines $path $lines
+    }
+    if ($main.Count) { $name = New-RemovalChange $main; [void]$report.Add("+ the change ${name}: their removal from the main specs (REMOVED, MODIFIED); archive it to apply it") }
+    $script:searchIndex = $null
+    return , @($report)
+}
+function New-RemovalChange($Entries) {
+    $base = "remove-from-specs-$(Get-Date -Format 'yyyyMMdd')"
+    $name = $base; $n = 1
+    while (Test-Path -LiteralPath (Join-Path $osDir "changes\$name")) { $n++; $name = "$base-$n" }
+    $dir = Join-Path $osDir "changes\$name"
+    $what = New-Object Collections.ArrayList
+    $utf8 = New-Object Text.UTF8Encoding $false
+    foreach ($grp in @($Entries | Group-Object { $_.Item.Name })) {
+        $spec = $grp.Group[0].Item
+        $lines = Read-Lines $spec.Path
+        $removed = @($grp.Group | Where-Object { $_.Kind -eq 'req' } | ForEach-Object { $_.Text })
+        $sb = New-Object Text.StringBuilder
+        if ($removed.Count) {
+            [void]$sb.Append("## REMOVED Requirements`n`n")
+            foreach ($r in $removed) {
+                [void]$sb.Append("### Requirement: $r`n**Reason**: No longer wanted (marked for removal in LazySpec).`n**Migration**: None.`n`n")
+                [void]$what.Add("- **REMOVED** ``$($spec.Name)``: $r")
+            }
+        }
+        # A requirement losing scenarios: MODIFIED, the whole requirement without them.
+        $mods = @($grp.Group | Where-Object { $_.Kind -eq 'scn' -and $removed -notcontains $_.Group } | Group-Object Group)
+        if ($mods.Count) { [void]$sb.Append("## MODIFIED Requirements`n`n") }
+        foreach ($m in $mods) {
+            $at = -1
+            for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^###\s+(Requirement|Zahtjev|Anforderung):\s*(.+?)\s*$' -and (Plain-Inline $Matches[2]) -eq $m.Name) { $at = $i; break } }
+            if ($at -lt 0) { continue }
+            $end = Get-BlockEnd $lines $at 'req'
+            $block = New-Object Collections.Generic.List[string]
+            for ($i = $at; $i -lt $end; $i++) { $block.Add($lines[$i]) }
+            foreach ($e in @($m.Group | Sort-Object Line -Descending)) {
+                $k = $e.Line - 1 - $at
+                if ($k -le 0 -or $k -ge $block.Count) { continue }
+                $kEnd = (Get-BlockEnd $block.ToArray() $k 'scn')
+                $block.RemoveRange($k, $kEnd - $k)
+            }
+            [void]$sb.Append((($block | ForEach-Object { $_ }) -join "`n").TrimEnd() + "`n`n")
+            [void]$what.Add("- **MODIFIED** ``$($spec.Name)``: $($m.Name) (without the scenarios $((@($m.Group | ForEach-Object { $_.Text }) -join ', ')))")
+        }
+        $f = Join-Path $dir "specs\$($spec.Name)\spec.md"
+        [void](New-Item -ItemType Directory -Force -Path (Split-Path $f))
+        [IO.File]::WriteAllText($f, $sb.ToString().TrimEnd() + "`n", $utf8)
+    }
+    [IO.File]::WriteAllText((Join-Path $dir 'proposal.md'), "# Proposal: Remove from the specs`n`n## Why`nThese requirements and scenarios are no longer wanted (marked for removal in LazySpec on $(Get-Date -Format 'yyyy-MM-dd')).`n`n## What Changes`n$($what -join "`n")`n`n## Impact`n- Specs: $((@($Entries | ForEach-Object { $_.Item.Name } | Sort-Object -Unique)) -join ', ').`n", $utf8)
+    [IO.File]::WriteAllText((Join-Path $dir 'tasks.md'), "# Tasks`n`n## 1. Removal`n- [ ] 1.1 Remove from the code what only the removed requirements and scenarios needed, if anything`n", $utf8)
+    return $name
+}
+# The prompt for change (with your note) and redo: each item, where it is, as it is now.
+function Get-RevisionPrompt($Entries, [string]$Action, [string]$Note) {
+    $sb = New-Object Text.StringBuilder
+    $verb = @{ change = 'Change'; redo = 'Write again' }[$Action]
+    [void]$sb.Append("# LazySpec: revise $(@($Entries).Count) item(s) of the OpenSpec documents`n`n")
+    [void]$sb.Append("Project root: the current folder. OpenSpec documents: openspec/.`n`n## What to do`n`n")
+    if ($Action -eq 'change') { [void]$sb.Append("$verb each item below as this note says:`n`n> $($Note.Replace("`n", "`n> "))`n`n") }
+    else { [void]$sb.Append("$verb each item below so that it matches the current specs, proposal and design of its change (keep its number and its place).`n`n") }
+    [void]$sb.Append("## Rules`n`n")
+    [void]$sb.Append("- Keep every document in its OpenSpec format; for a change, ``openspec instructions <artifact> --change <change>`` gives its template and rules.`n")
+    [void]$sb.Append("- A requirement or scenario in openspec/specs/ (the main specs) is not edited there: make the edit in a change's delta spec (## MODIFIED Requirements with the whole requirement), in a change about it (a new one if none fits).`n")
+    [void]$sb.Append("- A task already done ([x]) stays done unless the note says otherwise.`n")
+    [void]$sb.Append("- Then run ``openspec validate --all --strict --no-interactive`` and fix what it reports.`n`n## Items`n")
+    $i = 0
+    foreach ($e in $Entries) {
+        $i++
+        $rel = $e.Path.Substring($Root.TrimEnd('\', '/').Length + 1).Replace('\', '/')
+        $lines = Read-Lines $e.Path
+        $at = [Math]::Min($e.Line - 1, $lines.Count - 1)
+        $end = Get-BlockEnd $lines $at $e.Kind
+        $kind = @{ task = 'task'; req = 'requirement'; scn = 'scenario' }[$e.Kind]
+        [void]$sb.Append("`n### $i. $kind ""$($e.Text)""`n`n- File: $rel (line $($e.Line))`n- In: $($e.Where)")
+        if ($e.Cap) { [void]$sb.Append(", capability $($e.Cap)") }
+        if ($e.Group) { [void]$sb.Append(", $(@{ task = 'group'; scn = 'requirement' }[$e.Kind]) $($e.Group)") }
+        [void]$sb.Append("`n`nNow:`n`n``````markdown`n$((@($lines[$at..($end - 1)]) -join "`n").TrimEnd())`n```````n")
+    }
+    return $sb.ToString()
+}
+
+# --- out-of-date documents --------------------------------------------------------------------------------
+# A document is written from others (the workflow's requires: tasks from the specs and the design ...). When it
+# is written (or changed), LazySpec notes what they were then (.lazyspec\sync.json in the project's root: a hash
+# of each, a delta spec's requirements as they were); when one of them changes after it, the document is out
+# of date: the change says so (Home, its details), and what changed - a requirement added, changed, removed.
+# On or off: lazyspec: syncCheck: on | off in openspec/config.yaml (asked the first time).
+function Get-TextHash([string]$T) {
+    $b = (New-Object Text.UTF8Encoding $false).GetBytes($T.Replace("`r", ''))
+    return [BitConverter]::ToString((New-Object Security.Cryptography.SHA1Managed).ComputeHash($b)).Replace('-', '').Substring(0, 16)
+}
+function Get-RequirementBlocks([string]$Text) {
+    $map = [ordered]@{}
+    $lines = $Text.Replace("`r", '').Split("`n")
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -notmatch '^###\s+(Requirement|Zahtjev|Anforderung):\s*(.+?)\s*$') { continue }
+        $name = Plain-Inline $Matches[2]
+        $end = Get-BlockEnd $lines $i 'req'
+        $map[$name] = ((@($lines[$i..($end - 1)]) -join "`n").TrimEnd())
+    }
+    return $map
+}
+function Get-RelPath([string]$Path) { return $Path.Substring($Root.TrimEnd('\', '/').Length + 1).Replace('\', '/') }
+function ConvertTo-Map($O) {
+    if ($null -eq $O) { return $null }
+    if ($O -is [Management.Automation.PSCustomObject]) { $h = [ordered]@{}; foreach ($p in $O.PSObject.Properties) { $h[$p.Name] = ConvertTo-Map $p.Value }; return $h }
+    if ($O -is [Array]) { return , @($O | ForEach-Object { ConvertTo-Map $_ }) }
+    return $O
+}
+function Get-SyncCheck { return [string](Get-ProjectConfig).Values['syncCheck'] }
+# The documents of a change that others are written from: each with the files it depends on, now.
+function Get-ChangeDeps($C) {
+    $deps = @()
+    foreach ($d in $C.Docs) {
+        if (-not @($d.Files).Count -or -not @($d.Requires).Count) { continue }
+        $ups = @($C.Docs | Where-Object { $d.Requires -contains $_.Id -and @($_.Files).Count } | ForEach-Object { $_.Files })
+        if ($ups.Count) { $deps += [pscustomobject]@{ Doc = $d; Ups = $ups } }
+    }
+    return $deps
+}
+function Get-SyncSnapshot($Files) {
+    $up = [ordered]@{}
+    foreach ($f in @($Files | Sort-Object)) {
+        $t = Read-Text $f
+        $up[(Get-RelPath $f)] = [ordered]@{ hash = (Get-TextHash $t); reqs = (Get-RequirementBlocks $t) }
+    }
+    return $up
+}
+function Update-SyncState {
+    $script:stale = @{}
+    if (-not $hasRoot -or (Get-SyncCheck) -eq 'off') { return }
+    $file = Join-Path $Root '.lazyspec\sync.json'
+    $state = [ordered]@{}
+    if (Test-Path -LiteralPath $file) { try { $state = ConvertTo-Map ((Read-Text $file) | ConvertFrom-Json) } catch { $state = [ordered]@{} } }
+    if (-not $state) { $state = [ordered]@{} }
+    $changed = $false
+    foreach ($c in @($script:changes | Where-Object { -not $_.Archived })) {
+        if (-not $state.Contains($c.Name)) { $state[$c.Name] = [ordered]@{} }
+        $rec = $state[$c.Name]
+        foreach ($dep in (Get-ChangeDeps $c)) {
+            $self = Get-TextHash ((@($dep.Doc.Files | Sort-Object | ForEach-Object { Read-Text $_ })) -join "`n")
+            $now = Get-SyncSnapshot $dep.Ups
+            $old = $null
+            if ($rec.Contains($dep.Doc.Id)) { $old = $rec[$dep.Doc.Id] }
+            # New, or the document itself changed (written again): what it depends on now is its baseline.
+            if (-not $old -or $old['self'] -ne $self) { $rec[$dep.Doc.Id] = [ordered]@{ self = $self; up = $now }; $changed = $true; continue }
+            $diffs = New-Object Collections.ArrayList
+            $was = $old['up']
+            foreach ($rel in @(@($was.Keys) + @($now.Keys) | Sort-Object -Unique)) {
+                $a = $null; $b = $null
+                if ($was.Contains($rel)) { $a = $was[$rel] }
+                if ($now.Contains($rel)) { $b = $now[$rel] }
+                if ($a -and $b -and $a['hash'] -eq $b['hash']) { continue }
+                $ra = [ordered]@{}; $rb = [ordered]@{}
+                if ($a -and $a['reqs']) { $ra = $a['reqs'] }
+                if ($b -and $b['reqs']) { $rb = $b['reqs'] }
+                $n = 0
+                foreach ($k in @($ra.Keys)) {
+                    if (-not $rb.Contains($k)) { [void]$diffs.Add([pscustomobject]@{ File = $rel; Mark = '-'; Req = $k; Old = $ra[$k]; New = '' }); $n++ }
+                    elseif ($rb[$k] -ne $ra[$k]) { [void]$diffs.Add([pscustomobject]@{ File = $rel; Mark = '~'; Req = $k; Old = $ra[$k]; New = $rb[$k] }); $n++ }
+                }
+                foreach ($k in @($rb.Keys)) { if (-not $ra.Contains($k)) { [void]$diffs.Add([pscustomobject]@{ File = $rel; Mark = '+'; Req = $k; Old = ''; New = $rb[$k] }); $n++ } }
+                if (-not $n) {
+                    $mk = '~'
+                    if (-not $a) { $mk = '+' } elseif (-not $b) { $mk = '-' }
+                    [void]$diffs.Add([pscustomobject]@{ File = $rel; Mark = $mk; Req = ''; Old = ''; New = '' })
+                }
+            }
+            if ($diffs.Count) {
+                if (-not $script:stale.ContainsKey($c.Name)) { $script:stale[$c.Name] = @() }
+                $script:stale[$c.Name] += [pscustomobject]@{ Doc = $dep.Doc; Diffs = @($diffs); Now = $now }
+            }
+        }
+    }
+    if ($changed) {
+        [void](New-Item -ItemType Directory -Force -Path (Split-Path $file))
+        [IO.File]::WriteAllText($file, ($state | ConvertTo-Json -Depth 8), (New-Object Text.UTF8Encoding $false))
+    }
+    # Out of date the first time, and not asked yet: watch for it in this project? (remembered)
+    if ($script:stale.Count -and -not (Get-SyncCheck) -and -not $script:syncAsked) {
+        $script:syncAsked = $true
+        $first = @($script:stale.Keys)[0]
+        $script:pendingAsk = [pscustomobject]@{ Text = "Out of date: documents of $first older than their specs. Watch for this in this project?"; Options = @('Yes, watch', 'No'); Short = @('yes', 'no'); Keys = @('y', 'n'); Choice = 0; Do = {
+                param($k, $c)
+                try { Set-ConfigValue 'syncCheck' (@('on', 'off')[$k]) } catch { }
+                if ($k -eq 1) { $script:stale = @{} }
+            } }
+    }
+}
+# Marks a change's documents as in sync with what they're written from, as they are now.
+function Set-InSync($C) {
+    $file = Join-Path $Root '.lazyspec\sync.json'
+    $state = [ordered]@{}
+    if (Test-Path -LiteralPath $file) { try { $state = ConvertTo-Map ((Read-Text $file) | ConvertFrom-Json) } catch { } }
+    if (-not $state) { $state = [ordered]@{} }
+    $rec = [ordered]@{}
+    foreach ($dep in (Get-ChangeDeps $C)) {
+        $self = Get-TextHash ((@($dep.Doc.Files | Sort-Object | ForEach-Object { Read-Text $_ })) -join "`n")
+        $rec[$dep.Doc.Id] = [ordered]@{ self = $self; up = (Get-SyncSnapshot $dep.Ups) }
+    }
+    $state[$C.Name] = $rec
+    [void](New-Item -ItemType Directory -Force -Path (Split-Path $file))
+    [IO.File]::WriteAllText($file, ($state | ConvertTo-Json -Depth 8), (New-Object Text.UTF8Encoding $false))
+}
+function Test-Stale($C) { return (Get-SyncCheck) -eq 'on' -and $script:stale.ContainsKey($C.Name) }
+function Get-SyncPrompt($C) {
+    $sb = New-Object Text.StringBuilder
+    [void]$sb.Append("# LazySpec: bring documents of the change $($C.Name) up to date`n`n")
+    [void]$sb.Append("Project root: the current folder. The change: openspec/changes/$($C.Name)/.`n`n")
+    foreach ($st in $script:stale[$C.Name]) {
+        $files = (@($st.Doc.Files | ForEach-Object { Get-RelPath $_ })) -join ', '
+        [void]$sb.Append("## $files`n`nIt was written before these changed:`n`n")
+        foreach ($d in $st.Diffs) {
+            $what = @{ '+' = 'added'; '~' = 'changed'; '-' = 'removed' }[$d.Mark]
+            if ($d.Req) { [void]$sb.Append("- $($d.File): requirement ""$($d.Req)"" $what`n") } else { [void]$sb.Append("- $($d.File): $what`n") }
+        }
+        [void]$sb.Append("`nUpdate it so that it matches them: add what's new, change what changed, take out what was removed. A task already done ([x]) whose requirement was removed or changed: don't delete it, keep it and add `` (review: its requirement changed)`` to its text. Keep the numbering, the groups and the document's OpenSpec format (``openspec instructions $($st.Doc.Id) --change $($C.Name)``).`n")
+        $shown = @($st.Diffs | Where-Object { $_.Req })
+        if ($shown.Count) {
+            [void]$sb.Append("`n### The requirements, before and now`n")
+            foreach ($d in $shown) {
+                [void]$sb.Append("`n#### $($d.Mark) $($d.Req) ($($d.File))`n")
+                if ($d.Old) { [void]$sb.Append("`nBefore:`n`n``````markdown`n$($d.Old)`n```````n") }
+                if ($d.New) { [void]$sb.Append("`nNow:`n`n``````markdown`n$($d.New)`n```````n") }
+            }
+        }
+        [void]$sb.Append("`n")
+    }
+    [void]$sb.Append("Then run ``openspec validate $($C.Name) --strict --no-interactive`` and fix what it reports.`n")
+    return $sb.ToString()
+}
+function Start-Sync {
+    $sel = Get-Selected
+    if (-not $sel -or $sel.Type -ne 'change') { $script:message = 'Select a change (Tab to the plan).'; return }
+    if (-not (Test-Stale $sel)) { $script:message = "$($sel.Name): its documents are up to date."; return }
+    $docs = (@($script:stale[$sel.Name] | ForEach-Object { $_.Doc.Title })) -join ', '
+    $script:choose = [pscustomobject]@{ Text = "$($sel.Name), $($docs):"; Options = @('Update them (the agent)', 'Mark them as in sync'); Short = @('update', 'in sync'); Keys = @('u', 'm'); Choice = 0; Name = $sel.Name; Do = {
+            param($k, $c)
+            $ch = @($script:changes | Where-Object { $_.Name -eq $c.Name })[0]
+            if ($k -eq 1) { Set-InSync $ch; Update-SyncState; $script:message = "$($c.Name): marked as in sync."; return }
+            Start-AgentTask "Update $($c.Name)" "sync-$($c.Name)" (Get-SyncPrompt $ch)
+        } }
+}
+
+# --- undo: what changed since the last commit ----------------------------------------------------------
+# u on Home: every change to openspec/ since the last git commit (by you, LazySpec or the agent), by file and
+# by piece (a removed task, a changed requirement ...), each one shown and undone on its own; a whole file put
+# back as it was committed; a new file deleted. A commit empties it (nothing differs from it any more).
+function Invoke-Git([string[]]$GitArgs) {
+    $psi = New-Object Diagnostics.ProcessStartInfo
+    $psi.FileName = 'git'
+    $psi.Arguments = ((@('-c', 'core.quotepath=off') + $GitArgs) | ForEach-Object { Quote-Arg $_ }) -join ' '
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.StandardOutputEncoding = [Text.Encoding]::UTF8
+    $psi.CreateNoWindow = $true
+    $psi.WorkingDirectory = $Root
+    try {
+        $p = [Diagnostics.Process]::Start($psi)
+        $out = $p.StandardOutput.ReadToEnd()
+        [void]$p.StandardError.ReadToEnd()
+        $p.WaitForExit()
+        return [pscustomobject]@{ Code = $p.ExitCode; Out = $out }
+    } catch { return [pscustomobject]@{ Code = -1; Out = '' } }
+}
+# The changes: a row per file (its status) and per piece of it (a hunk of git's diff against HEAD).
+function Get-UndoRows {
+    $rows = New-Object Collections.ArrayList
+    $st = Invoke-Git @('status', '--porcelain=v1', '--untracked-files=all', '--', 'openspec')
+    if ($st.Code -ne 0) { return $null }
+    foreach ($line in ($st.Out.Replace("`r", '').Split("`n") | Where-Object { $_.Length -gt 3 })) {
+        $code = $line.Substring(0, 2); $rel = $line.Substring(3).Trim('"')
+        if ($rel -match ' -> (.+)$') { $rel = $Matches[1] }
+        $kind = 'changed'
+        if ($code -eq '??' -or $code -match 'A') { $kind = 'new' } elseif ($code -match 'D') { $kind = 'deleted' }
+        [void]$rows.Add([pscustomobject]@{ Type = 'file'; Rel = $rel; Kind = $kind; Hunk = $null })
+        if ($kind -ne 'changed') { continue }
+        $d = Invoke-Git @('diff', '--no-color', '--no-ext-diff', '-U2', 'HEAD', '--', $rel)
+        $cur = $null
+        foreach ($l in $d.Out.Replace("`r", '').Split("`n")) {
+            if ($l -match '^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@') {
+                $cur = [pscustomobject]@{ Type = 'hunk'; Rel = $rel; Kind = 'changed'; OldStart = [int]$Matches[1]; NewStart = [int]$Matches[3]; Lines = (New-Object Collections.Generic.List[string]) }
+                [void]$rows.Add($cur)
+                continue
+            }
+            if ($cur -and $l.Length -and ' -+'.Contains($l[0]) -and -not $l.StartsWith('--- ') -and -not $l.StartsWith('+++ ')) { $cur.Lines.Add($l) }
+            elseif ($cur -and $l.StartsWith('\')) { continue }
+        }
+    }
+    return , @($rows)
+}
+# A piece's one-line summary: what it removed or added (its first such line), and how much.
+function Get-HunkSummary($H) {
+    $minus = @($H.Lines | Where-Object { $_.StartsWith('-') }).Count
+    $plus = @($H.Lines | Where-Object { $_.StartsWith('+') }).Count
+    $first = @($H.Lines | Where-Object { ($_.StartsWith('-') -or $_.StartsWith('+')) -and $_.Substring(1).Trim() } | Select-Object -First 1)
+    $text = ''
+    if ($first.Count) { $text = Plain-Inline ($first[0].Substring(1).Trim() -replace '^[-*]\s+\[[ xX]\]\s+', '' -replace '^#+\s+', '') }
+    return [pscustomobject]@{ Minus = $minus; Plus = $plus; Text = $text }
+}
+# Undoes a piece: where its new side is in the file now (at its place, else found nearby), its old side again.
+function Undo-Hunk($H) {
+    $path = Join-Path $Root $H.Rel
+    $raw = [IO.File]::ReadAllText($path)
+    $nl = "`n"
+    if ($raw.Contains("`r`n")) { $nl = "`r`n" }
+    $endsNl = $raw.EndsWith("`n")
+    $lines = New-Object Collections.Generic.List[string]
+    $lines.AddRange([string[]]($raw.Replace("`r", '').Split("`n")))
+    if ($endsNl) { $lines.RemoveAt($lines.Count - 1) }
+    $new = @($H.Lines | Where-Object { -not $_.StartsWith('-') } | ForEach-Object { $_.Substring(1) })
+    $old = @($H.Lines | Where-Object { -not $_.StartsWith('+') } | ForEach-Object { $_.Substring(1) })
+    $match = {
+        param($at)
+        if ($at -lt 0 -or $at + $new.Count -gt $lines.Count) { return $false }
+        for ($k = 0; $k -lt $new.Count; $k++) { if ($lines[$at + $k] -ne $new[$k]) { return $false } }
+        return $true
+    }
+    $at = $H.NewStart - 1
+    if ($new.Count -eq 0) { $at = $H.NewStart }
+    if (-not (& $match $at)) {
+        $at = -1
+        for ($d = 1; $d -lt $lines.Count -and $at -lt 0; $d++) { foreach ($c in @(($H.NewStart - 1 - $d), ($H.NewStart - 1 + $d))) { if (& $match $c) { $at = $c; break } } }
+    }
+    if ($at -lt 0) { throw "$($H.Rel) changed since: this piece isn't there as it was" }
+    $lines.RemoveRange($at, $new.Count)
+    $lines.InsertRange($at, [string[]]$old)
+    $text = ($lines -join $nl)
+    if ($endsNl) { $text += $nl }
+    [IO.File]::WriteAllText($path, $text, (New-Object Text.UTF8Encoding $false))
+}
+function Undo-File($R) {
+    $path = Join-Path $Root $R.Rel
+    if ($R.Kind -eq 'new') {
+        Remove-Item -LiteralPath $path -Force
+        # Its folders, when nothing is left in them (up to openspec/).
+        $dir = Split-Path $path -Parent
+        while ($dir.Length -gt $osDir.Length -and (Test-Path -LiteralPath $dir) -and -not @(Get-ChildItem -LiteralPath $dir -Force).Count) { Remove-Item -LiteralPath $dir -Force; $dir = Split-Path $dir -Parent }
+        return
+    }
+    $r = Invoke-Git @('checkout', 'HEAD', '--', $R.Rel)
+    if ($r.Code -ne 0) { throw "git couldn't put $($R.Rel) back" }
+}
+function Start-Undo {
+    if (-not (Test-Path -LiteralPath (Join-Path $Root '.git'))) {
+        $top = Invoke-Git @('rev-parse', '--show-toplevel')
+        if ($top.Code -ne 0) { $script:message = 'Undo needs git: this project is not a git repository.'; return }
+    }
+    $script:undo = [pscustomobject]@{ Rows = (Get-UndoRows); Index = 0; Head = ((Invoke-Git @('log', '-1', '--format=%h %s')).Out.Trim()) }
+    if ($null -eq $script:undo.Rows) { $script:undo = $null; $script:message = "Undo needs git (it isn't installed, or this isn't a repository)."; return }
+    # The first piece selected (else the first file).
+    for ($i = 0; $i -lt $script:undo.Rows.Count; $i++) { if ($script:undo.Rows[$i].Type -eq 'hunk') { $script:undo.Index = $i; break } }
+    $script:message = ''
+    $script:screen = 'undo'
+}
+function Draw-Undo([int]$W, [int]$H) {
+    $u = $script:undo
+    $rowsAll = @($u.Rows)
+    $lines = New-Object Collections.ArrayList
+    [void]$lines.Add(@())
+    foreach ($l in (Wrap "What changed in openspec/ since the last commit ($($u.Head)): by you, LazySpec or the agent. Each piece undone on its own (Enter); a file's row: the whole file as committed, or a new one deleted. A commit empties this." ($W - 8))) { [void]$lines.Add(@(S "  $l" $st.muted)) }
+    [void]$lines.Add(@())
+    $bottom = Bottom-Line $W 0
+    $bodyRows = $H - 2 - @($bottom).Count
+    $preview = @()
+    $sel = $null
+    if ($rowsAll.Count) { $sel = $rowsAll[[Math]::Min($u.Index, $rowsAll.Count - 1)] }
+    if ($sel -and $sel.Type -eq 'hunk') {
+        foreach ($l in @($sel.Lines | Select-Object -First 14)) {
+            $style = $st.faint
+            if ($l.StartsWith('-')) { $style = $st.err } elseif ($l.StartsWith('+')) { $style = $st.ok }
+            $preview += , @(S "  $(Short $l ($W - 6))" $style)
+        }
+    }
+    if (-not $rowsAll.Count) { [void]$lines.Add(@(S '  nothing changed since the last commit' $st.faint)) }
+    $room = $bodyRows - $lines.Count - $preview.Count - 1
+    $top = [Math]::Max(0, [Math]::Min($u.Index - [int]($room / 2), $rowsAll.Count - $room))
+    for ($i = $top; $i -lt [Math]::Min($rowsAll.Count, $top + $room); $i++) {
+        $r = $rowsAll[$i]
+        $mark = '  '
+        if ($i -eq $u.Index) { $mark = "$($g.tri) " }
+        if ($r.Type -eq 'file') {
+            $look = @{ changed = @('~', $st.warn); new = @('+', $st.ok); deleted = @('-', $st.err) }[$r.Kind]
+            [void]$lines.Add(@((S "  $mark" $st.accent), (S "$($look[0]) " $look[1]), (S (Short $r.Rel ($W - 20)) $st.bold), (S "  $($r.Kind)" $st.faint)))
+        }
+        else {
+            $sm = Get-HunkSummary $r
+            [void]$lines.Add(@((S "  $mark" $st.accent), (S '    '), (S (PadL "-$($sm.Minus)" 4) $st.err), (S (PadL "+$($sm.Plus)" 4) $st.ok), (S "  $(Short $sm.Text ($W - 24))" $st.text)))
+        }
+    }
+    if ($preview.Count) { [void]$lines.Add(@()); foreach ($p in $preview) { [void]$lines.Add($p) } }
+    $files = @($rowsAll | Where-Object { $_.Type -eq 'file' }).Count
+    $rows = New-Object Collections.ArrayList
+    [void]$rows.Add((Border-Top $W "$projectName $($g.mid) undo" "$files changed since the last commit" 0))
+    foreach ($r in (Full-Rows $bodyRows $W $lines)) { [void]$rows.Add($r) }
+    foreach ($r in $bottom) { [void]$rows.Add($r) }
+    if ($script:confirm) { $hints = Home-Hints } else { $hints = @(@("$($g.up)$($g.down)", 'select'), @('Enter', 'undo it'), @('r', 'refresh'), @('Esc', 'back')) }
+    [void]$rows.Add((Border-Bottom $W $hints 0))
+    return , $rows
+}
+function On-UndoKey($K) {
+    $u = $script:undo
+    $name = $K.Name; $ch = [string]$K.Char
+    $n = @($u.Rows).Count
+    $script:message = ''
+    if ($name -eq 'Esc' -or $ch -eq 'q') { $script:screen = 'home'; $script:undo = $null; return }
+    if ($name -eq 'Up' -or $ch -eq 'k') { $u.Index = [Math]::Max(0, $u.Index - 1); return }
+    if ($name -eq 'Down' -or $ch -eq 'j') { $u.Index = [Math]::Min([Math]::Max(0, $n - 1), $u.Index + 1); return }
+    if ($name -eq 'PgUp') { $u.Index = [Math]::Max(0, $u.Index - 10); return }
+    if ($name -eq 'PgDn') { $u.Index = [Math]::Min([Math]::Max(0, $n - 1), $u.Index + 10); return }
+    if ($name -eq 'Home') { $u.Index = 0; return }
+    if ($name -eq 'End') { $u.Index = [Math]::Max(0, $n - 1); return }
+    if ($ch -eq 'r') { $u.Rows = Get-UndoRows; $u.Index = [Math]::Min($u.Index, [Math]::Max(0, @($u.Rows).Count - 1)); return }
+    if (($name -eq 'Enter' -or $ch -eq 'u') -and $n) {
+        $r = $u.Rows[[Math]::Min($u.Index, $n - 1)]
+        if ($r.Type -eq 'hunk') { $text = "Undo this piece of $(Split-Path $r.Rel -Leaf)?" }
+        elseif ($r.Kind -eq 'new') { $text = "Delete the new file $($r.Rel)?" }
+        else { $text = "Put $($r.Rel) back as it was committed (all its changes undone)?" }
+        $script:confirm = [pscustomobject]@{ Text = $text; Choice = 1; Row = $r; Do = {
+                param($c)
+                try {
+                    if ($c.Row.Type -eq 'hunk') { Undo-Hunk $c.Row } else { Undo-File $c.Row }
+                    $script:message = 'Undone.'
+                } catch { $script:message = "Not undone: $($_.Exception.Message)" }
+                $script:undo.Rows = Get-UndoRows
+                $script:undo.Index = [Math]::Min($script:undo.Index, [Math]::Max(0, @($script:undo.Rows).Count - 1))
+                Reload
+            } }
+    }
 }
 
 # --- the OpenSpec CLI ----------------------------------------------------------------------------------
@@ -5991,6 +6690,7 @@ function Draw([int]$W, [int]$H) {
         'read' { return Draw-Read $W $H }
         'pick' { return Draw-Pick $W $H }
         'search' { return Draw-Search $W $H }
+        'undo' { return Draw-Undo $W $H }
         'run' { return Draw-Run $W $H }
         default { return Draw-Home $W $H }
     }
@@ -6020,7 +6720,11 @@ function Draw-Help([int]$W, [int]$H) {
         @('n', 'new change (asks its name: kebab-case, e.g. add-user-login)'),
         @('x', 'export the specification for the client: PDF, Word or HTML (export\ in the project; opens it)'),
         @('m', 'changes as one: mark the ones that go to the client as one whole, read them together (x there: export)'),
-        @('t', 'find: tasks (1.3, 01 1.3, words), requirements and scenarios; Enter opens it in Read, at it'), @('e', 'edit: open the spec or the proposal in your editor'),
+        @('t', 'find: tasks (1.3, 01 1.3, words), requirements and scenarios; Enter opens it in Read, at it'),
+        @('  ' + [string][char]0x2192, 'in find: mark (Space, a all, g its group), then x remove, c change, r redo (the agent)'),
+        @('y', 'a change out of date (! in the plan): its documents updated by the agent, or marked as in sync'),
+        @('u', 'undo: what changed in openspec/ since the last commit, piece by piece (git; a commit empties it)'),
+        @('e', 'edit: open the spec or the proposal in your editor'),
         @('s', 'sort changes: name A-Z, name Z-A, recently modified'), @('h', 'show or hide archived changes'),
         @('/', 'filter specs and changes by name (Enter keeps it, Esc clears it)'), @('r', 'refresh (it also refreshes by itself when files change)'),
         @('?', 'this help'), @('q', 'quit'))
@@ -6235,6 +6939,7 @@ function On-Key($K) {
     }
     if ($script:screen -eq 'pick') { On-PickKey $K; return }
     if ($script:screen -eq 'search') { On-SearchKey $K; return }
+    if ($script:screen -eq 'undo') { On-UndoKey $K; return }
     if ([string]$ch -eq '?' -and @('home', 'read') -contains $script:screen) { $script:helpBack = $script:screen; $script:helpScroll = 0; $script:screen = 'help'; return }
     if ($script:screen -eq 'home') {
         $script:message = ''
@@ -6275,6 +6980,8 @@ function On-Key($K) {
             'x' { Start-ExportMenu }
             'm' { Start-Pick 'read' }
             't' { Start-Search }
+            'y' { Start-Sync }
+            'u' { Start-Undo }
             'e' { $sel = Get-Selected; if ($sel) { Open-InEditor $sel.Path } }
             's' { $script:sort = $sortModes[([array]::IndexOf($sortModes, $script:sort) + 1) % $sortModes.Count]; $script:changeIndex = 0; $script:message = "Changes sorted by $($sortLabels[$script:sort])." }
             'h' { $script:showArchived = -not $script:showArchived; $script:changeIndex = 0 }

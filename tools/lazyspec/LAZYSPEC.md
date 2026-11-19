@@ -64,6 +64,36 @@ specs, with its capability and requirement). `Tab` narrows it: all, tasks, open 
 scenarios. `Enter` opens it in Read, on its document's tab, scrolled to it and marked `▸`; `Esc` there goes
 back to the results. Archived changes only with `h`, as on Home.
 
+**Revise** (in Find, `→` into the results) — mark what to remove or redo: `Space` one (the marks stay across
+searches), `a` all the results, `g` its group (a task's `## group`; a requirement's or scenario's capability).
+Then, for the marked ones (else the selected):
+
+- `x` **remove**, asked first. A change's tasks, requirements and scenarios are taken out of its documents (a
+  delta spec left without requirements is deleted); the main specs (`openspec/specs`) are not edited: a new
+  change `remove-from-specs-<date>` gets their removal (`## REMOVED Requirements`, or `## MODIFIED` for a
+  requirement losing scenarios) - archive it to apply it. Then `openspec validate --all --strict` runs.
+- `c` **change** (you write what) and `r` **redo** (written again to match the current specs): work for the
+  agent, below.
+
+**The agent** (Claude Code) — the work is written as a prompt in `.lazyspec/prompts/` (the project's root);
+then asked: **run Claude Code now** (`claude -p ... --permission-mode acceptEdits`, its output in the run screen)
+or **save the prompt** (the command to give it, copied). The answer is the project's default next time
+(`lazyspec: agent: run | prompt` in `openspec/config.yaml`).
+
+**Out of date** — a change's documents are written from others (the workflow's `requires`: tasks from the specs
+and the design). When one is written, LazySpec notes what those were (`.lazyspec/sync.json`: a hash of each, a
+delta spec's requirements); when one changes after it, the change gets `!` in the plan and an *OUT OF DATE*
+section in its details: which document, and what changed (`+` added, `~` changed, `-` removed requirements).
+`y` then: **update them** (the agent gets what changed, before and now; done tasks of a changed requirement are
+kept and marked for review) or **mark them as in sync**. Asked once per project whether to watch for it
+(`lazyspec: syncCheck: on | off`).
+
+**Undo** (`u`) — every change to `openspec/` since the last git commit (yours, LazySpec's or the agent's), by
+file and by piece (a removed task, a changed requirement ...), the selected piece shown. `Enter` undoes the
+piece; on a file's row, the whole file as committed (a new file: deleted). A commit empties it. Needs git.
+
+Add `.lazyspec/` (the prompts, the out-of-date notes) to the project's `.gitignore`: it is your own.
+
 **Changes as one** (`m`) — the changes that go to the client as one whole. On top, the **saved wholes**
 (`lazyspec: bundles:` in `openspec/config.yaml`): `Enter` reads one, `Space` marks its changes (to change
 them), `d` removes it (asked first). Below, the active changes: `Space` marks them (`a` all or none), `Enter`
@@ -82,10 +112,11 @@ It refreshes by itself when files under `openspec/` change (an editor, git, an a
 
 | Screen | Keys |
 |---|---|
-| Home | `↑` `↓` select · `Tab` scope ↔ plan · `→` into the details (`↑` `↓` scroll them), `←`/`Esc` back · `z` zoom the details to the whole width (again: the lists back) · `PgUp` `PgDn` `Home` `End` scroll the details · `Enter` read · `v` validate all · `a` archive the change · `n` new change · `x` export (PDF, Word, HTML) · `m` changes as one · `t` find · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
+| Home | `↑` `↓` select · `Tab` scope ↔ plan · `→` into the details (`↑` `↓` scroll them), `←`/`Esc` back · `z` zoom the details to the whole width (again: the lists back) · `PgUp` `PgDn` `Home` `End` scroll the details · `Enter` read · `v` validate all · `a` archive the change · `n` new change · `x` export (PDF, Word, HTML) · `m` changes as one · `t` find · `y` out of date: update or mark in sync · `u` undo · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
 | Read | `↑` `↓` `PgUp` `PgDn` `Home` `End` scroll · `←` `→` document · `x` export this spec, change or changes as one · `e` edit · `Esc` back |
 | Changes as one | `↑` `↓` select · `Space` mark (a saved whole: its changes) · `a` all, none · `Enter` go on (a saved whole: read it; else a title, save it?, then Read) · `d` remove a saved whole · `Esc` cancel |
-| Find | type the search · `↑` `↓` `PgUp` `PgDn` select · `Tab` all, tasks, open tasks, requirements, scenarios · `Enter` open in Read, at it · `Backspace` · `Esc` back |
+| Find | type the search · `↑` `↓` `PgUp` `PgDn` select · `Tab` all, tasks, open tasks, requirements, scenarios · `Enter` open in Read, at it · `→` into the results: `Space` mark · `a` all · `g` its group · `x` remove · `c` change · `r` redo · `←`/`Esc` back to typing · `Esc` back |
+| Undo | `↑` `↓` `PgUp` `PgDn` `Home` `End` select · `Enter` undo it (asked first) · `r` refresh · `Esc` back |
 | Run | `PgUp` `PgDn` `Home` `End` scroll · `Esc` stop (asked first); when done `Enter`/`Esc` back |
 
 ## What the actions run
