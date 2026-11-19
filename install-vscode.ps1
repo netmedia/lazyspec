@@ -79,6 +79,10 @@ $known = [ordered]@{
     'codium'        = @{ Name = 'VSCodium'; Paths = @("$env:LOCALAPPDATA\Programs\VSCodium\bin\codium.cmd", "$env:ProgramFiles\VSCodium\bin\codium.cmd", '/Applications/VSCodium.app/Contents/Resources/app/bin/codium') }
 }
 $found = 0; $failed = 0
+# The editors' command lines are Node: their warnings (DeprecationWarning ...) on stderr aren't errors - the
+# exit code says how it went.
+$ErrorActionPreference = 'Continue'
+$env:NODE_OPTIONS = (("$env:NODE_OPTIONS --no-deprecation").Trim())
 foreach ($cmd in $known.Keys) {
     if ($Editor -and $Editor -notcontains $cmd) { continue }
     $exe = $null
@@ -90,7 +94,11 @@ foreach ($cmd in $known.Keys) {
     if ($Uninstall) { $out = & $exe --uninstall-extension $id 2>&1 | Out-String }
     else { $out = & $exe --install-extension $vsix --force 2>&1 | Out-String }
     if ($LASTEXITCODE -eq 0) { Write-Host "  $([char]0x2713) $($known[$cmd].Name)" -ForegroundColor Green }
-    else { $failed++; Write-Host "  $([char]0x2717) $($known[$cmd].Name): $($out.Trim())" -ForegroundColor Red }
+    else {
+        $failed++
+        $why = (@($out -split "`r?`n" | Where-Object { $_.Trim() -and $_ -notmatch 'DeprecationWarning|--trace-deprecation|^\s*(At |\+ |CategoryInfo|FullyQualifiedErrorId)' }) -join ' ').Trim()
+        Write-Host "  $([char]0x2717) $($known[$cmd].Name): $why" -ForegroundColor Red
+    }
 }
 Write-Host ''
 if (-not $found) { Write-Host '  No VS Code, Cursor, Windsurf or VSCodium found. In the editor: Extensions: Install from VSIX... and pick vscode\lazyspec.vsix.' -ForegroundColor Yellow; Write-Host ''; exit 1 }
