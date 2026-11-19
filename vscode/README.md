@@ -141,7 +141,9 @@ document was written from in `.lazyspec/sync.json`, and the extension reads and 
 All of LazySpec's keys, Windows / Linux and Mac side by side: **Help and Keys** (the `?` in the Plan's title
 bar, or the LazySpec menu of an open document).
 
-`Ctrl+Alt` and a letter (Mac `⌃⌥`, Control+Option: the same letters), wherever you are. The view gets the keyboard, so the arrows, `PgUp`
+`Ctrl+Alt` and a letter (Mac `⌃⌥`, Control+Option: the same letters), wherever you are. They are the letters
+LazySpec in the terminal uses alone: `t` find, `u` undo, `y` out of date, `r` refresh, `a` the agent, `p` `s`
+`d` the plan, the scope, the details, `h` back to the document, `Enter` read. The view gets the keyboard, so the arrows, `PgUp`
 and `PgDn` work right away; the Plan keeps its selection.
 
 | Windows, Linux | Mac | Goes to |
@@ -159,7 +161,9 @@ and `PgDn` work right away; the Plan keeps its selection.
 | `Space` | `Space` | a task done / not done |
 | `Delete` | `⌘⌫` | delete (asked first) |
 | `Ctrl+Alt+A` | `⌃⌥A` | the agent |
-| `Ctrl+Alt+R` | `⌃⌥R` | Read |
+| `Ctrl+Alt+Enter` | `⌃⌥Enter` | Read |
+| `Ctrl+Alt+Y` | `⌃⌥Y` | out of date: update, or mark in sync (the change selected) |
+| `Ctrl+Alt+R` | `⌃⌥R` | refresh (also in the documents and in Read) |
 | `Ctrl+Alt+T` | `⌃⌥T` | Find (anywhere) |
 
 VS Code's own: `Ctrl+B` / `⌘B` shows or hides the side bar, `Ctrl+0` / `⌘0` goes to it, `Ctrl+1` / `⌘1`

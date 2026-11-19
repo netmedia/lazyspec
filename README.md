@@ -9,7 +9,7 @@ A project's **OpenSpec** specifications and changes in **one terminal screen** â
 - **Specifications** (`openspec/specs/`): platform pages (`platform-*`: overview, architecture, costs,
   roadmap, decisions) and capability specs, with their purpose and requirements.
 - **Changes** (`openspec/changes/`): stage, task progress, why / what changes / impact, the capabilities
-  they add, modify or remove requirements in, tasks by group; archived ones on `h`.
+  they add, modify or remove requirements in, tasks by group; archived ones on `.`.
 - **Read** any of them in full (proposal, design, tasks, delta specs, or whatever documents the change's
   OpenSpec workflow schema defines), formatted for the terminal.
 - **Actions** through the OpenSpec CLI: validate all, archive a change, new change; the output in the

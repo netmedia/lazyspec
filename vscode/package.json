@@ -2,7 +2,7 @@
   "name": "lazyspec",
   "displayName": "LazySpec - OpenSpec specs and changes",
   "description": "A project's OpenSpec in your editor: the specifications and the plan (by group), formatted reading, tasks, requirements, scenarios and sections to edit, tick, delete or hand to the agent, find, out-of-date documents, undo, validate, archive, and exports for the client in the company look.",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "publisher": "netmedia",
   "author": {
     "name": "Netmedia",
@@ -743,12 +743,6 @@
         "when": "(focusedView == lazyspec.plan || focusedView == lazyspec.scope)"
       },
       {
-        "command": "lazyspec.read",
-        "key": "ctrl+alt+r",
-        "mac": "ctrl+alt+r",
-        "when": "(focusedView == lazyspec.plan || focusedView == lazyspec.scope)"
-      },
-      {
         "command": "lazyspec.undoItem",
         "key": "delete",
         "mac": "cmd+backspace",
@@ -778,6 +772,24 @@
         "command": "lazyspec.focusEditor",
         "key": "ctrl+alt+h",
         "mac": "ctrl+alt+h"
+      },
+      {
+        "command": "lazyspec.read",
+        "key": "ctrl+alt+enter",
+        "mac": "ctrl+alt+enter",
+        "when": "(focusedView == lazyspec.plan || focusedView == lazyspec.scope)"
+      },
+      {
+        "command": "lazyspec.refresh",
+        "key": "ctrl+alt+r",
+        "mac": "ctrl+alt+r",
+        "when": "(focusedView =~ /^lazyspec\\./ || activeCustomEditorId == lazyspec.formatted || activeWebviewPanelId == lazyspec.read || activeWebviewPanelId == lazyspec.itemEditor)"
+      },
+      {
+        "command": "lazyspec.sync",
+        "key": "ctrl+alt+y",
+        "mac": "ctrl+alt+y",
+        "when": "(focusedView == lazyspec.plan || focusedView == lazyspec.scope)"
       }
     ],
     "configuration": {

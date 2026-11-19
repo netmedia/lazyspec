@@ -30,8 +30,9 @@ characters (Windows Terminal; the Windows console since Windows 10).
 Keys (? shows them in the UI too)
   Home   up/down item, Tab specs <-> changes, right: into the details (up/down scroll them), left/Esc back,
          z zoom the details (whole width; z again: the lists back), Enter read it, PgUp/PgDn scroll the details,
-         v validate all, a archive the change, n new change, e edit (open in the editor),
-         s sort changes, h show/hide archived, / filter, r refresh, ? help, q quit
+         p / s / d the plan, the scope, the details, h back to the document last read,
+         v validate all, A archive the change, n new change, e edit (open in the editor),
+         o sort changes, . show/hide archived, / filter, r refresh, ? help, q quit
   Read   up/down/PgUp/PgDn/Home/End scroll, left/right document (proposal, design, tasks, specs),
          e edit, Esc back
   Run    PgUp/PgDn/Home/End scroll the output, Esc stop (asked first); when done: Enter or Esc back
@@ -264,7 +265,8 @@ function Show-Usage {
     & $d '    Up/Down item, Tab specs <-> changes, Right into the details (Up/Down scroll), Left back'
     & $d '    z zoom the details to the whole width (z again: the lists back)'
     & $d '    Enter read it, PgUp/PgDn/Home/End scroll the details'
-    & $d '    v validate all   a archive the change   n new change   e edit   s sort changes'
+    & $d '    p s d the plan, the scope, the details   h back to the document last read'
+    & $d '    v validate all   A archive the change   n new change   e edit   o sort changes'
     & $d '    m changes as one (mark them with Space, Enter: a title, then read them; x there: export)'
     & $d '    Groups (a schema with grouping: [group], or x-group: <id> in a change''s .openspec.yaml): the plan'
     & $d '      by group, a row each (its changes, tasks); g flat or grouped, c fold a group, Space choose'
@@ -283,7 +285,8 @@ function Show-Usage {
     & $d '    Alt+T Alt+U Alt+Y Alt+S: the same as Ctrl+. On a Mac: Control (^T ^U ^Y ^S: LazySpec turns the'
     & $d '    terminal''s own uses of them off while it runs) or Option (Terminal: Use Option as Meta key;'
     & $d '    iTerm2: Left Option key Esc+); Del is fn+Delete, Home/End/PgUp/PgDn are fn+arrows.'
-    & $d '    h show/hide archived   / filter   r refresh   ? help   q quit'
+    & $d '    . show/hide archived   / filter   r refresh   ? help   q quit'
+    & $d '    The same letters as LazySpec in VS Code (Ctrl+Alt there, Mac Control+Option): t u y r a p s d h'
     & $y '  Read'
     & $d '    Up/Down a task, requirement, scenario or section (## Why ...; else scroll)   PgUp/PgDn Home/End'
     & $d '    Enter edit the picked item in a window (Ctrl+S save, Esc cancel)   Space a task done/not'
@@ -5630,7 +5633,7 @@ function Home-Hints {
     if ($script:pane -eq 'details') { return , @(@("$($g.up)$($g.down) PgUp PgDn", 'scroll'), @("$([string][char]0x2190) Esc", 'lists'), @('z', 'zoom'), @('Enter', 'read'), @('e', 'edit'), @('?', 'help'), @('q', 'quit')) }
     $sel = Get-Selected
     if ($sel -and $sel.PSObject.Properties['IsGroup']) { return , @(@("$($g.up)$($g.down)", 'select'), @('Space', 'choose'), @('Enter', 'read'), @('x', 'export'), @('c', 'fold'), @('g', 'flat'), @('e', 'groups'), @('t', 'find'), @('?', 'help'), @('q', 'quit')) }
-    return , @(@("$($g.up)$($g.down)", 'select'), @('Enter', 'open'), @('Tab', 'scope/plan'), @('r', 'refresh'), @('v', 'validate'), @('a', 'archive'), @('n', 'new'), @('x', 'export'), @('m', 'as one'), @('t', 'find'), @('y', 'sync'), @('u', 'undo'), @('e', 'edit'), @('s', 'sort'), @('/', 'filter'), @('?', 'help'), @('q', 'quit'))
+    return , @(@("$($g.up)$($g.down)", 'select'), @('Enter', 'open'), @('p s d', 'plan, scope, details'), @('h', 'back to the document'), @('r', 'refresh'), @('t', 'find'), @('y', 'sync'), @('u', 'undo'), @('v', 'validate'), @('n', 'new'), @('A', 'archive'), @('x', 'export'), @('m', 'as one'), @('e', 'edit'), @('o', 'sort'), @('.', 'archived'), @('/', 'filter'), @('?', 'help'), @('q', 'quit'))
 }
 
 function Home-Status([int]$Active, [int]$Lines, [int]$Rows) {
@@ -5688,7 +5691,7 @@ function Draw-Home([int]$W, [int]$H) {
     # Changes.
     $archived = @($script:changes | Where-Object { $_.Archived }).Count
     $note = "$active"
-    if ($archived) { if ($script:showArchived) { $note += " + $archived archived" } else { $note += " $($g.mid) $archived archived (h)" } }
+    if ($archived) { if ($script:showArchived) { $note += " + $archived archived" } else { $note += " $($g.mid) $archived archived (.)" } }
     $marked = Get-GroupSelection @($script:groupMarks.Keys)
     $planHead = @((S ' PLAN ' $st.title), (S "$($g.mid) $note" $st.muted))
     if ($script:groupMarks.Count) {
@@ -5727,7 +5730,7 @@ function Draw-Home([int]$W, [int]$H) {
         [void]$left.Add(@((S " $mark$ind" $st.accent), (S "$($look[0]) " $look[1]), (S (Pad (Short (Get-ItemTitle $c) $tw) $tw) $style), $count))
     }
     [void]$left.Add(@())
-    [void]$left.Add(@((S '   s' $st.key), (S ' sort: ' $st.muted), (S $sortLabels[$script:sort] $st.accent)))
+    [void]$left.Add(@((S '   o' $st.key), (S ' sort: ' $st.muted), (S $sortLabels[$script:sort] $st.accent)))
     if (Test-Grouping) {
         $how = "by $((Get-ProjectGroups).Plural.ToLower())"
         if (-not $script:grouped) { $how = 'flat' }
@@ -7730,10 +7733,12 @@ function Draw-Help([int]$W, [int]$H) {
     }
     & $section 'HOME' @(
         @("$($g.up) $($g.down)", 'select a spec or a change (in the details: scroll)'), @('Tab', 'scope (specifications) <-> plan (changes)'),
+        @('p s d', 'the plan, the scope, the details (the same letters as Ctrl+Alt+P / S / D in VS Code)'),
+        @('h', 'back to the document last read'),
         @("$([string][char]0x2192) l", 'into the details (then up/down scroll them)'), @("$([string][char]0x2190) Esc", 'back to the lists'),
         @('z', 'zoom: the details over the whole width (z again or Esc: the lists back)'),
         @('PgUp PgDn', 'scroll the details a page (Home, End: top, end)'), @('Enter', 'read it in full'), @('v', 'validate all (openspec validate --all --strict)'),
-        @('a', 'archive the selected change (asked first; merges its delta specs into openspec/specs)'),
+        @('A', 'archive the selected change (Shift+A; asked first; merges its delta specs into openspec/specs)'),
         @('n', 'new change (asks its name: kebab-case, e.g. add-user-login)'),
         @('x', 'export the specification for the client: PDF, Word or HTML (openspec\exports\; opens it)'),
         @('m', 'changes as one: mark the ones that go to the client as one whole, read them together (x there: export)'),
@@ -7750,7 +7755,7 @@ function Draw-Help([int]$W, [int]$H) {
         @('  Ctrl+U Ctrl+Y', 'undo, out of date: the same from any screen, also while typing (u, y where nothing is typed)'),
         @('  Alt+T U Y S', 'the same as Ctrl+ (a Mac: Option, with "Use Option as Meta key" in Terminal, Esc+ in iTerm2)'),
         @('e', 'edit: open the spec or the proposal in your editor'),
-        @('s', 'sort changes: name A-Z, name Z-A, recently modified'), @('h', 'show or hide archived changes'),
+        @('o', 'sort changes: name A-Z, name Z-A, recently modified'), @('.', 'show or hide archived changes'),
         @('/', 'filter specs and changes by name (Enter keeps it, Esc clears it)'), @('r', 'refresh (it also refreshes by itself when files change)'),
         @('?', 'this help'), @('q', 'quit'))
     & $section 'READ' @(
@@ -7759,7 +7764,8 @@ function Draw-Help([int]$W, [int]$H) {
         @("$($g.up) $($g.down)", 'with tasks, requirements, scenarios: pick one (PgUp PgDn scroll)'),
         @('Enter', 'edit the picked item - a task, requirement, scenario or section (## Why ...) - in a window (Ctrl+S save, Esc cancel)'), @('Space', 'a task: done / not done'),
         @('Del', 'delete the picked item (asked first)'), @('a', 'the agent: change it (your note) or write it again'),
-        @('x', 'export this spec, change or changes as one: PDF, Word or HTML'), @('e', 'edit the whole file in your editor'), @('r', 'refresh: read it again from openspec/'), @('Esc', 'back'))
+        @('x', 'export this spec, change or changes as one: PDF, Word or HTML'), @('e', 'edit the whole file in your editor'), @('r', 'refresh: read it again from openspec/'),
+        @('p s d', 'Home, at the plan, the scope, the details'), @('Esc', 'back'))
     & $section 'RUN' @(@('PgUp PgDn', 'scroll the output (Home, End: top, bottom)'), @('Esc', 'stop (asked first); when done: back'))
     & $section 'LOOK' @(
         @("$($g.diamond) $($g.dot)", 'a platform page (platform-*: overview, costs...), a capability spec'),
@@ -8077,7 +8083,18 @@ function On-Key($K) {
             'j' { if ($inDetails) { $script:detailScroll++ } else { Move-Selection 1 } }
             'k' { if ($inDetails) { $script:detailScroll = [Math]::Max(0, $script:detailScroll - 1) } else { Move-Selection -1 } }
             'v' { Start-Cli 'Validate all' @('validate', '--all', '--strict', '--no-interactive') }
-            'a' { Start-Archive }
+            # The same letters as LazySpec in VS Code (Ctrl+Alt there): t find, u undo, y out of date, r refresh,
+            # a the agent, p / s / d the plan, the scope, the details, h back to the document; Enter read.
+            'A' { Start-Archive }
+            'a' { $script:message = 'a: the agent works on items - Enter (read), pick a task, requirement or section, then a. A archives.' }
+            'p' { $script:focus = 'changes'; $script:pane = 'list'; $script:zoom = $false; $script:detailScroll = 0 }
+            's' { $script:focus = 'specs'; $script:pane = 'list'; $script:zoom = $false; $script:detailScroll = 0 }
+            'd' { if (-not $script:zoom) { $script:pane = 'details' } }
+            'h' {
+                # Back to the document last read (else the selected one).
+                if ($script:readItem) { Update-ReadItem; $script:readBack = 'home'; $script:screen = 'read' }
+                else { $sel = Get-Selected; if ($sel) { $script:readItem = $sel; $script:readTab = 0; $script:readScroll = 0; $script:readSel = 0; $script:readMark = $null; $script:readBack = 'home'; $script:screen = 'read' } }
+            }
             'n' { Start-NewChange }
             'x' { Start-ExportMenu }
             'm' { Start-Pick 'read' }
@@ -8087,8 +8104,8 @@ function On-Key($K) {
             'e' { $sel = Get-Selected; if ($sel -and $sel.PSObject.Properties['IsGroup']) { Open-InEditor (Join-Path $osDir 'config.yaml') } elseif ($sel) { Open-InEditor $sel.Path } }
             'g' { Switch-Grouped }
             'c' { Switch-Fold }
-            's' { $script:sort = $sortModes[([array]::IndexOf($sortModes, $script:sort) + 1) % $sortModes.Count]; $script:changeIndex = 0; $script:message = "Changes sorted by $($sortLabels[$script:sort])." }
-            'h' { $script:showArchived = -not $script:showArchived; $script:changeIndex = 0 }
+            'o' { $script:sort = $sortModes[([array]::IndexOf($sortModes, $script:sort) + 1) % $sortModes.Count]; $script:changeIndex = 0; $script:message = "Changes sorted by $($sortLabels[$script:sort])." }
+            '.' { $script:showArchived = -not $script:showArchived; $script:changeIndex = 0 }
             '/' { $script:filtering = $true; $script:zoom = $false; $script:pane = 'list' }
             'r' { Reload; $script:message = 'Refreshed.' }
         }
@@ -8123,6 +8140,11 @@ function On-Key($K) {
         elseif ($name -eq 'Left') { $script:readTab = ($script:readTab - 1 + $tabs.Count) % $tabs.Count; $script:readScroll = 0; $script:readSel = 0 }
         elseif ([string]$ch -eq 'e') { Open-InEditor $tabs[[Math]::Min($script:readTab, $tabs.Count - 1)].Path }
         elseif ([string]$ch -eq 'x') { Start-ItemExportMenu $script:readItem }
+        # p / s / d: Home, at the plan, the scope, the details (as Ctrl+Alt+P / S / D in VS Code).
+        elseif (@('p', 's', 'd') -contains [string]$ch) {
+            $script:screen = 'home'; $script:zoom = $false; $script:readMark = $null
+            if ([string]$ch -eq 'd') { $script:pane = 'details' } else { $script:pane = 'list'; $script:focus = @{ p = 'changes'; s = 'specs' }[[string]$ch] }
+        }
         # r: read again - the specs and documents as they are on disk now (an editor, git, the agent changed them).
         elseif ([string]$ch -eq 'r') { Update-ReadItem; $script:readScroll = [Math]::Min($script:readScroll, 1000000); $script:message = 'Refreshed: read again from openspec/.' }
         elseif ($name -eq 'Esc' -or $name -eq 'Back' -or ([string]$ch) -in @('q')) { $script:screen = $script:readBack; $script:readBack = 'home'; $script:readMark = $null }

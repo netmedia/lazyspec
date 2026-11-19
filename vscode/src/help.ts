@@ -6,7 +6,7 @@ import * as vscode from 'vscode';
 /** [what it does, Windows / Linux, Mac] - by section. */
 const KEYS: { title: string; note?: string; rows: [string, string, string][] }[] = [
   {
-    title: 'Go to a pane', note: 'The same letters everywhere: Ctrl+Alt on Windows and Linux, Control+Option (⌃⌥) on a Mac. The pane gets the keyboard, the arrows work right away.',
+    title: 'Go to a pane', note: 'The same letters everywhere: Ctrl+Alt on Windows and Linux, Control+Option (⌃⌥) on a Mac - and the same letters alone in LazySpec in the terminal (t find, u undo, y out of date, r refresh, a the agent, p s d the plan, the scope, the details, h back to the document, Enter read). The pane gets the keyboard, the arrows work right away.',
     rows: [
       ['The Plan', 'Ctrl+Alt+P', '⌃⌥P'],
       ['The Scope', 'Ctrl+Alt+S', '⌃⌥S'],
@@ -36,7 +36,9 @@ const KEYS: { title: string; note?: string; rows: [string, string, string][] }[]
       ['A task done / not done', 'Space', 'Space'],
       ['Delete (asked first)', 'Delete', '⌘⌫'],
       ['The agent: change it, write it again', 'Ctrl+Alt+A', '⌃⌥A'],
-      ['Read (formatted, a tab per document)', 'Ctrl+Alt+R', '⌃⌥R'],
+      ['Read (formatted, a tab per document)', 'Ctrl+Alt+Enter', '⌃⌥Enter'],
+      ['Out of date: update, or mark in sync (the change selected)', 'Ctrl+Alt+Y', '⌃⌥Y'],
+      ['Refresh (also in the documents and Read)', 'Ctrl+Alt+R', '⌃⌥R'],
       ['Find in the view (VS Code\'s)', 'type, or Ctrl+Alt+F', 'type, or ⌘⌥F'],
     ],
   },

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0
+
+- The same letters as LazySpec in the terminal: Ctrl+Alt+R refresh (was Read), Ctrl+Alt+Enter Read, Ctrl+Alt+Y
+  out of date (the change selected); T, U, A, P, S, D, H as before. The terminal UI took them over: p / s / d
+  the plan, the scope, the details, h back to the document, A (Shift) archive, o sort, . archived.
+
 ## 0.5.3
 
 - The panes without a chord, the same letters everywhere: Ctrl+Alt+P / S / D / U / H (Plan, Scope, Details, Undo,

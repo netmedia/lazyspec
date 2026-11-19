@@ -157,7 +157,7 @@ LazySpec has five screens; Home is where you start and `?` always shows the keys
 | Run | `v`, `a`, `n`, `x` | OpenSpec CLI or export output, coloured (✓ passed, ✗ failed, ⚠ warnings) |
 | Help | `?` | Keys and credits |
 
-**List symbols.** Scope: `◆` platform page (`platform-*`), `●` capability spec, with requirement count. Plan: `○` draft (no tasks), `◆` in progress, `●` completed, `·` archived (shown with `h`), with done/total tasks and a bar.
+**List symbols.** Scope: `◆` platform page (`platform-*`), `●` capability spec, with requirement count. Plan: `○` draft (no tasks), `◆` in progress, `●` completed, `·` archived (shown with `.`), with done/total tasks and a bar.
 
 **Details pane.** A spec shows requirement and scenario counts, purpose, requirements and the changes that will touch it (`+` added, `~` modified, `-` removed). A change shows progress, tasks by group, capabilities touched, why, and which workflow documents exist (`✓` done, `○` not yet).
 
@@ -185,7 +185,7 @@ The screenshots below come from LazySpec itself, run on a made-up demo project (
 
 | Screen | Keys |
 | --- | --- |
-| Home | `↑` `↓` select · `Tab` Scope ↔ Plan · `→` into details, `←`/`Esc` back · `z` zoom details · `PgUp` `PgDn` `Home` `End` scroll details · `Enter` read · `v` validate all · `a` archive change · `n` new change · `x` export · `m` changes as one · `Space` choose a group · `c` fold a group · `g` grouped/flat · `t` find · `y` out of date · `u` undo · `e` edit · `s` sort · `h` archived · `/` filter · `r` refresh · `?` help · `q` quit |
+| Home | `↑` `↓` select · `Tab` Scope ↔ Plan · `→` into details, `←`/`Esc` back · `z` zoom details · `PgUp` `PgDn` `Home` `End` scroll details · `Enter` read · `p` `s` `d` plan, scope, details · `h` back to the document · `v` validate all · `A` archive change · `n` new change · `x` export · `m` changes as one · `Space` choose a group · `c` fold a group · `g` grouped/flat · `t` find · `y` out of date · `u` undo · `e` edit · `o` sort · `.` archived · `/` filter · `r` refresh · `?` help · `q` quit |
 | Read | `↑` `↓` pick a task, requirement, scenario or section (else scroll) · `Enter` edit it · `Space` done/not · `Del` delete · `a` agent · `PgUp` `PgDn` scroll · `←` `→` previous/next document · `x` export this item · `e` the whole file · `t` find · `u` undo · `y` out of date · `Esc` back |
 | Changes as one | `↑` `↓` select · `Space` mark · `a` all/none · `Enter` continue · `d` remove saved bundle · `Esc` cancel |
 | Find | type · `↑` `↓` select · `Tab` all / tasks / open tasks / requirements / scenarios / sections · `Shift+Tab` the document · `Enter` open in Read · `→` mark (`Space`, `a`, `g`), then `Del` delete or `Enter` delete / change / write again · `Esc` back |
@@ -212,7 +212,7 @@ LazySpec refreshes as files change, so you can keep it open through every step; 
 1. `lazyspec` in the project.
 2. Scope list: platform pages first (overview on top), then capability specs.
 3. `Tab` to Plan: each change's stage and task progress.
-4. `s` cycles sort (name A–Z, Z–A, recently modified); `/` filters; `h` shows archived changes.
+4. `o` cycles sort (name A–Z, Z–A, recently modified); `/` filters; `.` shows archived changes; `p`, `s`, `d` jump to the plan, the scope and the details; `h` goes back to the document last read.
 5. `z` widens the details pane for a long summary.
 
 ### 2. Start a new change
@@ -370,7 +370,7 @@ Command line: `lazyspec -Export Pdf -Groups 1,3` (with the groups they require),
 1. `t` (on any screen where nothing is typed; `Ctrl+T` on any screen, also while typing), and type: a task number (`1.3`: in every change), a change and a number (`01 1.3`, `signup 1.3`), or words (`verification`, `refund e-mail`): every task, requirement, scenario and section (`## Why`, `### ADR-001` ..., by its text too) that contains them all. Each result shows the document it is in (Proposal, Specs, Design, Tasks, Models ...).
 2. `Tab` narrows it by kind (all, tasks, open tasks, requirements, scenarios, sections), `Shift+Tab` by document.
 3. `Enter` opens it in Read, on the tasks or the specs tab, scrolled to it and marked `▸`; `Esc` returns to the results, `Esc` again to the screen you came from.
-4. Archived changes are searched only when shown on Home (`h`).
+4. Archived changes are searched only when shown on Home (`.`).
 5. With groups: `g1` or `group 1` (or the project's word, `phase 1`) next to your words keeps one group.
 
 ### 17. Clean up: remove, change or redo tasks, requirements and scenarios
