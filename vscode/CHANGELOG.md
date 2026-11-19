@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.3
+
+- The panes without a chord, the same letters everywhere: Ctrl+Alt+P / S / D / U / H (Plan, Scope, Details, Undo,
+  here: the document); on a Mac Control+Option (⌃⌥) and the same letters - also for find (T), Read (R), the agent (A).
+
 ## 0.5.2
 
 - The agent in the background, visible: a spinner in the status bar (what, how long, its last step; a click:

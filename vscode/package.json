@@ -2,7 +2,7 @@
   "name": "lazyspec",
   "displayName": "LazySpec - OpenSpec specs and changes",
   "description": "A project's OpenSpec in your editor: the specifications and the plan (by group), formatted reading, tasks, requirements, scenarios and sections to edit, tick, delete or hand to the agent, find, out-of-date documents, undo, validate, archive, and exports for the client in the company look.",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "publisher": "netmedia",
   "author": {
     "name": "Netmedia",
@@ -718,7 +718,7 @@
       {
         "command": "lazyspec.find",
         "key": "ctrl+alt+t",
-        "mac": "cmd+alt+t"
+        "mac": "ctrl+alt+t"
       },
       {
         "command": "lazyspec.deleteItems",
@@ -739,13 +739,13 @@
       {
         "command": "lazyspec.agentItems",
         "key": "ctrl+alt+a",
-        "mac": "cmd+alt+a",
+        "mac": "ctrl+alt+a",
         "when": "(focusedView == lazyspec.plan || focusedView == lazyspec.scope)"
       },
       {
         "command": "lazyspec.read",
         "key": "ctrl+alt+r",
-        "mac": "cmd+alt+r",
+        "mac": "ctrl+alt+r",
         "when": "(focusedView == lazyspec.plan || focusedView == lazyspec.scope)"
       },
       {
@@ -756,28 +756,28 @@
       },
       {
         "command": "lazyspec.focusPlan",
-        "key": "ctrl+; p",
-        "mac": "cmd+; p"
+        "key": "ctrl+alt+p",
+        "mac": "ctrl+alt+p"
       },
       {
         "command": "lazyspec.focusScope",
-        "key": "ctrl+; s",
-        "mac": "cmd+; s"
+        "key": "ctrl+alt+s",
+        "mac": "ctrl+alt+s"
       },
       {
         "command": "lazyspec.focusDetails",
-        "key": "ctrl+; d",
-        "mac": "cmd+; d"
+        "key": "ctrl+alt+d",
+        "mac": "ctrl+alt+d"
       },
       {
         "command": "lazyspec.focusUndo",
-        "key": "ctrl+; u",
-        "mac": "cmd+; u"
+        "key": "ctrl+alt+u",
+        "mac": "ctrl+alt+u"
       },
       {
         "command": "lazyspec.focusEditor",
-        "key": "ctrl+; e",
-        "mac": "cmd+; e"
+        "key": "ctrl+alt+h",
+        "mac": "ctrl+alt+h"
       }
     ],
     "configuration": {
