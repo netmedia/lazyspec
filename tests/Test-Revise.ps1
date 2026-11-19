@@ -136,12 +136,15 @@ try {
     if ($mc.Count) { $mt = [IO.File]::ReadAllText((Join-Path $mc[0].FullName 'specs\user-accounts\spec.md'), $utf8) }
     Check ($mt -match '## MODIFIED Requirements' -and $mt -match 'e-mail address\. Within an hour\.' -and $mt -match 'Scenario: Reset link' -and (Read-File 'openspec\specs\user-accounts\spec.md') -notmatch 'Within an hour') 'through a change: the whole requirement as edited, the spec untouched' $mt
 
-    # 6. u: undo a piece, delete the new files.
+    # 6. u: undo a piece, delete the new files (an export, in openspec/exports, isn't one of them).
+    & (Get-Process -Id $PID).Path -NoProfile -ExecutionPolicy Bypass -File $lazyspec -Root $proj -Export Html -Item 01-add-user-signup -KeepDiagrams 2>&1 | Out-Null
+    Check (@(Get-ChildItem -LiteralPath (Join-Path $proj 'openspec\exports') -Filter '*.html' -ErrorAction SilentlyContinue).Count -eq 1) 'an export: in openspec/exports by default'
     $f = Invoke-Keys 'u,snap'
+    Check ($f[0] -notmatch 'exports') 'undo: not the exports' $f[0]
     Check ($f[0] -match 'undo' -and $f[0] -match 'tasks\.md  changed' -and $f[0] -match '-\d+\s+\+\d+' -and $f[0] -match 'remove-from-specs-.+  new') 'u: the changes since the commit, piece by piece' $f[0]
     # Each piece and each new file, undone (Enter, y) until none is left.
     $f = Invoke-Keys ('u' + (',Enter,y' * 30) + ',snap')
-    $left = Invoke-Git @('status', '--porcelain', '--untracked-files=all', '--', 'openspec')
+    $left = Invoke-Git @('status', '--porcelain', '--untracked-files=all', '--', 'openspec', ':(exclude)openspec/exports')
     Check ((Read-File $tasks) -match '1\.4 Nightly' -and (Read-File $tasks) -notmatch 'also the API' -and (Read-File 'openspec\changes\01-add-user-signup\specs\user-accounts\spec.md') -match 'Link expired') 'undone: the task and the scenario back'
     Check (-not @(Get-ChildItem -LiteralPath (Join-Path $proj 'openspec\changes') -Directory -Filter 'remove-from-specs-*').Count -and -not @(Get-ChildItem -LiteralPath (Join-Path $proj 'openspec\changes') -Directory -Filter 'modify-specs-*').Count) 'undone: the new changes deleted'
     Check (-not $left.Trim()) 'nothing left to undo: as committed' $left

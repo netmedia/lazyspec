@@ -2,7 +2,7 @@
 #
 # In the project's openspec/config.yaml (the path relative to the project's root; spaces are fine):
 #   lazyspec:
-#     documentTheme: openspec_artifacts/theme/document-theme.yaml
+#     documentTheme: openspec/artifacts/document-theme.yaml
 # or for one export: lazyspec -Export Pdf -Theme <path>   (relative to the current folder; wins)
 #
 # Next to this file:
