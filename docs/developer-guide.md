@@ -395,6 +395,9 @@ Command line: `lazyspec -Export Pdf -Groups 1,3` (with the groups they require),
 
 1. The change shows `!` in Plan; its details list *OUT OF DATE*: which document, and which requirements were added (`+`), changed (`~`) or removed (`-`).
 2. `y`: **update them** (the agent gets exactly what changed, before and now) or **mark them as in sync** if nothing needs to change.
+   - In the background: when the agent ends with 0 and `openspec validate <change>` passes, the change is marked as in sync by itself.
+   - Here: LazySpec asks on your return.
+   - Either way, a spec someone edits during the run still shows as out of date.
 3. The first time, LazySpec asks whether to watch for this in the project (`lazyspec: syncCheck:`).
 
 **The agent:** each time LazySpec hands work to Claude Code it asks how:

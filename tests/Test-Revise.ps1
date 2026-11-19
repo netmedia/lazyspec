@@ -68,7 +68,9 @@ try {
     [void](Invoke-Git @('add', '-A'))
     [void](Invoke-Git @('-c', 'user.name=test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'base'))
     $agent = Join-Path $work 'agent.cmd'
-    [IO.File]::WriteAllText($agent, "@echo STAND-IN AGENT %*`r`n")
+    # It fails (exit code 1): the change stays out of date for the steps after it (an agent that ends with 0 marks
+    # it as in sync: tests\Test-SyncAgent.ps1).
+    [IO.File]::WriteAllText($agent, "@echo STAND-IN AGENT %*`r`n@exit /b 1`r`n")
     $env:LAZYSPEC_AGENT = $agent
     $tasks = 'openspec\changes\01-add-user-signup\tasks.md'
 
@@ -97,11 +99,12 @@ try {
     $f = Invoke-Keys 'Tab,y,u,snap,b,wait:done,snap,a,text:2,snap,Enter,wait:done,snap'
     Check ($f[0] -match 'Here \(it asks, you answer\)\s+In the background \(no questions\)\s+Save the prompt' -and $f[0] -match 'h here\s+b background\s+s save it') 'asked how: here, in the background, or saved' $f[0]
     Check ($f[1] -match 'STAND-IN AGENT -p "Read the file \.lazyspec/prompts/' -and $f[1] -match 'Do not ask questions' -and $f[1] -match 'acceptEdits' -and $f[1] -match 'a answer Claude') 'in the background: the prompt, no questions; a answers it after' $f[1]
+    Check ($f[1] -match '01-add-user-signup: not marked as in sync - the agent ended with exit code 1') 'it failed: not marked as in sync, said' $f[1]
     Check ($f[2] -match 'Answer Claude:\s+2') 'a: your answer typed in the run screen' $f[2]
     Check ($f[3] -match 'STAND-IN AGENT -c -p 2 --permission-mode acceptEdits') 'the answer: the same conversation (claude -c)' $f[3]
     Check ((Read-File 'openspec\config.yaml') -match '(?m)^  agent: background$') 'the choice remembered (lazyspec: agent: background)'
     $f = Invoke-Keys 'Tab,y,u,h,snap'
-    Check ($f[0] -match 'Claude Code done \(Update 01-add-user-signup\)\. u: what it changed') 'here: Claude Code in the terminal, then back, the documents read again' $f[0]
+    Check ($f[0] -match 'Claude Code ended with exit code 1 \(Update 01-add-user-signup\): 01-add-user-signup not marked as in sync\.') 'here: Claude Code in the terminal, then back; it failed: not marked as in sync' $f[0]
     Check ((Read-File 'openspec\config.yaml') -match '(?m)^  agent: here$') 'the choice remembered (lazyspec: agent: here)'
     # From Read too: the change being read out of date at the top, y there.
     $f = Invoke-Keys 'Tab,Enter,snap,y,snap,Esc'
