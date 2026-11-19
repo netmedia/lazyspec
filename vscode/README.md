@@ -80,6 +80,10 @@ document was written from in `.lazyspec/sync.json`, and the extension reads and 
 - The first time it happens, you are asked whether to watch for it (`lazyspec: syncCheck:`).
 - **Sync Out-of-Date Documents** (the warning button on the change) either has the agent update them (it
   gets what changed, before and now) or marks them as in sync.
+- **Several at once**: **Sync All Out-of-Date Changes...** (the warning button in the Plan's title bar, or
+  the `⚠` count in the status bar) lists every out-of-date change, all chosen. Untick the ones to leave, then
+  update them (one agent run for all of them; each change validated and marked after) or mark them all as in
+  sync. Selecting several changes in the Plan (`Ctrl`/`Shift`-click) and pressing `⚠` does the same for those.
 - When the agent is done, the change is **marked as in sync by itself**, as in LazySpec:
   - **In the background**: when Claude Code ends with exit code 0 and `openspec validate <change> --strict`
     passes. Otherwise it isn't marked, and a message says why.

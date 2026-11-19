@@ -11,7 +11,7 @@ import { answer, agentTask, offerDoneSync, onSynced, runningSyncs } from './agen
 import { DetailsView, Selected } from './details';
 import { agentItems, deleteItems, editItem, ItemContext, openBlock, toggleTask } from './items';
 import { Change, Entry, find, FindKind, itemTitle, Project, searchIndex, Spec } from './model';
-import { doneSyncPrompts, saveSyncSnapshot, setConfigBundle, setConfigValue, setInSync, slug, StaleDoc, syncPrompt, syncState } from './ops';
+import { doneSyncPrompts, saveSyncSnapshot, setConfigBundle, setConfigValue, setInSync, slug, StaleDoc, syncPromptMany, syncState } from './ops';
 import { ReadPanel, ReadTarget } from './read';
 import { entryOf, Node, PlanTree, ScopeTree, Settings } from './tree';
 import { HeadContent, showUndo, undo, UndoNode, UndoTree } from './undo';
@@ -426,18 +426,39 @@ async function readAt(e: Entry) {
 
 // --- out of date --------------------------------------------------------------------------------------------
 
-async function syncCommand(arg?: unknown) {
-  const t = targetOf(arg);
-  if (!t?.change) { void vscode.window.showInformationMessage('Select a change in the Plan.'); return; }
-  const docs = staleOf(t.project, t.change);
-  if (!docs?.length) { void vscode.window.showInformationMessage(`${t.change.name}: its documents are up to date.`); return; }
+/** Out-of-date changes brought up to date: the clicked one with the others selected; none - every one of the
+ *  project (all: chosen, all preselected). Then the agent (one run for all of them) or marked as in sync. */
+async function syncCommand(node?: unknown, nodes?: unknown[], all = false) {
+  let p: Project | undefined;
+  let list: Change[] = [];
+  const picked = (nodes?.length ? nodes : node ? [node] : []).map(n => targetOf(n)).filter(t => t?.change);
+  if (picked.length && !all) {
+    p = picked[0]!.project;
+    list = picked.filter(t => t!.project === p).map(t => t!.change!);
+  } else {
+    p = await pickProject(node && !('kind' in (node as object)) ? node as { root?: string } : undefined);
+    if (!p) { return; }
+    const stale = p.changes.filter(c => !c.archived && staleOf(p!, c)?.length).sort((a, b) => a.name.localeCompare(b.name));
+    if (!stale.length) { void vscode.window.showInformationMessage('No out-of-date changes: their documents are up to date.'); return; }
+    const pr = p;
+    const chosen = stale.length === 1 ? stale : (await vscode.window.showQuickPick(stale.map(c => ({ label: itemTitle(c), description: (staleOf(pr, c) || []).map(d => d.doc.title).join(', ') + ' out of date', picked: true, c })), { canPickMany: true, placeHolder: 'The out-of-date changes to bring up to date (all of them chosen)' }))?.map(x => x.c);
+    if (!chosen?.length) { return; }
+    list = chosen;
+  }
+  const proj = p!;
+  const items = list.map(c => ({ change: c, stale: staleOf(proj, c) || [] })).filter(i => i.stale.length);
+  if (!items.length) { void vscode.window.showInformationMessage(`${list.map(c => c.name).join(', ')}: up to date.`); return; }
+  const what = items.length === 1 ? items[0].change.name : `${items.length} changes`;
   const pick = await vscode.window.showQuickPick([
-    { label: '$(sparkle) Update them', description: 'the agent gets what changed, before and now', v: 'update' },
-    { label: '$(check) Mark them as in sync', description: 'as they are now', v: 'mark' },
-  ], { placeHolder: `${t.change.name}: ${docs.map(d => d.doc.title).join(', ')} older than what they are written from` });
-  if (pick?.v === 'mark') { setInSync(t.project, t.change); reload(); }
-  // The agent done: the change marked as in sync against what it was given (the prompt's snapshot).
-  if (pick?.v === 'update') { await agentTask(t.project, `Update ${t.change.name}`, `sync-${t.change.name}`, syncPrompt(t.project, t.change, docs), rel => saveSyncSnapshot(t.project, t.change!, docs, rel)); }
+    { label: '$(sparkle) Update them', description: items.length > 1 ? 'one agent run for all of them; each validated and marked after' : 'the agent gets what changed, before and now', v: 'update' },
+    { label: '$(check) Mark them as in sync', description: 'as they are now (nothing needs to change)', v: 'mark' },
+  ], { placeHolder: items.length === 1 ? `${what}: ${items[0].stale.map(d => d.doc.title).join(', ')} older than what they are written from` : `${what} out of date: ${items.map(i => i.change.name).join(', ')}` });
+  if (pick?.v === 'mark') { for (const i of items) { setInSync(proj, i.change); } reload(); void vscode.window.showInformationMessage(`${what}: marked as in sync.`); }
+  // The agent done: each change marked as in sync against what it was given (the prompt's snapshot each).
+  if (pick?.v === 'update') {
+    const many = items.length > 1;
+    await agentTask(proj, `Update ${what}`, many ? `sync-${items.length}-changes` : `sync-${items[0].change.name}`, syncPromptMany(proj, items), rel => items.map(i => saveSyncSnapshot(proj, i.change, i.stale, rel, many)));
+  }
 }
 
 // --- the views ---------------------------------------------------------------------------------------------------
@@ -481,6 +502,7 @@ function reload() {
   }
   void vscode.commands.executeCommand('setContext', 'lazyspec.hasGroups', projects.some(p => p.grouping));
   void vscode.commands.executeCommand('setContext', 'lazyspec.hasProject', projects.length > 0);
+  void vscode.commands.executeCommand('setContext', 'lazyspec.hasStale', projects.some(p => p.changes.some(c => !c.archived && staleOf(p, c)?.length)));
   plan.refresh();
   scope.refresh();
   undoTree.refresh();
@@ -503,6 +525,8 @@ function reload() {
   const outOfDate = projects.reduce((k, p) => k + p.changes.filter(c => !c.archived && staleOf(p, c)?.length).length, 0);
   if (projects.length) {
     status.text = `$(checklist) ${done}/${total}${outOfDate ? `  $(warning) ${outOfDate}` : ''}`;
+    // Out-of-date changes: a click brings them up to date (all of them chosen); else the sidebar.
+    status.command = outOfDate ? 'lazyspec.syncAll' : 'workbench.view.extension.lazyspec';
     status.tooltip = `OpenSpec: ${projects.reduce((k, p) => k + p.specs.length, 0)} specs, ${active.length} active changes, ${done} of ${total} tasks done${outOfDate ? `; ${outOfDate} with out-of-date documents` : ''}`;
     status.show();
   } else { status.hide(); }
@@ -599,7 +623,8 @@ export function activate(context: vscode.ExtensionContext): Api {
   reg('lazyspec.agentItems', (n?: Node, ns?: Node[]) => agentItems(itemCtx, entriesOf(n, ns)));
   reg('lazyspec.toggleTask', async (n?: Node, ns?: Node[]) => { for (const e of entriesOf(n, ns).filter(x => x.kind === 'task')) { await toggleTask(itemCtx, e); } });
   reg('lazyspec.readItem', (n?: Node, ns?: Node[]) => { const e = entriesOf(n, ns)[0]; if (e) { return readAt(e); } });
-  reg('lazyspec.sync', syncCommand);
+  reg('lazyspec.sync', (n?: unknown, ns?: unknown[]) => syncCommand(n, ns));
+  reg('lazyspec.syncAll', (arg?: { root?: string }) => syncCommand(arg, undefined, true));
   reg('lazyspec.markInSync', (arg?: unknown) => { const t = targetOf(arg); if (t?.change) { setInSync(t.project, t.change); reload(); } });
   reg('lazyspec.agentAnswer', () => answer());
   reg('lazyspec.undoRefresh', () => reload());

@@ -184,6 +184,25 @@ export async function run(): Promise<void> {
     const item = api.plan.getTreeItem(api.plan.getChildren(api.plan.getChildren()[0])[0]);
     assert.ok(!String(item.description).startsWith('! '), `in sync: ${item.description}`);
   });
+  await check('several out-of-date changes, one agent run: each validated and marked', async () => {
+    const { completeSyncs } = require('../src/agent');
+    const ops = require('../src/ops');
+    const p = api.projects()[0];
+    for (const n of ['01-add-user-signup', '03-add-order-history']) {
+      ops.setInSync(p, p.changes.find(c => c.name === n));
+      fs.appendFileSync(path.join(work, 'openspec', 'changes', n, 'proposal.md'), '\nA batch note.\n');
+    }
+    api.reload();
+    const st = ops.syncState(p);
+    const items = ['01-add-user-signup', '03-add-order-history'].map(n => ({ change: p.changes.find(c => c.name === n)!, stale: st.get(n) }));
+    const rel = ops.savePrompt(p, 'sync-2-changes', ops.syncPromptMany(p, items));
+    const files = items.map(i => ops.saveSyncSnapshot(p, i.change, i.stale, rel, true));
+    await completeSyncs(p, files, 0);
+    await new Promise(r => setTimeout(r, 300));
+    assert.ok(files.every(f => !fs.existsSync(f)), 'both snapshots used up');
+    api.reload();
+    assert.strictEqual(ops.syncState(p).size, 0, 'both in sync');
+  });
   await check('the bundled lazyspec.ps1 is in the extension', () => {
     assert.ok(fs.existsSync(path.join(vscode.extensions.getExtension('netmedia.lazyspec')!.extensionPath, 'kit', 'lazyspec.ps1')));
   });

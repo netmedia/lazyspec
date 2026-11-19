@@ -37,19 +37,19 @@ export function onSynced(fn: () => void) { afterSync = fn; }
 /** The work as a prompt, then how (asked; the project's last choice first). $sync: writes a sync prompt's
  *  snapshot (<prompt>.sync.json) from the prompt's path: the agent done, the change is marked as in sync
  *  against it - in the background when it ends with 0 and openspec validate passes; here: asked. */
-export async function agentTask(p: Project, label: string, name: string, prompt: string, sync?: (rel: string) => string) {
+export async function agentTask(p: Project, label: string, name: string, prompt: string, sync?: (rel: string) => string | string[]) {
   const rel = savePrompt(p, name, prompt);
-  const syncFile = sync ? sync(rel) : '';
+  const syncFiles = sync ? ([] as string[]).concat(sync(rel)) : [];
   const def = p.config.values['agent'] === 'run' ? 'here' : p.config.values['agent'];
   const items = [...MODES].sort((a, b) => (a.mode === def ? -1 : b.mode === def ? 1 : 0));
   const pick = await vscode.window.showQuickPick(items, { placeHolder: `${label}: the agent (Claude Code)`, title: 'LazySpec' });
   if (!pick) { void vscode.window.showInformationMessage(`Prompt saved: ${rel}`); return; }
   if (p.config.values['agent'] !== pick.mode) { try { setConfigValue(p, 'agent', pick.mode); } catch { /* read-only */ } }
-  if (syncFile && pick.mode !== 'prompt') { runningSyncs.add(syncFile); }
-  if (pick.mode === 'here') { here(p, label, rel, syncFile); }
+  if (pick.mode !== 'prompt') { syncFiles.forEach(f => runningSyncs.add(f)); }
+  if (pick.mode === 'here') { here(p, label, rel, syncFiles); }
   else if (pick.mode === 'background') {
-    const code = await background(p, label, ['-p', agentInstruction(rel) + ' Do not ask questions: where something is unclear, decide sensibly, and at the end list what you decided.', '--permission-mode', 'acceptEdits'], !!syncFile);
-    if (syncFile) { await completeSync(p, syncFile, code); }
+    const code = await background(p, label, ['-p', agentInstruction(rel) + ' Do not ask questions: where something is unclear, decide sensibly, and at the end list what you decided.', '--permission-mode', 'acceptEdits'], syncFiles.length > 0);
+    if (syncFiles.length) { await completeSyncs(p, syncFiles, code); }
   }
   else { await showPrompt(rel, ''); }
 }
@@ -58,11 +58,11 @@ async function showPrompt(rel: string, why: string) {
   await vscode.env.clipboard.writeText(cmd);
   void vscode.window.showInformationMessage(`${why}Prompt saved: ${rel}. The command to give it is copied: ${cmd}`);
 }
-function here(p: Project, label: string, rel: string, syncFile = '') {
+function here(p: Project, label: string, rel: string, syncFiles: string[] = []) {
   const tool = agentTool();
-  if (!tool) { runningSyncs.delete(syncFile); void showPrompt(rel, 'Claude Code (claude) is not installed. '); return; }
+  if (!tool) { syncFiles.forEach(f => runningSyncs.delete(f)); void showPrompt(rel, 'Claude Code (claude) is not installed. '); return; }
   const args = [agentInstruction(rel), '--permission-mode', 'acceptEdits'];
-  if (!syncFile) {
+  if (!syncFiles.length) {
     const t = vscode.window.createTerminal({ name: `Claude Code: ${label}`, cwd: p.root });
     t.show();
     t.sendText(`${quote(tool)} ${args.map(quote).join(' ')}`);
@@ -79,13 +79,17 @@ function here(p: Project, label: string, rel: string, syncFile = '') {
     if (closed !== t) { return; }
     sub.dispose();
     const code = closed.exitStatus?.code;
-    runningSyncs.delete(syncFile);
-    const name = readSyncSnapshot(syncFile)?.change || '';
-    if (!name) { return; }
+    syncFiles.forEach(f => runningSyncs.delete(f));
+    const names = syncFiles.map(f => readSyncSnapshot(f)?.change || '').filter(n => n);
+    if (!names.length) { return; }
+    const what = names.length === 1 ? names[0] : `${names.length} changes`;
     // /exit ends it with 0 also when you stopped it halfway: asked (yes first).
-    if (code !== undefined && code !== 0) { void vscode.window.showWarningMessage(`Claude Code ended with exit code ${code}: ${name} not marked as in sync.`); return; }
-    const ok = await vscode.window.showInformationMessage(`${name}: mark as in sync? (Claude Code is done)`, 'Yes, Mark', 'No');
-    if (ok === 'Yes, Mark') { mark(p, syncFile, 'updated by the agent, marked as in sync'); }
+    if (code !== undefined && code !== 0) { void vscode.window.showWarningMessage(`Claude Code ended with exit code ${code}: ${what} not marked as in sync.`); return; }
+    const ok = await vscode.window.showInformationMessage(`${what}: mark as in sync? (Claude Code is done)`, 'Yes, Mark', 'No');
+    if (ok !== 'Yes, Mark') { return; }
+    const marked = syncFiles.map(f => setInSyncFromFile(p, f)).filter(n => n);
+    void vscode.window.showInformationMessage(`${marked.length === 1 ? marked[0] : `${marked.length} changes`}: updated by the agent, marked as in sync.`);
+    afterSync();
   });
   t.show();
 }
@@ -96,21 +100,30 @@ function mark(p: Project, syncFile: string, how: string) {
 }
 /** A sync run in the background ended: 0 - validated (openspec validate <change>, its output in the channel),
  *  then marked; else not marked, said so. */
-export async function completeSync(p: Project, syncFile: string, code: number) {
+export async function completeSync(p: Project, syncFile: string, code: number) { await completeSyncs(p, [syncFile], code); }
+/** A sync run in the background ended (one change or several): 0 - each change validated (openspec validate
+ *  <change>, its output in the channel), then marked; the ones that don't validate not; else none marked. */
+export async function completeSyncs(p: Project, syncFiles: string[], code: number) {
   channel ||= vscode.window.createOutputChannel('LazySpec: Claude Code');
-  runningSyncs.delete(syncFile);
-  const name = readSyncSnapshot(syncFile)?.change || '';
-  if (!name) { return; }
-  if (code !== 0) { void vscode.window.showWarningMessage(`${name}: not marked as in sync - the agent ended with exit code ${code} (Sync again, or mark it).`); return; }
+  syncFiles.forEach(f => runningSyncs.delete(f));
+  const items = syncFiles.map(file => ({ file, name: readSyncSnapshot(file)?.change || '' })).filter(i => i.name);
+  if (!items.length) { return; }
+  const all = items.length === 1 ? items[0].name : `${items.length} changes`;
+  if (code !== 0) { void vscode.window.showWarningMessage(`${all}: not marked as in sync - the agent ended with exit code ${code} (Sync again, or mark them).`); return; }
   const cli = vscode.workspace.getConfiguration('lazyspec').get<string>('openspec', 'openspec');
-  channel!.appendLine(`\n> ${cli} validate ${name} --strict --no-interactive`);
-  const v = await run(p.root, cli, ['validate', name, '--strict', '--no-interactive']);
-  if (v === -1) { channel!.appendLine('! not validated: the OpenSpec CLI isn\'t there (lazyspec.openspec)'); }
-  else if (v !== 0) {
-    void vscode.window.showWarningMessage(`${name}: not marked as in sync - openspec validate failed. Fix it, then sync again.`, 'Show Output').then(pick => { if (pick) { channel!.show(); } });
-    return;
+  const marked: string[] = [], failed: string[] = [];
+  for (const i of items) {
+    channel!.appendLine(`\n> ${cli} validate ${i.name} --strict --no-interactive`);
+    const v = await run(p.root, cli, ['validate', i.name, '--strict', '--no-interactive']);
+    if (v === -1) { channel!.appendLine('! not validated: the OpenSpec CLI isn\'t there (lazyspec.openspec)'); }
+    else if (v !== 0) { failed.push(i.name); continue; }
+    if (setInSyncFromFile(p, i.file)) { marked.push(i.name); }
   }
-  mark(p, syncFile, 'updated by the agent, marked as in sync');
+  if (marked.length) { void vscode.window.showInformationMessage(`${marked.length === 1 ? marked[0] : `${marked.length} changes`}: updated by the agent, marked as in sync.`); }
+  if (failed.length) {
+    void vscode.window.showWarningMessage(`Not marked as in sync - openspec validate failed: ${failed.join(', ')}. Fix them, then sync again.`, 'Show Output').then(pick => { if (pick) { channel!.show(); } });
+  }
+  afterSync();
 }
 /** A command's output in the channel; its exit code (-1: not started). npm's .cmd through cmd.exe. */
 function run(cwd: string, tool: string, args: string[]): Promise<number> {

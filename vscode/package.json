@@ -2,7 +2,7 @@
   "name": "lazyspec",
   "displayName": "LazySpec - OpenSpec specs and changes",
   "description": "A project's OpenSpec in your editor: the specifications and the plan (by group), formatted reading, tasks, requirements, scenarios and sections to edit, tick, delete or hand to the agent, find, out-of-date documents, undo, validate, archive, and exports for the client in the company look.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "netmedia",
   "author": {
     "name": "Netmedia",
@@ -139,6 +139,12 @@
       {
         "command": "lazyspec.sync",
         "title": "Sync Out-of-Date Documents...",
+        "category": "LazySpec",
+        "icon": "$(warning)"
+      },
+      {
+        "command": "lazyspec.syncAll",
+        "title": "Sync All Out-of-Date Changes...",
         "category": "LazySpec",
         "icon": "$(warning)"
       },
@@ -291,6 +297,11 @@
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "lazyspec.syncAll",
+          "when": "view == lazyspec.plan && lazyspec.hasStale",
+          "group": "navigation@0"
+        },
         {
           "command": "lazyspec.find",
           "when": "(view == lazyspec.plan || view == lazyspec.scope)",
