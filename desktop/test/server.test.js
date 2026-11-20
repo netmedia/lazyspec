@@ -119,3 +119,14 @@ test('save commits openspec/ only on a branch and pushes it', async () => {
   assert.ok(files.split('\n').filter(Boolean).every(f => f.startsWith('openspec/')), files);
   assert.match(git(['status', '--porcelain']), /src\.cs/);
 });
+
+test('a projects folder that is not there: the folder the server runs in', () => {
+  const input = [
+    { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } } },
+    { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'about', arguments: {} } },
+  ].map(m => JSON.stringify(m)).join('\n') + '\n';
+  const r = cp.spawnSync(process.execPath, [SERVER, path.join(tmp, 'no-such-folder')], { cwd: path.join(tmp, 'projects'), input, encoding: 'utf8' });
+  const about = JSON.parse(JSON.parse(r.stdout.split('\n')[1]).result.content[0].text);
+  assert.deepStrictEqual(about.projects, ['acme-portal']);
+  assert.match(about.foldersNotFound[0], /no-such-folder/);
+});

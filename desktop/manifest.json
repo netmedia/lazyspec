@@ -23,9 +23,10 @@
     "projects": {
       "type": "directory",
       "title": "Projects folder",
-      "description": "The folder with your projects' git repositories (e.g. where GitHub Desktop clones them). LazySpec finds every project with an openspec/ folder in it, up to three levels down.",
+      "description": "The folder with your projects' git repositories (GitHub Desktop clones into Documents/GitHub). LazySpec finds every project with an openspec/ folder in it, up to three levels down.",
       "required": true,
-      "multiple": true
+      "multiple": true,
+      "default": ["${DOCUMENTS}/GitHub"]
     }
   },
   "tools": [],

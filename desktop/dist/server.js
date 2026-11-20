@@ -1467,8 +1467,11 @@ var path3 = __toESM(require("path"));
 var SKIP = /* @__PURE__ */ new Set(["node_modules", "out", "dist", "bin", "obj", "build", "target", "vendor", "kit", "openspec"]);
 function roots() {
   const given = [...process.argv.slice(2), ...(process.env.LAZYSPEC_PROJECTS || "").split(path3.delimiter)].map((s2) => s2.trim()).filter((s2) => s2 && !s2.startsWith("${"));
-  const list = given.length ? given : [process.cwd()];
-  return [...new Set(list.map((r) => path3.resolve(r)))].filter((r) => isDir2(r));
+  const there = [...new Set(given.map((r) => path3.resolve(r)))].filter((r) => isDir2(r));
+  return there.length ? there : [process.cwd()];
+}
+function missingRoots() {
+  return [...process.argv.slice(2), ...(process.env.LAZYSPEC_PROJECTS || "").split(path3.delimiter)].map((s2) => s2.trim()).filter((s2) => s2 && !s2.startsWith("${") && !isDir2(path3.resolve(s2)));
 }
 function isDir2(p) {
   try {
@@ -1781,6 +1784,7 @@ var tools = [
       text: json({
         lazyspec: VERSION,
         folders: roots(),
+        foldersNotFound: missingRoots().length ? missingRoots() : void 0,
         projects: discover().map((f) => f.id),
         node: process.version,
         git: !!onPath("git"),

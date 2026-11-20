@@ -58,3 +58,27 @@ jobs:
         run: |
           gh release create "${GITHUB_REF_NAME}" desktop/lazyspec.mcpb vscode/lazyspec.vsix \
             --title "LazySpec ${GITHUB_REF_NAME}" --generate-notes
+
+      # The organization's plugin marketplace (AIToolbelt) syncs only on its own pushes: the release reaches the
+      # organization by pinning the lazyspec entry to this tag's commit, in a pull request that merges by itself
+      # when AIToolbelt's checks pass. AITOOLBELT_TOKEN: a fine-grained token for netmedia/aitoolbelt with
+      # Contents and Pull requests read and write (repository secret of netmedia/lazyspec).
+      - name: Pin the release in the netmedia marketplace
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.AITOOLBELT_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "::warning::No AITOOLBELT_TOKEN secret: pin ${GITHUB_SHA} in AIToolbelt's marketplace.json by hand (desktop/scripts/pin-marketplace.js)"; exit 0; fi
+          v=$(node -p "require('./desktop/package.json').version")
+          branch="lazyspec-v$v"
+          git clone --depth 1 --branch develop "https://x-access-token:${GH_TOKEN}@github.com/netmedia/aitoolbelt.git" aitoolbelt
+          node desktop/scripts/pin-marketplace.js aitoolbelt/.claude-plugin/marketplace.json "$GITHUB_SHA" "$v"
+          cd aitoolbelt
+          git switch -c "$branch"
+          git add .claude-plugin/marketplace.json
+          git -c user.name="lazyspec-release" -c user.email="netmedia@netmedia.hr" commit -m "chore: lazyspec $v in the netmedia marketplace"
+          git push -u origin "$branch"
+          gh pr create --repo netmedia/aitoolbelt --base develop --head "$branch" \
+            --title "chore: lazyspec $v in the netmedia marketplace" \
+            --body "Pins the \`lazyspec\` plugin to [${GITHUB_REF_NAME}](https://github.com/netmedia/lazyspec/releases/tag/${GITHUB_REF_NAME}) (\`${GITHUB_SHA}\`). Merging it syncs the organization's marketplace. The Claude Desktop extension \`lazyspec.mcpb\` from the release is uploaded separately (Organization settings > Connectors > Desktop > Upload new version)."
+          gh pr merge --repo netmedia/aitoolbelt "$branch" --auto --merge || echo "::notice::Auto-merge is off in AIToolbelt: merge the pull request by hand"
