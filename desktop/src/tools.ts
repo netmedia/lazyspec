@@ -7,7 +7,7 @@ import { Change, Entry, find, FindKind, itemTitle, Project, readText, searchInde
 import { kindWord, newModifyChange, removeEntries, requirementBlocks, setInSync, slug, syncState, undoFile, undoHunk, undoRows } from '../../vscode/src/ops';
 import { Tool, UserError } from './mcp';
 import {
-  clip, discover, git, isFile, json, kitScript, onPath, openspec, openspecVersion, powershell, project, projectId, readableCode,
+  clip, discover, git, isFile, json, kitScript, missingRoots, onPath, openspec, openspecVersion, powershell, project, projectId, readableCode,
   readableDoc, readRaw, rel, roots, run, today, writable, writeRaw,
 } from './projects';
 
@@ -62,7 +62,7 @@ export const tools: Tool[] = [
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     run: () => ({
       text: json({
-        lazyspec: VERSION, folders: roots(), projects: discover().map(f => f.id), node: process.version,
+        lazyspec: VERSION, folders: roots(), foldersNotFound: missingRoots().length ? missingRoots() : undefined, projects: discover().map(f => f.id), node: process.version,
         git: !!onPath('git'), gh: !!onPath('gh'), openspec: openspecVersion(), powershell: powershell(),
       }),
     }),

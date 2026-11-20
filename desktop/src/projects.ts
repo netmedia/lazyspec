@@ -9,12 +9,19 @@ import { UserError } from './mcp';
 
 const SKIP = new Set(['node_modules', 'out', 'dist', 'bin', 'obj', 'build', 'target', 'vendor', 'kit', 'openspec']);
 
-/** The folders given (Desktop: the projects folders the PM chose; Claude Code: none, then the current folder). */
+/** The folders given (Desktop: the projects folders the PM chose, by default Documents/GitHub; Claude Code:
+ *  none). None given, or none of them there (the default on a machine without GitHub Desktop, a Cowork session
+ *  that keeps the default): the folder the server runs in. */
 export function roots(): string[] {
   const given = [...process.argv.slice(2), ...(process.env.LAZYSPEC_PROJECTS || '').split(path.delimiter)]
     .map(s => s.trim()).filter(s => s && !s.startsWith('${'));
-  const list = given.length ? given : [process.cwd()];
-  return [...new Set(list.map(r => path.resolve(r)))].filter(r => isDir(r));
+  const there = [...new Set(given.map(r => path.resolve(r)))].filter(r => isDir(r));
+  return there.length ? there : [process.cwd()];
+}
+/** The folders given that aren't there (about reports them). */
+export function missingRoots(): string[] {
+  return [...process.argv.slice(2), ...(process.env.LAZYSPEC_PROJECTS || '').split(path.delimiter)]
+    .map(s => s.trim()).filter(s => s && !s.startsWith('${') && !isDir(path.resolve(s)));
 }
 function isDir(p: string) { try { return fs.statSync(p).isDirectory(); } catch { return false; } }
 export function isFile(p: string) { try { return fs.statSync(p).isFile(); } catch { return false; } }

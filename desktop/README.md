@@ -56,8 +56,18 @@ npm run pack      # lazyspec.mcpb: manifest (tools and prompts asked from the se
 
 1. Set the version in `desktop/package.json` (the build puts it in `.claude-plugin/plugin.json` and the manifest).
 2. `npm test --prefix desktop` and commit (with `desktop/dist/` and `.claude-plugin/`).
-3. Tag `v<version>` and push it. CI builds `lazyspec.mcpb` and `lazyspec.vsix` and creates the GitHub release.
-4. Claude Desktop: upload the new `.mcpb` (Owner) or send it round. Claude Code: `/plugin update lazyspec`.
+3. Tag `v<version>` and push it. CI:
+   - builds `lazyspec.mcpb` and `lazyspec.vsix` and creates the GitHub release;
+   - opens a pull request in AIToolbelt that pins the `lazyspec` marketplace entry to this tag's commit
+     (`desktop/scripts/pin-marketplace.js`). It merges by itself once AIToolbelt's checks pass, if auto-merge is on
+     there, and the merge syncs the organization's marketplace (Claude Code, Cowork). This needs the
+     `AITOOLBELT_TOKEN` secret; without it, CI warns, and you pin the entry yourself.
+4. Claude Desktop Chat: an Owner chooses *Organization settings → Connectors → Desktop → ⋯ → Upload new version* with
+   the release's `lazyspec.mcpb`. The name stays `lazyspec` and the version goes up; a new name would make a second
+   extension.
+
+Until the first release, the marketplace has no `lazyspec` entry: try the plugin with
+`claude --plugin-dir <this repository>`.
 
 Tool names are a contract with the skills that use them (`netmedia-pm`). Only add tools and optional parameters. To
 change one, add `<name>_v2`, move the skills over, and remove the old one a release or two later.
