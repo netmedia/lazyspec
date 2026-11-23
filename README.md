@@ -17,6 +17,11 @@ A project's **OpenSpec** specifications and changes in **one terminal screen** �
 - **Find** (`t`, or `Ctrl+T` on any screen): a task by its number (`1.3`, `01 1.3`) or words, a requirement, a
   scenario, a section (`## Why` ...) - in the specs and the changes, with the document each is in (filter by kind
   `Tab`, by document `Shift+Tab`); `Enter` opens it in Read, at it.
+- **Item ids** (`OSN-T-04`: `<KEY>-<KIND>-<nn>`, kinds T task, R requirement, S scenario, Q open question, D
+  decision) at the start of a task, a requirement or scenario heading, or a `- OSN-Q-02 ...` list line: shown as a
+  label of their own, and found by the id or its beginning - `OSN-T-04` (then `OSN-T-040` ...), `OSN-T-0`, `OSN-T`,
+  `osn`; the exact id first. A retired id (`openspec/keys.yaml`) shows what became of it and its successors.
+  `openspec/project-tasks.md` (the project's own tasks: pre-project, infra ...) is found as *Project tasks*.
 - **The same keys everywhere**: `t` find, `u` undo, `y` out of date - the letter where nothing is typed,
   `Ctrl+T` `Ctrl+U` `Ctrl+Y` on any screen (`Alt+` too; on a Mac `⌃` or `⌥`).
 - **Edit in place**: in Read, `↑` `↓` pick a task, requirement, scenario or section; `Enter` edits only it in a window

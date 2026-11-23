@@ -184,6 +184,8 @@ to the editor.
 - What you can type:
   - a task number: `1.3`
   - a change and a number: `01 1.3`
+  - an item id or its beginning: `OSN-T-04` (that one first, then `OSN-T-040` ...), `OSN-T-0`, `OSN-T`, `osn`;
+    a retired id (`openspec/keys.yaml`): what became of it, then its successors
   - words
   - `g1` or `group 1`: one group only
 - The buttons on top switch the kind (tasks, open tasks, requirements, scenarios, sections), the document

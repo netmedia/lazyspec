@@ -932,7 +932,7 @@
     "kit": "node scripts/copy-kit.js",
     "compile": "npm run kit && tsc -p . && node scripts/bundle-webview.js",
     "watch": "tsc -watch -p .",
-    "test": "npm run compile && node --test out/test/model.test.js out/test/ops.test.js out/test/mdmerge.test.js",
+    "test": "npm run compile && node --test out/test/model.test.js out/test/ops.test.js out/test/mdmerge.test.js out/test/ids.test.js",
     "test:vscode": "npm run compile && node out/test/run-vscode.js",
     "package": "npm run compile && vsce package --no-dependencies -o lazyspec.vsix"
   },
