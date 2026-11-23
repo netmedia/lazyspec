@@ -26,7 +26,7 @@ The guards:
 - Files that may hold secrets (`.env`, keys, publish profiles, `local.settings.json`...) are never read.
 - `save` commits nothing outside `openspec/`.
 
-The tools are generic. How a company runs its process (Netmedia: the `netmedia-pm` plugin) is in skills, not here.
+The tools are generic. How a company runs its process (Netmedia: the `netmedia` plugin, the same for Claude Code and Claude Desktop) is in skills, not here.
 
 ## Install
 
@@ -69,5 +69,5 @@ npm run pack      # lazyspec.mcpb: manifest (tools and prompts asked from the se
 Until the first release, the marketplace has no `lazyspec` entry: try the plugin with
 `claude --plugin-dir <this repository>`.
 
-Tool names are a contract with the skills that use them (`netmedia-pm`). Only add tools and optional parameters. To
+Tool names are a contract with the skills that use them (`netmedia`: `conventions-pm` → `references/tools.md`). Only add tools and optional parameters. To
 change one, add `<name>_v2`, move the skills over, and remove the old one a release or two later.
