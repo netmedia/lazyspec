@@ -69,10 +69,9 @@ The program is the same `.ps1` on both; only how it starts and what the exports 
 | The `.exe` files | start the `.ps1` next to them | Windows only: use `pwsh <script>.ps1` |
 | Kit into a project | `.\initintoproject.exe <project>` | `pwsh initintoproject.ps1 <project>` |
 | Plain `lazyspec` | `.\install.exe Profile` / `Global` / `Both` | an alias in your shell (below); `install` is for Windows |
-| PDF export | Edge (always there) or Chrome | Chrome or Edge in `/Applications` |
-| Word export, default look | Microsoft Word, else pandoc | pandoc (`brew install pandoc`) |
-| Word export, theme or template | LazySpec writes it; Word fills in the contents' page numbers | LazySpec writes it; page numbers: open it in Word, right-click the contents, Update Field |
-| Data-model diagram | a picture in Word made by Edge/Chrome; vector in PDF and HTML | the same (Chrome or Edge) |
+| Word export | a Netmedia document by netmedia-document: Python 3.10+ with `python-docx`; Word fills in the contents' page numbers | the same; page numbers: open it in Word, right-click the contents, Update Field |
+| PDF export | the Netmedia document, exported by Microsoft Word | the same (Word for Mac); without Word: export Word |
+| Data-model diagram | a picture in Word and PDF made by Edge/Chrome; vector in HTML | the same (Chrome or Edge) |
 | Your per-user data (translation cache) | `%LOCALAPPDATA%\LazySpec` | `~/Library/Application Support/LazySpec` |
 | Keys | `Ctrl+T` `Ctrl+U` `Ctrl+Y` `Ctrl+S` (or `Alt+`) | `⌃T` `⌃U` `⌃Y` `⌃S` (LazySpec turns the terminal's own uses off while it runs), or `⌥` with *Option as Meta*; `Del` is `fn ⌫` |
 
@@ -138,14 +137,16 @@ one whole: `m` (mark them, read them together, `x` exports them; saved as a name
 (a saved one: `-Item <its key>`). Projects that group their changes (phases, modules: `groups:` in
 `openspec/config.yaml`, `x-group: <id>` in a change's `.openspec.yaml`) see the plan by group; `Space` chooses
 groups (with the ones they require) and `x` exports them, or `lazyspec -Export Pdf -Groups 1,3`; see
-[Groups](tools/lazyspec/LAZYSPEC.md#the-screens). Word documents in the company's
-layout: `documentTemplate: <path to a .docx>` under `lazyspec:` in the project's `openspec/config.yaml`
-(relative to the project's root), or `-Template <path>` for one export; see
-[Word document template](tools/lazyspec/LAZYSPEC.md#word-document-template). The same company look in PDF,
-Word and HTML, with no Word needed: `documentTheme: <path to a .yaml>` (or `-Theme <path>`), its fonts in
-`fonts/` next to it (embedded in Word); see [Document theme](tools/lazyspec/LAZYSPEC.md#document-theme) and
+[Groups](tools/lazyspec/LAZYSPEC.md#the-screens). Word and PDF documents are **Netmedia documents**, made by
+the `netmedia-document` generator as every Netmedia document (the Netmedia cover, contents, styles, header and
+footer): the installed plugin's (the latest Netmedia template), else LazySpec's own copy in
+`tools/lazyspec/netmedia-document/` (`tools/update-netmedia-document.ps1` refreshes it from AIToolbelt). A
+project's own copy of the template: `documentTemplate: <path to a .docx>` under `lazyspec:` in
+`openspec/config.yaml`, or `-Template <path>` for one export; see
+[Netmedia documents](tools/lazyspec/LAZYSPEC.md#netmedia-documents-word-and-pdf). HTML exports in the project's
+look: `documentTheme: <path to a .yaml>` (or `-Theme <path>`); see [Document theme](tools/lazyspec/LAZYSPEC.md#document-theme) and
 the example [`examples/document-theme/document-theme.yaml`](examples/document-theme/document-theme.yaml).
-Any Markdown file (meeting notes, a summary) as a document in that look: `lazyspec -Export Word -Markdown <file.md>`
+Any Markdown file (meeting notes, a summary) as a document: `lazyspec -Export Word -Markdown <file.md>`
 (or `Pdf`, `Html`; its front matter: title, subtitle, toc ...); see
 [Markdown documents](tools/lazyspec/LAZYSPEC.md#markdown-documents).
 In another language: `lazyspec -Export Pdf -Language en` translates the documents with DeepL (`translation:` in
@@ -153,7 +154,8 @@ In another language: `lazyspec -Export Pdf -Language en` translates the document
 Croatian is checked by Hasek/ispravi.me); `lazyspec -AddLanguage it` adds LazySpec's texts for a new language. See
 [Export in another language](tools/lazyspec/LAZYSPEC.md#export-in-another-language-deepl).
 Tests: `.\tests\Test-WordTemplate.ps1`, `.\tests\Test-DocumentTheme.ps1`, `.\tests\Test-MarkdownDocument.ps1`, `.\tests\Test-Translation.ps1`, `.\tests\Test-Search.ps1`, `.\tests\Test-Revise.ps1`, `.\tests\Test-ChangeBundles.ps1`, `.\tests\Test-Groups.ps1`, `.\tests\Test-SyncAgent.ps1`
-(macOS: `pwsh tests/Test-WordTemplate.ps1` and so on). They use the system's Georgia, which Windows and macOS both have.
+(macOS: `pwsh tests/Test-WordTemplate.ps1` and so on). They use the system's Georgia, which Windows and macOS both have,
+and Python with `python-docx` for Word (PDF: Word).
 
 ### 1. Installed on the PC (not in the project)
 

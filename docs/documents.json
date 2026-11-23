@@ -1,0 +1,43 @@
+{
+  "$comment": "LazySpec's documents, built with the netmedia-document plugin: docs/build-documents.ps1 (or python <netmedia-document>/scripts/netmedia_document.py --documents docs/documents.json). Paths are relative to this file. The demo project's exports: docs/build-examples.ps1.",
+  "author": "Netmedia",
+  "language": "en",
+  "documents": [
+    {
+      "out": "LazySpec-Developer-Guide.docx",
+      "source": "developer-guide.md",
+      "title": "LazySpec",
+      "subtitle": "Developer Guide",
+      "version": { "file": "../vscode/package.json", "key": "version" },
+      "pdf": true,
+      "history": [
+        ["15.11.2026", "0.1.0", "First version: install, add to a project, every workflow"],
+        ["23.11.2026", "0.7.0", "Word and PDF exports as Netmedia documents; built with netmedia-document, as every Netmedia document"]
+      ]
+    },
+    {
+      "out": "LazySpec-Reference.docx",
+      "source": "../tools/lazyspec/LAZYSPEC.md",
+      "title": "LazySpec",
+      "subtitle": "Reference",
+      "version": { "file": "../vscode/package.json", "key": "version" },
+      "pdf": true,
+      "history": [
+        ["16.11.2026", "0.1.0", "First version"],
+        ["23.11.2026", "0.7.0", "Netmedia documents (Word and PDF), the project's template copy, the theme for HTML; built with netmedia-document"]
+      ]
+    },
+    {
+      "out": "LazySpec-README.docx",
+      "source": "../README.md",
+      "title": "LazySpec",
+      "subtitle": "Overview, install and use",
+      "version": { "file": "../vscode/package.json", "key": "version" },
+      "pdf": true,
+      "history": [
+        ["16.11.2026", "0.1.0", "First version"],
+        ["23.11.2026", "0.7.0", "Built with netmedia-document, as every Netmedia document"]
+      ]
+    }
+  ]
+}

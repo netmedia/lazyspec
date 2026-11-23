@@ -1,0 +1,30 @@
+{
+  "version": "1.0",
+  "font": "Montserrat",
+  "logo": "images/logo.png",
+  "icon": "images/icon.png",
+  "colors": {
+    "red": "FF303C",
+    "accent": "FF565F",
+    "text": "333333",
+    "title": "404040",
+    "grey": "595959",
+    "grey2": "808080",
+    "muted": "666666",
+    "line": "BFBFBF",
+    "headerBackground": "595959",
+    "subheaderBackground": "A6A6A6",
+    "inputBackground": "FFF2CC"
+  },
+  "diagram": {
+    "font": "\"Segoe UI\", \"Segoe UI Variable\", sans-serif",
+    "ink": "#0b0b0b",
+    "ink2": "#52514e",
+    "muted": "#8a8980",
+    "line": "#c3c2b7",
+    "grid": "#e4e3dd",
+    "highlightFill": "#e5effa",
+    "highlightStroke": "#2a78d6",
+    "series": ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300"]
+  }
+}

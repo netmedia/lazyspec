@@ -22,8 +22,8 @@
     3. Hard line breaks ("\" or two spaces at a line's end), in paragraphs and list items.
     4. Written next to the Markdown file, the same name; -Out elsewhere.
     5. The project's theme (the file in a subfolder of the project); outside a project: a note, the default look.
-    6. Word: Title, Subtitle, Heading styles; headings without page breaks; TOC field over levels 1-2.
-    7. PDF: a cover page, then the text.
+    6. Word: a Netmedia document (netmedia-document): the cover with the title, the contents, Heading 1 and 2.
+    7. PDF (Word exports it; without Word: a clear error): a cover page, then the text.
     8. Errors: a missing file, a broken front matter: a clear error, exit code 1.
 
 .PARAMETER Keep
@@ -117,7 +117,7 @@ try {
     Check ($b -match '<td><code>ask \| always \| never</code></td>' -and ([regex]::Matches($b, '<td>')).Count -eq 2) 'a table cell with an escaped pipe (\|): one cell, the pipe kept'
     $r = Invoke-LazySpec $lazyspec $proj 'Word' @('-Markdown', $md4)
     $w = Read-Docx ([IO.Path]::ChangeExtension($md4, 'docx'))
-    Check ($r.Code -eq 0 -and @($w.Keys | Where-Object { $_ -like 'word/media/*' }).Count -eq 1 -and $w['word/document.xml'] -match '<w:drawing>') 'Word: the picture embedded' $r.Out
+    Check ($r.Code -eq 0 -and ([regex]::Matches($w['word/document.xml'], '<w:drawing>')).Count -ge 2 -and $w['word/document.xml'] -match 'The flow, step by step') 'Word: the picture embedded, its caption under it (the cover''s logo the other drawing)' $r.Out
 
     # The title from the first "# " heading, else the file's name; cover: false.
     $md2 = Join-Path $proj 'meetings\no front matter.md'
@@ -146,17 +146,18 @@ try {
         $w = Read-Docx $docx
         $doc = $w['word/document.xml']
         $used = @([regex]::Matches($doc, '<w:pStyle w:val="([^"]+)"') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
-        Check ($used -contains 'Title' -and $used -contains 'Subtitle' -and $used -contains 'Heading1' -and $used -contains 'Heading2') 'Word: Title, Subtitle, Heading1, Heading2' "used: $($used -join ', ')"
-        $h1 = @([regex]::Matches($doc, '(?s)<w:p\b[^>]*>(?:(?!</w:p>).)*?<w:pStyle w:val="Heading1"/>(?:(?!</w:p>).)*?</w:p>') | ForEach-Object { $_.Value })
-        Check ($h1.Count -eq 2 -and -not @($h1 | Where-Object { $_ -match 'pageBreakBefore' }).Count) 'Word: headings 1 don''t start pages' "$($h1.Count) headings 1"
-        Check ($doc -match 'TOC \\o "1-2"') 'Word: a contents of headings 1-2'
-        Check (@([regex]::Matches($doc, '<w:pageBreakBefore/>')).Count -ge 1) 'Word: the text on a page of its own after the cover'
+        Check ($used -contains 'Heading1' -and $used -contains 'Heading2') 'Word: Heading1, Heading2' "used: $($used -join ', ')"
+        $text = (-join @([regex]::Matches($doc, '<w:t(?: [^>]*)?>([^<]*)</w:t>') | ForEach-Object { $_.Groups[1].Value }))
+        Check ($r.Out -match 'Netmedia document: ' -and $text -cmatch 'ACME PORTAL|[A-Z ]{6,}') 'Word: a Netmedia document, the title on its cover' $r.Out
+        Check ($doc -match 'TOC \\o') 'Word: the contents (a TOC field)'
+        Check (@([regex]::Matches($doc, '<w:br w:type="page"/>')).Count -ge 1) 'Word: the text on a page of its own after the cover'
     }
 
-    # 7. PDF.
+    # 7. PDF (Word exports it).
     $pdf = Join-Path $work 'notes.pdf'
     $r = Invoke-LazySpec $lazyspec $proj 'Pdf' @('-Markdown', $md, '-Out', $pdf)
-    Check ($r.Code -eq 0 -and (Test-Path -LiteralPath $pdf)) 'PDF document' $r.Out
+    if (-not (Test-WordInstalled)) { Check ($r.Code -ne 0 -and $r.Out -match 'PDF needs Microsoft Word') 'PDF without Word: a clear error' $r.Out; $r = [pscustomobject]@{ Code = 1 } }
+    else { Check ($r.Code -eq 0 -and (Test-Path -LiteralPath $pdf)) 'PDF document' $r.Out }
     if ($r.Code -eq 0) { Check (([regex]::Matches((Get-PdfText $pdf), '/Type\s*/Page\b(?!s)')).Count -ge 3) 'PDF: cover, contents, text: 3 pages at least' }
 
     # 8. Errors.

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0
+
+- **Word and PDF exports are Netmedia documents**, made by the `netmedia-document` generator as every Netmedia
+  document: the Netmedia cover (the logo, the title, subtitle, date and the cover's lines), the table of contents
+  in the export's language, the template's styles, header and footer. The installed `netmedia-document` plugin
+  is used (the latest Netmedia template), else LazySpec's own copy in `tools/lazyspec/netmedia-document/`
+  (`tools/update-netmedia-document.ps1` refreshes it). Needs Python 3.10+ with `python-docx`; PDF: Microsoft
+  Word exports the Word document. A project's own copy of the template: `documentTemplate:` / `-Template`.
+- The document theme (`documentTheme:` / `-Theme`) is HTML's look only; LazySpec's own Word and PDF engines
+  (and pandoc) are gone.
+- LazySpec's documents (`docs/`) are built like every Netmedia repository's: `docs/documents.json` and
+  `docs/build-documents.ps1`; the demo project's exports with `docs/build-examples.ps1`.
+
 ## 0.6.1
 
 - Tab / Shift+Tab: the next / previous pane - the Scope, the Plan, Undo, the Details, as in the terminal UI; the
