@@ -1750,7 +1750,7 @@ function powershell() {
 }
 var NETMEDIA_TOOLS = {
   "offer-prep": { plugin: "netmedia", script: "skills/prepare-offer/scripts/offer_prep.py", runtime: "python", what: "offer preparation: workbook sheets, headers, sections, specs, remembered picks, rates, prices, file name" },
-  offer: { plugin: "netmedia-tools", script: "offer/offer.py", runtime: "python", what: "the offer document: new, check, build (Word, PDF)" },
+  offer: { plugin: "netmedia-document", script: "offer/offer.py", runtime: "python", what: "the offer document: new, check, build (Word, PDF)" },
   estimate: { plugin: "netmedia", script: "skills/estimate/scripts/build_estimate.py", runtime: "python", what: "the estimate workbook" },
   document: { plugin: "netmedia-document", script: "scripts/netmedia_document.py", runtime: "python", what: "a Netmedia document (Word, PDF) from Markdown" },
   translate: { plugin: "netmedia-tools", script: "skills/translate/scripts/deepl.ts", runtime: "node", what: "DeepL translation" },
