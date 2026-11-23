@@ -61,6 +61,31 @@ fs.copyFileSync(path.join(here, 'dist', 'server.js'), path.join(stage, 'server',
 for (const f of ['lazyspec.ps1', 'export-texts.json', 'kit.json', 'LAZYSPEC.md']) {
   fs.copyFileSync(path.join(repo, 'tools', 'lazyspec', f), path.join(stage, 'server', 'kit', f));
 }
+// The Netmedia plugins' tools that run_tool runs in Claude Desktop Chat, where the installed plugins' files can't be
+// reached: copied from AIToolbelt (NETMEDIA_AITOOLBELT, else the clone next to this repository) - a generated copy,
+// never edited here. Without AIToolbelt the extension is packed without them and run_tool says so.
+const NETMEDIA_BUNDLE = {
+  netmedia: ['skills/prepare-offer/scripts', 'skills/estimate/scripts', 'skills/estimate/assets'],
+  'netmedia-tools': ['offer', 'skills/translate/scripts', 'skills/hasek/scripts'],
+  'netmedia-document': ['scripts', 'theme'],
+};
+const toolbelt = process.env.NETMEDIA_AITOOLBELT || path.join(repo, '..', 'AIToolbelt');
+if (fs.existsSync(path.join(toolbelt, 'plugins'))) {
+  const skip = (src) => /(__pycache__|node_modules|[._]test\.(py|ts|js)$)/.test(src.replace(/\\/g, '/'));
+  for (const [plugin, folders] of Object.entries(NETMEDIA_BUNDLE)) {
+    for (const folder of folders) {
+      const from = path.join(toolbelt, 'plugins', plugin, folder);
+      if (!fs.existsSync(from)) { console.error(`AIToolbelt has no plugins/${plugin}/${folder}`); process.exit(1); }
+      fs.cpSync(from, path.join(stage, 'server', 'netmedia', plugin, folder), { recursive: true, filter: (src) => !skip(src) });
+    }
+  }
+  const head = cp.spawnSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: toolbelt, encoding: 'utf8' }).stdout.trim();
+  fs.writeFileSync(path.join(stage, 'server', 'netmedia', 'SOURCE.txt'), `Copied from AIToolbelt ${head || '(unknown commit)'} by desktop/build.js; do not edit.\n`);
+  console.log(`netmedia tools: AIToolbelt ${head || toolbelt}`);
+} else {
+  console.warn(`! AIToolbelt not found (${toolbelt}): packed without the Netmedia tools; run_tool needs the installed plugins.`);
+}
+
 const openspecVersion = pkg.dependencies['@fission-ai/openspec'];
 fs.writeFileSync(path.join(stage, 'server', 'package.json'), JSON.stringify({ name: 'lazyspec-server', private: true, version, dependencies: { '@fission-ai/openspec': openspecVersion } }, null, 2));
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';

@@ -1965,16 +1965,18 @@ $script:projectConfig = $null
 function Get-ProjectConfig {
     if ($null -ne $script:projectConfig) { return $script:projectConfig }
     # Maps: titles and diagrams, each with the entries for every change (All) and a group per change (Groups).
-    $cfg = @{ Values = @{}; Translation = @{}; Maps = @{ titles = @{ All = @{}; Groups = @{} }; diagrams = @{ All = @{}; Groups = @{} }; bundles = @{ All = @{}; Groups = [ordered]@{} } } }
+    $cfg = @{ Values = @{}; Translation = @{}; Netmedia = @{}; Maps = @{ titles = @{ All = @{}; Groups = @{} }; diagrams = @{ All = @{}; Groups = @{} }; bundles = @{ All = @{}; Groups = [ordered]@{} } } }
     $script:projectConfig = $cfg
     if (-not $hasRoot) { return $cfg }
-    $in = $false; $inT = $false; $keyIndent = -1; $sub = ''; $titleIndent = -1; $group = ''
+    $in = $false; $inT = $false; $inN = $false; $keyIndent = -1; $sub = ''; $titleIndent = -1; $group = ''
     foreach ($line in (Read-Text (Join-Path $osDir 'config.yaml')).Replace("`r", '').Split("`n")) {
         if (-not $line.Trim() -or $line.TrimStart().StartsWith('#')) { continue }
         $indent = $line.Length - $line.TrimStart().Length
-        if ($indent -eq 0) { $in = $line -match '^lazyspec:\s*$'; $inT = $line -match '^translation:\s*$'; $keyIndent = -1; $sub = ''; continue }
+        if ($indent -eq 0) { $in = $line -match '^lazyspec:\s*$'; $inT = $line -match '^translation:\s*$'; $inN = $line -match '^netmedia:\s*$'; $keyIndent = -1; $sub = ''; continue }
         # translation: (DeepL, Hasek; shared with the netmedia plugin): flat "key: value" lines.
         if ($inT) { if ($line -match '^\s+([A-Za-z]+):\s*(.*?)\s*(#.*)?$') { $cfg.Translation[$Matches[1]] = Unquote $Matches[2] }; continue }
+        # netmedia: (the settings every Netmedia tool reads, e.g. exportDir): flat "key: value" lines.
+        if ($inN) { if ($line -match '^\s+([A-Za-z]+):\s*(.*?)\s*(#.*)?$') { $cfg.Netmedia[$Matches[1]] = Unquote $Matches[2] }; continue }
         if (-not $in) { continue }
         if ($keyIndent -lt 0) { $keyIndent = $indent }
         if ($line -notmatch '^\s*("[^"]*"|''[^'']*''|[^:#]+?):(?:\s+(.*))?$') { continue }
@@ -5129,10 +5131,12 @@ function Export-WordOnBase([string]$Html, [string]$Target, [byte[]]$Base, [strin
     }
 }
 
-# Where exports go: lazyspec: exportDir: in openspec/config.yaml (relative to the project's root), else
-# openspec\exports\.
+# Where exports go: netmedia: exportDir: in openspec/config.yaml (shared by every Netmedia tool), else
+# lazyspec: exportDir: (relative to the project's root), else openspec\exports\.
 function Get-ExportDir {
-    $d = [string](Get-ProjectConfig).Values['exportDir']
+    $cfg = Get-ProjectConfig
+    $d = [string]$cfg.Netmedia['exportDir']
+    if (-not $d) { $d = [string]$cfg.Values['exportDir'] }
     if (-not $d) { return (Join-Path $osDir 'exports') }
     if ([IO.Path]::IsPathRooted($d)) { return $d }
     return (Join-Path $Root $d.Replace('/', '\'))

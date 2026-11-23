@@ -43,9 +43,18 @@ jobs:
           v=$(node -p "require('./desktop/package.json').version")
           [ "v$v" = "${GITHUB_REF_NAME}" ] || (echo "::error::tag ${GITHUB_REF_NAME} but desktop/package.json is $v" && exit 1)
 
+      # The Netmedia tools (run_tool) are copied from AIToolbelt's develop into the extension (desktop/build.js).
       - name: Pack the Claude Desktop extension
         if: startsWith(github.ref, 'refs/tags/v')
-        run: npm run pack --prefix desktop
+        env:
+          GH_TOKEN: ${{ secrets.AITOOLBELT_TOKEN }}
+        run: |
+          if [ -n "$GH_TOKEN" ]; then
+            git clone --depth 1 --branch develop "https://x-access-token:${GH_TOKEN}@github.com/netmedia/aitoolbelt.git" ../AIToolbelt
+          else
+            echo "::warning::No AITOOLBELT_TOKEN secret: the extension is packed without the Netmedia tools"
+          fi
+          npm run pack --prefix desktop
 
       - name: Package the VS Code extension
         if: startsWith(github.ref, 'refs/tags/v')
