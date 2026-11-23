@@ -482,13 +482,68 @@ function parseRequirements(text) {
     }
     m = /^###\s+(?:Requirement|Zahtjev|Anforderung):\s*(.+?)\s*$/.exec(l);
     if (m) {
-      cur = { name: plainInline(m[1]), line: i + 1, scenarios: [], op };
+      const name = plainInline(m[1]);
+      cur = { name, line: i + 1, scenarios: [], op, id: itemId(name) };
       out.push(cur);
       return;
     }
     m = /^####\s+(?:Scenario|Scenarij|Szenario):\s*(.+?)\s*$/.exec(l);
     if (m && cur) {
-      cur.scenarios.push({ name: plainInline(m[1]), line: i + 1 });
+      const name = plainInline(m[1]);
+      cur.scenarios.push({ name, line: i + 1, id: itemId(name) });
+    }
+  });
+  return out;
+}
+function itemId(text) {
+  const m = /^(?:\d+(?:\.\d+)+\.?\s+)?([A-Z][A-Z0-9]{1,5}-[A-Z]-\d{2,})\b/.exec(text.trim());
+  return m ? m[1] : "";
+}
+function isIdLike(t) {
+  return /^[A-Za-z][A-Za-z0-9]{1,5}-([A-Za-z](-\d*)?)?$/.test(t) || /^[A-Za-z][A-Za-z0-9]{1,5}-[A-Za-z]-\d+$/.test(t);
+}
+function compareIds(a, b) {
+  const pa = a.split("-"), pb = b.split("-");
+  return pa[0].localeCompare(pb[0]) || (pa[1] || "").localeCompare(pb[1] || "") || (parseInt(pa[2], 10) || 0) - (parseInt(pb[2], 10) || 0) || a.localeCompare(b);
+}
+function flowField(body, k) {
+  const m = new RegExp("(?:^|[{,\\s])" + k + `:\\s*("[^"]*"|'[^']*'|\\[[^\\]]*\\]|[^,}]*)`).exec(body);
+  return m ? m[1].trim() : "";
+}
+function parseKeys(text) {
+  const out = { kinds: {}, keys: [], retired: [] };
+  let sec = "";
+  lines(text).forEach((l, i) => {
+    if (!l.trim() || l.trimStart().startsWith("#")) {
+      return;
+    }
+    let m = /^([A-Za-z_]+):\s*(.*)$/.exec(l);
+    if (m) {
+      sec = m[1];
+      if (sec === "kinds") {
+        for (const part of m[2].replace(/^\s*\{|\}\s*$/g, "").split(",")) {
+          const kv = /^\s*([A-Z]):\s*(.+?)\s*$/.exec(part);
+          if (kv) {
+            out.kinds[kv[1]] = unquote(kv[2]);
+          }
+        }
+      }
+      return;
+    }
+    m = /^\s*-\s*\{(.*)\}\s*$/.exec(l);
+    if (!m) {
+      return;
+    }
+    if (sec === "keys") {
+      const key = unquote(flowField(m[1], "key"));
+      if (key) {
+        out.keys.push({ key, group: unquote(flowField(m[1], "group")), name: unquote(flowField(m[1], "name")) });
+      }
+    } else if (sec === "retired") {
+      const id = unquote(flowField(m[1], "id"));
+      if (id) {
+        out.retired.push({ id, reason: unquote(flowField(m[1], "reason")), into: inlineList(flowField(m[1], "into")), line: i + 1 });
+      }
     }
   });
   return out;
@@ -516,7 +571,7 @@ function parseTasks(text, file) {
     }
     const text2 = plainInline(m[2]);
     const n = /^(\d+(?:\.\d+)+)\.?\s/.exec(text2);
-    cur.tasks.push({ num: n ? n[1] : "", text: text2, done: m[1] !== " ", line: i + 1, path: file, group: cur.title });
+    cur.tasks.push({ num: n ? n[1] : "", id: itemId(text2), text: text2, done: m[1] !== " ", line: i + 1, path: file, group: cur.title });
   });
   return groups.filter((g) => g.tasks.length);
 }
@@ -533,6 +588,10 @@ var Project = class {
   name = "";
   specs = [];
   changes = [];
+  /** openspec/project-tasks.md (shared work: pre-project, infra ...), as a change of its own; null: none. */
+  projectTasks = null;
+  /** openspec/keys.yaml: the ids' keys and the retired ids (empty: none). */
+  keys = { kinds: {}, keys: [], retired: [] };
   workflows = /* @__PURE__ */ new Map();
   schemaDirs = null;
   specOrder = [];
@@ -559,7 +618,50 @@ var Project = class {
     }
     this.specs = this.loadSpecs();
     this.changes = this.loadChanges();
+    this.keys = parseKeys(readText(path.join(this.osDir, "keys.yaml")));
+    this.projectTasks = this.loadProjectTasks();
     return this;
+  }
+  loadProjectTasks() {
+    const file = path.join(this.osDir, "project-tasks.md");
+    if (!isFile(file)) {
+      return null;
+    }
+    const taskGroups = parseTasks(readText(file), file);
+    let done = 0, total = 0;
+    for (const g of taskGroups) {
+      for (const t of g.tasks) {
+        total++;
+        if (t.done) {
+          done++;
+        }
+      }
+    }
+    const doc = { id: "tasks", title: "Project tasks", generates: "project-tasks.md", files: [file], requires: [], isSpecs: false, extra: false };
+    let modified = 0;
+    try {
+      modified = fs.statSync(file).mtimeMs;
+    } catch {
+    }
+    return {
+      type: "change",
+      name: "project-tasks",
+      title: "Project tasks",
+      stage: total === 0 ? "Draft" : done === total ? "Completed" : "In Progress",
+      archived: false,
+      done,
+      total,
+      modified,
+      dir: this.osDir,
+      path: file,
+      caps: [],
+      workflow: { ...DEFAULT_WORKFLOW, tracks: "project-tasks.md" },
+      docs: [doc],
+      tasksDoc: doc,
+      taskGroups,
+      group: "",
+      groupFrom: ""
+    };
   }
   // The specs, in the project's order (lazyspec.json specOrder), then the overview, platform pages, capabilities.
   loadSpecs() {
@@ -870,6 +972,19 @@ function sectionEntries(list, item, file, where, art) {
       heads.push({ i, level: m[1].length, text: m[2] });
     }
   });
+  fence = false;
+  ls.forEach((l, i) => {
+    if (l.trim().startsWith("```")) {
+      fence = !fence;
+      return;
+    }
+    const m = !fence && /^\s*[-*]\s+(?!\[[ xX]\])(.+?)\s*$/.exec(l);
+    const text = m ? plainInline(m[1]) : "";
+    const id = /^[A-Z][A-Z0-9]{1,5}-[QD]-\d{2,}\b/.test(text) ? itemId(text) : "";
+    if (id) {
+      list.push({ kind: "item", item, where, cap: "", context: "", num: "", text, done: false, path: file, line: i + 1, hay: `${item.name} ${where} ${text}`.toLowerCase(), art, id });
+    }
+  });
   heads.forEach((h, k) => {
     if (/^(Requirement|Zahtjev|Anforderung|Scenario|Scenarij|Szenario):/.test(h.text) || /^(\w+\s+)?Requirements$/i.test(h.text)) {
       return;
@@ -888,21 +1003,21 @@ function sectionEntries(list, item, file, where, art) {
 }
 function specEntries(list, item, file, cap, where, art) {
   for (const r of parseRequirements(readText(file))) {
-    list.push({ kind: "req", item, where, cap, context: "", num: "", text: r.name, done: false, path: file, line: r.line, hay: `${item.name} ${where} ${cap} ${r.name}`.toLowerCase(), art });
+    list.push({ kind: "req", item, where, cap, context: "", num: "", text: r.name, done: false, path: file, line: r.line, hay: `${item.name} ${where} ${cap} ${r.name}`.toLowerCase(), art, id: r.id });
     for (const s2 of r.scenarios) {
-      list.push({ kind: "scn", item, where, cap, context: r.name, num: "", text: s2.name, done: false, path: file, line: s2.line, hay: `${item.name} ${where} ${cap} ${r.name} ${s2.name}`.toLowerCase(), art });
+      list.push({ kind: "scn", item, where, cap, context: r.name, num: "", text: s2.name, done: false, path: file, line: s2.line, hay: `${item.name} ${where} ${cap} ${r.name} ${s2.name}`.toLowerCase(), art, id: s2.id });
     }
   }
 }
 function searchIndex(p, withArchived) {
   const list = [];
-  const changes = p.changes.filter((c) => !c.archived).sort((a, b) => a.name.localeCompare(b.name)).concat(withArchived ? p.changes.filter((c) => c.archived).sort((a, b) => a.name.localeCompare(b.name)) : []);
+  const changes = (p.projectTasks ? [p.projectTasks] : []).concat(p.changes.filter((c) => !c.archived).sort((a, b) => a.name.localeCompare(b.name))).concat(withArchived ? p.changes.filter((c) => c.archived).sort((a, b) => a.name.localeCompare(b.name)) : []);
   for (const c of changes) {
     const where = itemTitle(c);
     const tasksArt = c.tasksDoc ? c.tasksDoc.title : "Tasks";
     for (const g of c.taskGroups) {
       for (const t of g.tasks) {
-        list.push({ kind: "task", item: c, where, cap: "", context: g.title, num: t.num, text: t.text, done: t.done, path: t.path, line: t.line, hay: `${c.name} ${where} ${g.title} ${t.text}`.toLowerCase(), art: tasksArt });
+        list.push({ kind: "task", item: c, where, cap: "", context: g.title, num: t.num, text: t.text, done: t.done, path: t.path, line: t.line, hay: `${c.name} ${where} ${g.title} ${t.text}`.toLowerCase(), art: tasksArt, id: t.id });
       }
     }
     for (const cap of c.caps) {
@@ -948,6 +1063,18 @@ function find(p, index, query, kind = "all") {
     return [];
   }
   const isNum = (t) => /^\d+(\.\d+)+\.?$/.test(t);
+  const idOf = (e) => (e.id || "").toLowerCase();
+  const isWord = (t) => /^[a-z][a-z0-9]{1,5}$/.test(t);
+  const retired = toks.length === 1 && grp === null ? p.keys.retired.find((r) => r.id.toLowerCase() === toks[0]) : void 0;
+  if (retired) {
+    const into = retired.into.map((x) => x.toLowerCase());
+    const keysFile = path.join(p.osDir, "keys.yaml");
+    const keysItem = { type: "change", name: "keys", title: "Keys", stage: "Draft", archived: false, done: 0, total: 0, modified: 0, dir: p.osDir, path: keysFile, caps: [], workflow: DEFAULT_WORKFLOW, docs: [], tasksDoc: null, taskGroups: [], group: "", groupFrom: "" };
+    const text = retiredText(retired);
+    const self = { kind: "item", item: keysItem, where: "keys.yaml", cap: "", context: "retired", num: "", text, done: false, path: keysFile, line: retired.line, hay: text.toLowerCase(), art: "Keys", id: retired.id };
+    const next = index.filter((e) => into.includes(idOf(e))).sort((a, b) => compareIds(a.id, b.id));
+    return [self, ...next];
+  }
   const out = index.filter((e) => {
     if (kind === "tasks" && e.kind !== "task") {
       return false;
@@ -972,12 +1099,26 @@ function find(p, index, query, kind = "all") {
         const n = t.replace(/\.$/, "");
         return e.kind === "task" && (e.num === n || e.num.startsWith(n + "."));
       }
-      return e.hay.includes(t);
+      if (isIdLike(t)) {
+        return idOf(e).startsWith(t);
+      }
+      return e.hay.includes(t) || isWord(t) && idOf(e).startsWith(t);
     });
   });
   const own = (e) => `${e.item.name} ${e.where} ${e.cap} ${e.context} ${e.text} ${e.art}`.toLowerCase();
-  const first = out.filter((e) => toks.every((t) => isNum(t) || own(e).includes(t)));
-  return first.concat(out.filter((e) => !first.includes(e)));
+  const first = out.filter((e) => toks.every((t) => isNum(t) || isIdLike(t) || own(e).includes(t) || isWord(t) && idOf(e).startsWith(t)));
+  const ordered = first.concat(out.filter((e) => !first.includes(e)));
+  const idToks = toks.filter((t) => isIdLike(t) || isWord(t));
+  if (!idToks.length) {
+    return ordered;
+  }
+  const exact = ordered.filter((e) => e.id && idToks.includes(idOf(e)));
+  const byId = ordered.filter((e) => e.id && !exact.includes(e) && idToks.some((t) => idOf(e).startsWith(t))).sort((a, b) => compareIds(a.id, b.id));
+  return exact.concat(byId, ordered.filter((e) => !exact.includes(e) && !byId.includes(e)));
+}
+function retiredText(r) {
+  const why = r.into.length ? `${r.reason || "replaced"} into ${r.into.join(", ")}` : r.reason || "retired";
+  return `${r.id} - ${why}`;
 }
 function setTaskDone(lineText, done) {
   return lineText.replace(/^(\s*[-*]\s+\[)[ xX](\])/, `$1${done ? "x" : " "}$2`);
@@ -988,7 +1129,7 @@ var cp = __toESM(require("child_process"));
 var crypto = __toESM(require("crypto"));
 var fs2 = __toESM(require("fs"));
 var path2 = __toESM(require("path"));
-var KIND_WORD = { task: "task", req: "requirement", scn: "scenario", sec: "section" };
+var KIND_WORD = { task: "task", req: "requirement", scn: "scenario", sec: "section", item: "item" };
 function kindWord(k) {
   return KIND_WORD[k];
 }
@@ -1016,7 +1157,7 @@ function writeLines(file, lines2) {
 }
 function blockEnd(lines2, at, kind) {
   let j = at + 1;
-  if (kind === "task") {
+  if (kind === "task" || kind === "item") {
     const ind = lines2[at].length - lines2[at].trimStart().length;
     while (j < lines2.length && lines2[j].trim() && lines2[j].length - lines2[j].trimStart().length > ind) {
       j++;
@@ -1910,6 +2051,7 @@ function change(p, name, archivedToo = false) {
 function entryOut(p, e) {
   return {
     kind: kindWord(e.kind),
+    id: e.id || void 0,
     in: e.where,
     capability: e.cap || void 0,
     under: e.context || void 0,
@@ -2107,9 +2249,9 @@ ${readText(f)}`).join("\n\n---\n\n") };
     name: "find",
     title: "Find",
     readOnly: true,
-    description: "Tasks, requirements, scenarios and sections in the specs and changes: by task number (1.3), by words (all must match), g2 / group 2 for one group. Each result has path and line, which edit and remove tools take.",
+    description: "Tasks, requirements, scenarios, sections, open questions and decisions in the specs, the changes and openspec/project-tasks.md: by task number (1.3), by item id or its beginning (OSN-T-04, OSN-T-0, OSN-T, osn: the exact id first; a retired id: what became of it), by words (all must match), g2 / group 2 for one group. Each result has path and line, which edit and remove tools take.",
     inputSchema: schema({
-      query: str("Words, a task number, or g<group>."),
+      query: str("Words, a task number, an item id (or its beginning), or g<group>."),
       kind: { type: "string", enum: ["all", "tasks", "open tasks", "requirements", "scenarios", "sections"], description: "Only this kind (default all)." },
       include_archived: bool("Also archived changes."),
       limit: num("At most this many (default 50).")

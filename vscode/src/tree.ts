@@ -4,7 +4,7 @@
 
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { Capability, Change, Doc, Entry, itemTitle, plainInline, Project, readText, Requirement, Spec, Task, TaskGroup } from './model';
+import { Capability, Change, Doc, Entry, idLabel, itemTitle, plainInline, Project, readText, Requirement, Spec, Task, TaskGroup } from './model';
 
 export interface Section { title: string; line: number; level: number; children: Section[] }
 type Owner = Spec | Change;
@@ -59,7 +59,7 @@ export function parseSections(file: string): Section[] {
 export function entryOf(n: Node): Entry | null {
   const base = { num: '', done: false, hay: '', art: '', cap: '', context: '' };
   switch (n.kind) {
-    case 'task': return { ...base, kind: 'task', item: n.change, where: itemTitle(n.change), context: n.task.group, num: n.task.num, text: n.task.text, done: n.task.done, path: n.task.path, line: n.task.line };
+    case 'task': return { ...base, kind: 'task', item: n.change, where: itemTitle(n.change), context: n.task.group, num: n.task.num, text: n.task.text, done: n.task.done, path: n.task.path, line: n.task.line, id: n.task.id };
     case 'req': return { ...base, kind: 'req', item: n.owner, where: itemTitle(n.owner), cap: n.cap, text: n.req.name, path: n.file, line: n.req.line };
     case 'scn': return { ...base, kind: 'scn', item: n.owner, where: itemTitle(n.owner), cap: n.cap, context: n.req, text: n.name, path: n.file, line: n.line };
     case 'sec': return { ...base, kind: 'sec', item: n.owner, where: itemTitle(n.owner), text: n.section.title, path: n.file, line: n.section.line };
@@ -196,7 +196,7 @@ abstract class BaseTree implements vscode.TreeDataProvider<Node> {
       }
       case 'task': {
         const k = n.task;
-        const t = new vscode.TreeItem(k.text, C.None);
+        const t = new vscode.TreeItem(idLabel(k.id, k.text), C.None);
         t.checkboxState = k.done ? vscode.TreeItemCheckboxState.Checked : vscode.TreeItemCheckboxState.Unchecked;
         t.command = openCommand(k.path, k.line, k.text);
         t.tooltip = `${k.text}\n${path.basename(k.path)}:${k.line}`;
@@ -286,9 +286,11 @@ export class PlanTree extends BaseTree {
   private planOf(project: Project): Node[] {
     const s = this.settings();
     const active = sortChanges(project.changes.filter(c => !c.archived), s.sort);
-    const out: Node[] = s.grouped && project.grouping
+    // openspec/project-tasks.md first: the project's own tasks.
+    const out: Node[] = project.projectTasks ? [{ kind: 'change', project, change: project.projectTasks }] : [];
+    out.push(...(s.grouped && project.grouping
       ? project.groups(active).map(g => ({ kind: 'group', project, ...g }) as Node)
-      : active.map(change => ({ kind: 'change', project, change }) as Node);
+      : active.map(change => ({ kind: 'change', project, change }) as Node)));
     const arch = project.changes.filter(c => c.archived).sort((a, b) => a.name.localeCompare(b.name));
     if (s.showArchived && arch.length) { out.push({ kind: 'archived', project, changes: arch }); }
     return out;
