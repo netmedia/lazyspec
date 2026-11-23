@@ -25,7 +25,7 @@
     6. -Item <a saved whole's key>: its changes, its title, the file named by its key.
     7. x with no specs: chosen changes, as one.
     8. A heading left with nothing under it (a comment only) isn't shown.
-    9. PDF: the contents with page numbers.
+    9. PDF: a Netmedia document, Word exports it (skipped without Word).
    10. A table's columns as wide as their words and identifiers; the rest to the longest text.
    11. The changes' diagrams at the top of the specifications, before their capabilities.
 
@@ -113,9 +113,12 @@ try {
     $f = @(Get-ChildItem -LiteralPath $exp -Filter '*.html' | Where-Object { $_.Name -like 'proj-placanja-i-racuni-*' })
     Check ($r.Code -eq 0 -and $f.Count -eq 1) 'the file named by the title, without accents' (@(Get-ChildItem -LiteralPath $exp -Name) -join ', ')
 
-    # 9. PDF: the contents' page numbers (read from a first print, then printed again).
-    $r = Invoke-LazySpec $lazyspec $proj 'Pdf' @('-Item', 'add-alpha,add-beta', '-Out', (Join-Path $work 'two.pdf'))
-    Check ($r.Code -eq 0 -and $r.Out -match "contents' page numbers: printing again" -and $r.Out -notmatch 'without page numbers') 'PDF: the contents with page numbers' $r.Out
+    # 9. PDF: a Netmedia document, Word exports it (and fills in the contents' page numbers).
+    if (-not (Test-WordInstalled)) { Skip 'PDF: a Netmedia document' 'no Word here' }
+    else {
+        $r = Invoke-LazySpec $lazyspec $proj 'Pdf' @('-Item', 'add-alpha,add-beta', '-Out', (Join-Path $work 'two.pdf'))
+        Check ($r.Code -eq 0 -and $r.Out -match 'Netmedia document: ' -and (Test-Path -LiteralPath (Join-Path $work 'two.pdf'))) 'PDF: a Netmedia document' $r.Out
+    }
 
     # 3. An archived change by its name; an unknown one.
     $r = Invoke-LazySpec $lazyspec $proj 'Html' @('-Item', 'add-alpha,add-old', '-Out', (Join-Path $work 'old.html'))

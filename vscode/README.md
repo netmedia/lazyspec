@@ -226,10 +226,11 @@ to the editor.
 - **git** for undo. **Claude Code** (`claude`) for the agent.
 - **PowerShell** for export and the terminal UI. It is built into Windows; on macOS and Linux install
   PowerShell 7 (`brew install powershell`, https://aka.ms/powershell).
-- **Edge or Chrome** for PDF export. **Word** (or pandoc) for Word export.
+- **Python 3.10+ with `python-docx`** for Word and PDF export (Netmedia documents, made by netmedia-document;
+  the extension carries it). **Word** for PDF export (it exports the Word document).
 
 Export uses the project's own LazySpec (`tools/lazyspec/lazyspec.ps1`) when it has one, otherwise the copy
-built into the extension. The company look (`documentTheme` / `documentTemplate` in `openspec/config.yaml`) and
+built into the extension. The project's template copy (`documentTemplate`, Word and PDF), its HTML look (`documentTheme`) and
 every other project setting work the same as in LazySpec; see
 [LAZYSPEC.md](https://github.com/netmedia/lazyspec/blob/develop/tools/lazyspec/LAZYSPEC.md).
 
