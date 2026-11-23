@@ -12,7 +12,7 @@ import { DetailsView, Selected } from './details';
 import { editItemFormatted, FormattedEditorProvider } from './formatted';
 import { showHelp } from './help';
 import { agentItems, deleteItems, editItem, ItemContext, openBlock, toggleTask } from './items';
-import { Change, Entry, find, FindKind, itemTitle, Project, searchIndex, Spec } from './model';
+import { Change, Entry, find, FindKind, idLabel, itemTitle, Project, searchIndex, Spec } from './model';
 import { doneSyncPrompts, saveSyncSnapshot, setConfigBundle, setConfigValue, setInSync, slug, StaleDoc, syncPromptMany, syncState } from './ops';
 import { ReadPanel, ReadTarget } from './read';
 import { entryOf, Node, PlanTree, ScopeTree, Settings } from './tree';
@@ -332,7 +332,7 @@ function entriesOf(node?: Node, nodes?: Node[]): Entry[] {
 // --- find --------------------------------------------------------------------------------------------------
 
 const KINDS: FindKind[] = ['all', 'tasks', 'open tasks', 'requirements', 'scenarios', 'sections'];
-const KIND_ICON: Record<Entry['kind'], string> = { task: 'circle-outline', req: 'symbol-field', scn: 'symbol-event', sec: 'symbol-key' };
+const KIND_ICON: Record<Entry['kind'], string> = { task: 'circle-outline', req: 'symbol-field', scn: 'symbol-event', sec: 'symbol-key', item: 'note' };
 async function findCommand() {
   if (!projects.length) { return; }
   const withArchived = settings().showArchived;
@@ -355,7 +355,7 @@ async function findCommand() {
     { iconPath: new vscode.ThemeIcon('sparkle'), tooltip: 'The agent: change it, write it again' },
     { iconPath: new vscode.ThemeIcon('trash'), tooltip: 'Delete' },
   ];
-  const KIND_NAME: Record<Entry['kind'], string> = { task: 'task', req: 'requirement', scn: 'scenario', sec: 'section' };
+  const KIND_NAME: Record<Entry['kind'], string> = { task: 'task', req: 'requirement', scn: 'scenario', sec: 'section', item: 'item' };
   const IS: Record<string, FindKind> = { task: 'tasks', tasks: 'tasks', open: 'open tasks', req: 'requirements', requirement: 'requirements', requirements: 'requirements', scn: 'scenarios', scenario: 'scenarios', scenarios: 'scenarios', sec: 'sections', section: 'sections', sections: 'sections' };
   const update = () => {
     // Typed filters: in:<document> (design, tasks, open-questions ... a beginning is enough), is:<kind>.
@@ -380,7 +380,7 @@ async function findCommand() {
         const icon = e.kind === 'task' ? (e.done ? 'pass' : 'circle-outline') : KIND_ICON[e.kind];
         // On a small line of its own: the document it is in, what it is, and its requirement or task group.
         const detail = [e.art.toUpperCase(), KIND_NAME[e.kind] + (e.kind === 'task' && e.done ? ' (done)' : ''), e.context ? `${e.kind === 'scn' ? 'of' : 'in'} ${e.context}` : ''].filter(x => x).join('  ·  ');
-        found.push({ label: `$(${icon}) ${e.text}`, description: [e.where, e.cap].filter(x => x).join(' · '), detail, alwaysShow: true, e, buttons: qp.canSelectMany ? [] : itemButtons(e) });
+        found.push({ label: `$(${icon}) ${idLabel(e.id, e.text)}`, description: [e.where, e.cap].filter(x => x).join(' · '), detail, alwaysShow: true, e, buttons: qp.canSelectMany ? [] : itemButtons(e) });
       }
     }
     qp.items = found;

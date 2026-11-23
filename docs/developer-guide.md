@@ -374,6 +374,9 @@ Command line: `lazyspec -Export Pdf -Groups 1,3` (with the groups they require),
 3. `Enter` opens it in Read, on the tasks or the specs tab, scrolled to it and marked `▸`; `Esc` returns to the results, `Esc` again to the screen you came from.
 4. Archived changes are searched only when shown on Home (`.`).
 5. With groups: `g1` or `group 1` (or the project's word, `phase 1`) next to your words keeps one group.
+6. Item ids: a task line, a requirement or scenario heading, or an open question's or decision's list line can start with an id, `<KEY>-<KIND>-<nn>` (`- [ ] 1.1 OSN-T-04 ...`, `### Requirement: OSN-R-03 ...`, `- OSN-Q-02 ...`; KIND: T task, R requirement, S scenario, Q open question, D decision). Type the id or its beginning, in any case: `OSN-T-04` (that one first, then `OSN-T-040`, `OSN-T-041` ...), `OSN-T-0`, `OSN-T` (every OSN task), `osn` (every OSN item by id, then text with the word). The id is shown as a label of its own in the results.
+7. `openspec/keys.yaml` (written by the tool that hands out the ids; flow style, an entry a line) names the keys and the retired ids: `retired: - {id: OSN-T-11, reason: split, into: [OSN-T-73, OSN-T-74]}`. Typing a retired id shows "OSN-T-11 - split into OSN-T-73, OSN-T-74" (or "removed") and the successors after it.
+8. `openspec/project-tasks.md`: the project's own tasks (pre-project, after development, infra), in the tasks format with `## <n>. <section>` headings, are found as *Project tasks* (and shown first in the VS Code plan).
 
 ### 17. Clean up: remove, change or redo tasks, requirements and scenarios
 

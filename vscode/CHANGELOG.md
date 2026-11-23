@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **Item ids** (`OSN-T-04`: `<KEY>-<KIND>-<nn>`) at the start of tasks, requirement and scenario headings (also
+  `Zahtjev:` / `Scenarij:`, `Anforderung:` / `Szenario:`) and open questions' and decisions' list lines
+  (`- OSN-Q-02 ...`): read into every find result (`id`, also in the MCP server's `find`), shown as a label of
+  their own in the plan's tasks and in Find. Find takes an id or its beginning (`OSN-T-04`, `OSN-T-0`, `OSN-T`,
+  `osn`): the exact id first, then the others in id order, then text matches.
+- `openspec/keys.yaml`: the keys and the retired ids; a retired id found shows what became of it and its
+  successors.
+- `openspec/project-tasks.md`: the project's own tasks, as *Project tasks* first in the plan and in Find.
+
 ## 0.7.0
 
 - **Word and PDF exports are Netmedia documents**, made by the `netmedia-document` generator as every Netmedia

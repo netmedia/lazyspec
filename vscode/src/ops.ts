@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Change, Entry, plainInline, Project, readText } from './model';
 
-const KIND_WORD: Record<Entry['kind'], string> = { task: 'task', req: 'requirement', scn: 'scenario', sec: 'section' };
+const KIND_WORD: Record<Entry['kind'], string> = { task: 'task', req: 'requirement', scn: 'scenario', sec: 'section', item: 'item' };
 export function kindWord(k: Entry['kind']): string { return KIND_WORD[k]; }
 function today(sep = ''): string { const d = new Date(); return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join(sep); }
 export function relPath(root: string, file: string): string { return path.relative(root, file).replace(/\\/g, '/'); }
@@ -28,7 +28,7 @@ export function writeLines(file: string, lines: string[]) {
  *  of its level or above), a section (to the next heading of its level or above, not one in a code block). */
 export function blockEnd(lines: string[], at: number, kind: Entry['kind']): number {
   let j = at + 1;
-  if (kind === 'task') {
+  if (kind === 'task' || kind === 'item') {
     const ind = lines[at].length - lines[at].trimStart().length;
     while (j < lines.length && lines[j].trim() && lines[j].length - lines[j].trimStart().length > ind) { j++; }
     return j;

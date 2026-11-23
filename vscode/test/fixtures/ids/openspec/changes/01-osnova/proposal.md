@@ -1,0 +1,5 @@
+# Osnova
+
+## Why
+
+Plaćanje.
