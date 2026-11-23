@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
 
 - **Item ids** (`OSN-T-04`: `<KEY>-<KIND>-<nn>`) at the start of tasks, requirement and scenario headings (also
   `Zahtjev:` / `Scenarij:`, `Anforderung:` / `Szenario:`) and open questions' and decisions' list lines
