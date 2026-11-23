@@ -12,7 +12,8 @@
       "pdf": true,
       "history": [
         ["15.11.2026", "0.1.0", "First version: install, add to a project, every workflow"],
-        ["23.11.2026", "0.7.0", "Word and PDF exports as Netmedia documents; built with netmedia-document, as every Netmedia document"]
+        ["23.11.2026", "0.7.0", "Word and PDF exports as Netmedia documents; built with netmedia-document, as every Netmedia document"],
+        ["23.11.2026", "0.8.0", "Item ids: keys.yaml, project-tasks.md, ids shown and found by prefix"]
       ]
     },
     {
@@ -36,7 +37,8 @@
       "pdf": true,
       "history": [
         ["16.11.2026", "0.1.0", "First version"],
-        ["23.11.2026", "0.7.0", "Built with netmedia-document, as every Netmedia document"]
+        ["23.11.2026", "0.7.0", "Built with netmedia-document, as every Netmedia document"],
+        ["23.11.2026", "0.8.0", "Item ids (OSN-T-04): shown in the plan and Find, found by id or its beginning"]
       ]
     }
   ]
