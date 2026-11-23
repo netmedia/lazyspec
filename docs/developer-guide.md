@@ -36,8 +36,9 @@ Install LazySpec once per PC, then type `lazyspec` anywhere inside a project. No
 | PowerShell 7 | Everything (macOS) | `brew install powershell` |
 | OpenSpec CLI | Actions: validate, archive, new change, `openspec init` | `npm install -g @fission-ai/openspec` |
 | Execution policy that runs local scripts | The `Profile` install | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
-| Microsoft Edge or Google Chrome | PDF export; the data-model diagram in Word | Windows: Edge is always there. macOS: Chrome or Edge in `/Applications` |
-| Microsoft Word or pandoc | Word export without a template or theme | Optional (macOS: `brew install pandoc`) |
+| Microsoft Edge or Google Chrome | The data-model diagram in Word and PDF | Windows: Edge is always there. macOS: Chrome or Edge in `/Applications` |
+| Python 3.10+ with `python-docx` | Word and PDF export (netmedia-document makes them) | The Netmedia environment `~/.netmedia/python`, or python.org; then `python -m pip install python-docx` |
+| Microsoft Word | PDF export (it exports the Word document); the contents' page numbers | Windows or macOS (Word for Mac) |
 | DeepL key in `DEEPL_AUTH_KEY` | Export in another language | Optional, see Integrations |
 | Figma token | Fresh FigJam diagrams in exports | Optional, see Integrations |
 
@@ -67,7 +68,7 @@ The `.exe` launchers and `install` are for Windows; on macOS start the `.ps1` wi
 
 Keys on a Mac: `⌃T` `⌃U` `⌃Y` `⌃S` (Control) work as on Windows - LazySpec turns the terminal's own uses of them off while it runs; or `⌥T` `⌥U` `⌥Y` `⌥S` (Option) once the terminal sends Option as Meta (Terminal: *Use Option as Meta key*; iTerm2: *Left Option key: Esc+*). `Del` is `fn ⌫`, `Home` `End` `PgUp` `PgDn` are `fn` with the arrows; the help shows them that way.
 
-Differences from Windows: PDF needs Chrome or Edge in `/Applications`; Word in the default look needs pandoc; a Word document with a theme or template gets its contents' page numbers when you open it in Word (right-click the contents, Update Field); per-user data (the translation cache) is in `~/Library/Application Support/LazySpec`. Paths in `openspec/config.yaml` may use `/` or `\` on both systems.
+Differences from Windows: PDF needs Word for Mac; without it a Word document gets its contents' page numbers when you open it in Word (right-click the contents, Update Field); per-user data (the translation cache) is in `~/Library/Application Support/LazySpec`. Paths in `openspec/config.yaml` may use `/` or `\` on both systems.
 
 ### Verify
 
@@ -342,9 +343,10 @@ Command line: `lazyspec -Export Pdf -Groups 1,3` (with the groups they require),
 
 **When:** any project whose documents go to a client.
 
-- **Theme (recommended):** `documentTheme:` pointing to a YAML in the project, with `fonts/` and logos next to it; not set, LazySpec uses `openspec/artifacts/document-theme.yaml` when it's there (the conventions' place). Same look in PDF, Word and HTML, no Word needed. Start from [`examples/document-theme/document-theme.yaml`](../examples/document-theme/document-theme.yaml).
-- **Word template:** `documentTemplate:` pointing to a `.docx`. Used for Word only; its styles, header, footer and logo are kept.
-- With both set, Word uses the template and PDF/HTML the theme. `-Theme` / `-Template` override for one export.
+- **Word and PDF are Netmedia documents** (netmedia-document): the Netmedia cover, contents, styles, header and footer, the latest Netmedia template by default.
+- **The project's own copy of the template:** `documentTemplate:` pointing to a `.docx` (`netmedia:openspec-init` puts `openspec/artifacts/Document template.docx` there; `netmedia-document:theme` refreshes it). It keeps the cover's `DOCUMENT TITLE` paragraph and the `Table of contents` title.
+- **HTML:** `documentTheme:` pointing to a YAML in the project, with `fonts/` and logos next to it; not set, `openspec/artifacts/document-theme.yaml` when it's there. Start from [`examples/document-theme/document-theme.yaml`](../examples/document-theme/document-theme.yaml).
+- `-Template` / `-Theme` override for one export.
 
 ### 14. Work alongside Claude Code
 
@@ -481,8 +483,9 @@ lazyspec:
 | DeepL | `-Language`, `-AddLanguage` | `translation:` block in `config.yaml` (`provider: deepl`, `keyEnv`, `english`, `formality`, `hasek`); key via `setx DEEPL_AUTH_KEY "<key>"`, never in `config.yaml` (refused). Free keys end with `:fx` |
 | Hasek / ispravi.me | Spell-check of Croatian exports | `translation: hasek: ask \| always \| never` |
 | Figma / FigJam | Diagrams in exports | Personal access token with read access to file content; `FIGMA_TOKEN` user env var (keeps it off git) or `figmaToken:` |
-| Edge / Chrome | PDF export | Headless, automatic |
-| Word / pandoc | Word export without theme or template | Automatic if installed |
+| Edge / Chrome | The data-model diagram as a picture | Headless, automatic |
+| netmedia-document | Word and PDF export | The installed plugin, else LazySpec's own copy; Python with `python-docx` |
+| Microsoft Word | PDF export; the contents' page numbers | Automatic if installed |
 | Your editor | `e` | `$env:VISUAL` / `$env:EDITOR`, else VS Code (`code`), else the default app |
 
 The `translation:` block is shared with the netmedia Claude Code plugin (`netmedia:translate`).

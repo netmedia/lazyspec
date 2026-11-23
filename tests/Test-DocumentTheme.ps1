@@ -13,22 +13,22 @@
 <#
 .SYNOPSIS
     Tests the export with a document theme (lazyspec: documentTheme: in openspec/config.yaml, or -Theme):
-    the same look in PDF, Word and HTML, its fonts from fonts\ next to it (embedded in Word). No modules:
-    it builds its own project and theme in %TEMP% (the fonts: copies of the system's Georgia, Windows or macOS).
+    the look of HTML, its fonts from fonts\ next to it. Word and PDF are Netmedia documents (netmedia-document,
+    on the Netmedia template or the project's copy of it): the theme doesn't change them. No modules: it builds
+    its own project and theme in %TEMP% (the fonts: copies of the system's Georgia, Windows or macOS).
 
 .DESCRIPTION
     1. Without a theme: the HTML is the same as before themes (-Baseline: that lazyspec.ps1; default: git
        HEAD's when it has no themes yet; else skipped).
     2. HTML: the theme's fonts inside (@font-face from fonts\), its styles, the cover's logo.
-    3. PDF: the theme's page size, its font, the pictures (cover and header logo).
-    4. Word: the theme's styles (fonts, colours) under the built-in style IDs, its page, header (logo) and
-       footer (title, PAGE / NUMPAGES), none on the cover, its fonts embedded (obfuscated, as Word does),
-       its fonts as Word's theme fonts (no Aptos).
+    3. PDF (Word exports it; skipped without Word): a Netmedia document, the theme not in it (A4, no Georgia).
+    4. Word: a Netmedia document (the Netmedia cover with the title, the contents, the template's header logo
+       and Montserrat), the theme not in it.
     5. A theme path with spaces, relative to the project's root (lazyspec started in a subfolder).
     6. Missing theme, broken YAML, missing logo: a clear error, exit code 1, no document.
     7. -Theme wins over the config's documentTheme.
-    8. A template and a theme in the config: Word on the template, PDF on the theme; -Theme on the command
-       line: Word on the theme.
+    8. A template and a theme in the config: Word on the template; -Theme on the command line doesn't change
+       Word (still the template).
 
 .PARAMETER Baseline
     A lazyspec.ps1 from before document themes, for test 1.
@@ -79,16 +79,6 @@ header: { left: logo, logo: images/logo.png, logoHeight: 8mm, right: "{title}" }
 footer: { left: "{title} - {subtitle}", right: "{page} / {pages}" }
 cover:  { logo: images/cover.png, logoHeight: 20mm }
 '@
-# A font as Word embeds it, back: the first 32 bytes XORed with the key's 16 bytes, last to first.
-function Get-Deobfuscated([byte[]]$Data, [string]$FontKey) {
-    $hex = $FontKey.Trim('{', '}').Replace('-', '')
-    $key = for ($i = 0; $i -lt 16; $i++) { [Convert]::ToByte($hex.Substring(30 - $i * 2, 2), 16) }
-    $o = [byte[]]$Data.Clone()
-    for ($i = 0; $i -lt 32; $i++) { $o[$i] = $o[$i] -bxor $key[$i % 16] }
-    return , $o
-}
-function Read-Bytes([string]$Path) { return [IO.File]::ReadAllBytes($Path) }
-function Get-Latin1([string]$Path) { return [Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes($Path)) }
 
 Write-Host ''
 Write-Host "  LazySpec: the export with a document theme ($work)" -ForegroundColor Cyan
@@ -101,7 +91,6 @@ try {
     $themeSetting = 'documentTheme: design/company theme/document-theme.yaml'
     New-FixtureProject $proj @('# documentTheme: the look of every generated document', $themeSetting)
     $sub = Join-Path $proj 'src\deep'
-    $logoHash = Get-Sha (Get-Png 120 40 'Red')
 
     # 1. Without a theme: the HTML as before.
     $plain = Join-Path $work 'plain'
@@ -136,70 +125,39 @@ try {
         Check ($h -notmatch '@page \{ size: 215\.9mm') 'HTML: no page rules (a page, not paper)'
     }
 
-    # 3. PDF.
+    # 3. PDF: Word exports the Netmedia document; the theme isn't in it.
     $pdf = Join-Path $work 'themed.pdf'
     $r = Invoke-LazySpec $lazyspec $proj 'Pdf' @('-Out', $pdf)
-    Check ($r.Code -eq 0 -and (Test-Path -LiteralPath $pdf)) 'PDF with the theme' $r.Out
-    if ($r.Code -eq 0) {
-        $p = Get-PdfText $pdf
-        Check ($p -match '/MediaBox\s*\[\s*0\s+0\s+612(\.0+)?\s+792(\.0+)?\s*\]') 'PDF: the theme''s page size (Letter)'
-        Check ($p -match '/BaseFont\s*/[A-Z]{6}\+Georgia') 'PDF: the theme''s font in it'
-        Check (([regex]::Matches($p, '/Subtype\s*/Image')).Count -ge 2) 'PDF: the pictures (cover and header logo)'
-        # The header's logo on the pages after the cover: each page's resources name a picture.
-        $pages = @([regex]::Matches($p, '/Type\s*/Page\b(?!s)'))
-        Check ($pages.Count -ge 3 -and ([regex]::Matches($p, '/XObject\s*<<')).Count -ge $pages.Count) 'PDF: a picture on every page (the cover''s logo, then the header''s)' "pages: $($pages.Count)" 
+    if (-not $hasWord) {
+        Check ($r.Code -ne 0 -and $r.Out -match 'PDF needs Microsoft Word') 'PDF without Word: a clear error' $r.Out
+    }
+    else {
+        Check ($r.Code -eq 0 -and (Test-Path -LiteralPath $pdf)) 'PDF: a Netmedia document' $r.Out
+        if ($r.Code -eq 0) {
+            $p = Get-PdfText $pdf
+            Check ($p -match '/MediaBox\s*\[\s*0\s+0\s+595') 'PDF: the Netmedia template''s page (A4), not the theme''s Letter'
+            Check ($p -notmatch '/BaseFont\s*/[A-Z]{6}\+Georgia') 'PDF: the theme''s font not in it'
+        }
     }
 
-    # 4. Word.
+    # 4. Word: a Netmedia document; the theme isn't in it.
     $docx = Join-Path $work 'themed.docx'
     $r = Invoke-LazySpec $lazyspec $proj 'Word' @('-Out', $docx)
-    Check ($r.Code -eq 0 -and (Test-Path -LiteralPath $docx)) 'Word with the theme' $r.Out
+    Check ($r.Code -eq 0 -and (Test-Path -LiteralPath $docx)) 'Word: a Netmedia document' $r.Out
     if ($r.Code -eq 0) {
+        Check ($r.Out -match 'Netmedia document: ') 'Word: made by netmedia-document (and says which)' $r.Out
         $w = Read-Docx $docx
-        $wb = Read-Docx $docx -Bytes
-        $doc = $w['word/document.xml']; $st = $w['word/styles.xml']
-        # The text's font: Normal's, or the defaults Normal takes (Word moves it there when it saves).
-        $normal = [regex]::Match($st, '(?s)<w:style w:type="paragraph" w:default="1" w:styleId="Normal">.*?</w:style>').Value
-        $defaults = [regex]::Match($st, '(?s)<w:docDefaults>.*?</w:docDefaults>').Value
-        Check ($normal -match 'w:ascii="Georgia"' -or ($normal -notmatch 'w:rFonts' -and $defaults -match 'w:ascii="Georgia"')) 'Word: Normal in the theme''s font'
-        Check ($st -match '(?s)w:styleId="Heading1">.*?<w:color w:val="C2185B"/>.*?</w:style>') 'Word: Heading1 in the theme''s colour'
-        $used = @([regex]::Matches($doc, '<w:pStyle w:val="([^"]+)"') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
-        foreach ($s in 'Title', 'Subtitle', 'Heading1', 'Heading2', 'ListParagraph', 'TOCHeading') { Check ($used -contains $s -and $st -match "w:styleId=`"$s`"") "Word: style $s defined and used" "used: $($used -join ', ')" }
-        Check ($doc -match '<w:tblStyle w:val="TableGrid"/>' -and $st -match 'w:styleId="TableGrid"') 'Word: tables in TableGrid'
-        $sect = [regex]::Match($doc, '(?s)<w:sectPr\b.*</w:sectPr>\s*</w:body>').Value
-        Check ($sect -match '<w:pgSz w:w="12240" w:h="15840"/>' -and $sect -match 'w:top="2154"' -and $sect -match 'w:left="1361"') 'Word: the theme''s page size and margins'
-        Check ($sect -match 'w:headerReference w:type="default"' -and $sect -match 'w:footerReference w:type="default"' -and $sect -match 'w:type="first"' -and $sect -match '<w:titlePg/>') 'Word: header and footer, none on the cover'
+        $doc = $w['word/document.xml']
+        $text = (-join @([regex]::Matches($doc, '<w:t(?: [^>]*)?>([^<]*)</w:t>') | ForEach-Object { $_.Groups[1].Value }))
+        Check ($text.Contains('ACME PORTAL') -and $text.Contains('Table of contents')) 'Word: the Netmedia cover (the title in capitals) and the contents'
+        Check ($text.Contains('Password sign-in')) 'Word: the content is there'
+        Check ($w['word/styles.xml'] -match 'Montserrat' -and ($w['word/styles.xml'] + $doc) -notmatch 'Georgia') 'Word: the Netmedia template''s font, not the theme''s'
+        Check ($doc -notmatch 'C2185B') 'Word: the theme''s colour not in it'
         $hdrRels = @($w.Keys | Where-Object { $_ -match '^word/_rels/header\d*\.xml\.rels$' } | ForEach-Object { $w[$_] }) -join ''
-        $pics = @([regex]::Matches($hdrRels, 'Target="(media/[^"]+)"') | ForEach-Object { $w["word/$($_.Groups[1].Value)"] })
-        Check ($pics -contains $logoHash) 'Word: the header''s logo'
-        $ftr = @($w.Keys | Where-Object { $_ -match '^word/footer\d*\.xml$' } | ForEach-Object { $w[$_] }) -join ''
-        Check ($ftr -match 'PAGE' -and $ftr -match 'NUMPAGES' -and $ftr -match 'Acme Portal') 'Word: the footer''s title and PAGE / NUMPAGES'
-        $ft = $w['word/fontTable.xml']
-        $font = [regex]::Match($ft, '(?s)<w:font w:name="Georgia">.*?</w:font>').Value
-        $embeds = @([regex]::Matches($font, '<w:embed(\w+) r:id="([^"]+)" w:fontKey="([^"]+)"'))
-        Check ($embeds.Count -ge 1 -and $font -match '<w:embedRegular ') 'Word: Georgia embedded (regular at least)' $font
-        $ftRels = $w['word/_rels/fontTable.xml.rels']
-        $valid = 0
-        foreach ($e in $embeds) {
-            $target = [regex]::Match($ftRels, "Id=`"$($e.Groups[2].Value)`"[^>]*Target=`"([^`"]+)`"").Groups[1].Value
-            if (-not $target) { $target = [regex]::Match($ftRels, "Target=`"([^`"]+)`"[^>]*Id=`"$($e.Groups[2].Value)`"").Groups[1].Value }
-            $data = $wb["word/$target"]
-            if (-not $data) { continue }
-            $font = Get-Deobfuscated $data $e.Groups[3].Value
-            $sfnt = ($font[0] -eq 0 -and $font[1] -eq 1 -and $font[2] -eq 0 -and $font[3] -eq 0)
-            $name = [Text.Encoding]::GetEncoding(28591).GetString($font)
-            if ($sfnt -and ($name.Contains("`0G`0e`0o`0r`0g`0i`0a") -or $name.Contains('Georgia'))) { $valid++ }
-        }
-        Check ($embeds.Count -and $valid -eq $embeds.Count) 'Word: the embedded fonts are the font files (de-obfuscated: a TrueType font named Georgia)' "$valid of $($embeds.Count)"
-        Check ($w['word/settings.xml'] -match '<w:embedTrueTypeFonts/>') 'Word: fonts kept embedded when it saves'
-        Check ($w['word/theme/theme1.xml'] -match '<a:minorFont><a:latin typeface="Georgia"/>') 'Word: the theme''s font as Word''s body font'
-        $all = (@($w.Keys | Where-Object { $_ -match '\.xml$' } | ForEach-Object { $w[$_] }) -join '')
-        Check ($all -notmatch 'Aptos') 'Word: no Office default font (Aptos)'
-        Check ($doc -match 'w:ascii="Consolas"' -and $doc -notmatch 'w:ascii="(Georgia|Segoe UI)"') 'Word: only code gets a font of its own (the theme''s code font)'
-        $coverLogo = @($w.Keys | Where-Object { $_ -match '^word/media/' } | Where-Object { $w[$_] -eq (Get-Sha (Get-Png 300 100 'Blue')) })
-        Check ($coverLogo.Count -ge 1) 'Word: the cover''s logo'
+        Check ($hdrRels -match 'Target="media/') 'Word: the template''s header with its logo'
     }
-    if (-not $hasWord) { Write-Host '        (no Word here: the documents as LazySpec built them, without the contents'' page numbers)' -ForegroundColor DarkGray }
+
+    # 5. (2.: the theme's path with spaces, relative to the root, from a subfolder.)
 
     # 6. Errors: a missing theme, broken YAML, a missing logo.
     $missing = Join-Path $work 'missing'
@@ -232,7 +190,7 @@ try {
     $r = Invoke-LazySpec $lazyspec $conv 'Word' @('-Out', (Join-Path $work 'conventions.docx'))
     Check ($r.Code -eq 0 -and $r.Out -notmatch 'Word template') 'not set: a Word template next to it isn''t taken' $r.Out
 
-    # 8. A template and a theme.
+    # 8. A template and a theme: Word on the template; -Theme doesn't change Word.
     $both = Join-Path $work 'both'
     New-FixtureTemplate (Join-Path $both 'template.docx') 'TEMPLATE-HEADER-MARK'
     New-FixtureTheme (Join-Path $both 'theme') $themeYaml
@@ -240,13 +198,11 @@ try {
     $r = Invoke-LazySpec $lazyspec $both 'Word' @('-Out', (Join-Path $work 'both.docx'))
     $hdr = ''
     if ($r.Code -eq 0) { $bw = Read-Docx (Join-Path $work 'both.docx'); $hdr = @($bw.Keys | Where-Object { $_ -match '^word/header\d*\.xml$' } | ForEach-Object { $bw[$_] }) -join '' }
-    Check ($r.Code -eq 0 -and $hdr -match 'TEMPLATE-HEADER-MARK' -and $r.Out -match 'uses the template') 'template and theme: Word on the template (and says so)' $r.Out
-    $r = Invoke-LazySpec $lazyspec $both 'Pdf' @('-Out', (Join-Path $work 'both.pdf'))
-    Check ($r.Code -eq 0 -and (Get-PdfText (Join-Path $work 'both.pdf')) -match '/MediaBox\s*\[\s*0\s+0\s+612') 'template and theme: PDF on the theme' $r.Out
+    Check ($r.Code -eq 0 -and $hdr -match 'TEMPLATE-HEADER-MARK' -and $r.Out -match 'Word template: ') 'template and theme: Word on the template (and says so)' $r.Out
     $r = Invoke-LazySpec $lazyspec $both 'Word' @('-Out', (Join-Path $work 'both-theme.docx'), '-Theme', (Join-Path $both 'theme\document-theme.yaml'))
     $hdr = ''
     if ($r.Code -eq 0) { $bw = Read-Docx (Join-Path $work 'both-theme.docx'); $hdr = @($bw.Keys | Where-Object { $_ -match '^word/header\d*\.xml$' } | ForEach-Object { $bw[$_] }) -join '' }
-    Check ($r.Code -eq 0 -and $hdr -notmatch 'TEMPLATE-HEADER-MARK' -and $bw['word/fontTable.xml'] -match 'Georgia') '-Theme on the command line: Word on the theme, over the config''s template' $r.Out
+    Check ($r.Code -eq 0 -and $hdr -match 'TEMPLATE-HEADER-MARK') '-Theme on the command line: Word still on the template' $r.Out
 }
 finally {
     if (-not $Keep) { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }

@@ -2,7 +2,7 @@
 
 #  +==========================================================================+
 #  |   LazySpec  -  tests\Test-WordTemplate.ps1                               |
-#  |   The Word export on the project's template (documentTemplate)           |
+#  |   Word: Netmedia documents, on the project's template copy (documentTemplate) |
 #  |                                                                          |
 #  |   Author  : Netmedia                                                     |
 #  |   Web     : https://netmedia.agency                                      |
@@ -12,23 +12,22 @@
 
 <#
 .SYNOPSIS
-    Tests the Word export with and without a document template (lazyspec: documentTemplate: in
-    openspec/config.yaml, or -Template). No modules: it builds its own project and template in %TEMP%.
+    Tests the Word export: a Netmedia document made by netmedia-document (Python with python-docx), on the
+    Netmedia template or the project's copy of it (lazyspec: documentTemplate: in openspec/config.yaml, or
+    -Template). No modules: it builds its own project and template in %TEMP%.
 
 .DESCRIPTION
-    1. Without documentTemplate: the .docx is the same as the one before templates (-Baseline: that
-       lazyspec.ps1; default: git HEAD's when it has no templates yet; else this test is skipped).
-    2. With the template: its header and footer parts and their pictures are in the result, the content
-       uses its style IDs, none of its sample text is left, its section properties are kept.
+    1. Without documentTemplate: the Netmedia template (its cover with the title, its contents, its header
+       with the logo, Montserrat); no template named.
+    2. With the template (a copy of the Netmedia template's structure): its header and footer parts and their
+       pictures are in the result, its section properties are kept, none of its sample text after the
+       contents is left, the content in its Heading styles.
     3. A template path with spaces resolves against the project's root (lazyspec started in a subfolder).
     4. A missing template: a clear error naming the resolved path, exit code 1.
     5. A broken template (not a .docx): a clear error, exit code 1.
     6. -Template wins over the config's documentTemplate.
 
-    Word (or pandoc) is needed for 1; 2-6 need neither (Word, when there, adds the contents' page numbers).
-
-.PARAMETER Baseline
-    A lazyspec.ps1 from before document templates, for test 1.
+    Word isn't needed (when it's there, it fills in the contents' page numbers).
 
 .PARAMETER Keep
     Keep the test project in %TEMP% (to look at the documents).
@@ -40,10 +39,7 @@
     .\tests\Test-WordTemplate.ps1 -Baseline D:\old\lazyspec.ps1 -Keep
 #>
 [CmdletBinding()]
-param(
-    [string]$Baseline,
-    [switch]$Keep
-)
+param([switch]$Keep)
 
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
@@ -56,10 +52,8 @@ $work = Join-Path ([IO.Path]::GetTempPath() -replace '^/var/', '/private/var/') 
 # --- the tests --------------------------------------------------------------------------------------------
 
 Write-Host ''
-Write-Host "  LazySpec: Word export on a document template ($work)" -ForegroundColor Cyan
+Write-Host "  LazySpec: Word exports, Netmedia documents ($work)" -ForegroundColor Cyan
 Write-Host ''
-$hasWord = Test-WordInstalled
-$hasPandoc = [bool](Get-Command pandoc -CommandType Application -ErrorAction SilentlyContinue)
 try {
     $tplPath = Join-Path $work 'acme\openspec\artifacts\Company template.docx'
     $proj = Join-Path $work 'acme'
@@ -67,31 +61,21 @@ try {
     $other = Join-Path $work 'other templates\Other one.docx'
     New-FixtureTemplate $other 'OTHER-HEADER-MARK'
     $logoHash = Get-Sha (Get-Png 60 20 'Red')
-    $samples = 'DOCUMENT TITLE', 'Title section', 'Text section', 'Bulletted text', 'Column value', 'Sample link', 'example.com/sample'
+    $samples = 'DOCUMENT TITLE', 'Title section', 'Text section', 'Bulletted text', 'Column value', 'Sample link'
 
-    # 1. Without documentTemplate: as before.
+    # 1. Without documentTemplate: the Netmedia template.
     $plain = Join-Path $work 'plain'
     New-FixtureProject $plain @()
-    if (-not $Baseline) {
-        $Baseline = Get-Baseline $repo $work 'Export-WordTemplate'
-    }
-    if (-not $hasWord -and -not $hasPandoc) { Skip 'without a template: as before' 'neither Word nor pandoc here' }
-    elseif (-not $Baseline -or -not (Test-Path -LiteralPath $Baseline)) { Skip 'without a template: as before' 'no lazyspec.ps1 from before templates (-Baseline)' }
-    else {
-        Copy-KitFiles $lazyspec $Baseline
-        $a = Invoke-LazySpec $Baseline $plain 'Word' @('-Out', (Join-Path $work 'before.docx'))
-        $b = Invoke-LazySpec $lazyspec $plain 'Word' @('-Out', (Join-Path $work 'now.docx'))
-        if ($a.Code -or $b.Code) { Fail 'without a template: as before' "exit codes $($a.Code) / $($b.Code): $($a.Out) $($b.Out)" }
-        else {
-            $pa = Read-Docx (Join-Path $work 'before.docx'); $pb = Read-Docx (Join-Path $work 'now.docx')
-            $same = (Get-Normalized $pa['word/document.xml']) -eq (Get-Normalized $pb['word/document.xml'])
-            $sameParts = (@($pa.Keys | Sort-Object) -join ',') -eq (@($pb.Keys | Sort-Object) -join ',')
-            # Word's built-in styles as before; the custom ones Word makes from LazySpec's CSS classes may grow.
-            $builtIn = { param([string]$X) [regex]::Replace((Get-Normalized $X), '(?s)<w:style\b[^>]*w:customStyle="1"[^>]*>.*?</w:style>', '') }
-            $sameStyles = (& $builtIn $pa['word/styles.xml']) -eq (& $builtIn $pb['word/styles.xml'])
-            Check ($same -and $sameParts -and $sameStyles) 'without a template: the same document as before' "document.xml same: $same, parts same: $sameParts, styles same: $sameStyles"
-            Check ($b.Out -notmatch 'Word template') 'without a template: no template used' $b.Out
-        }
+    $r = Invoke-LazySpec $lazyspec $plain 'Word' @('-Out', (Join-Path $work 'plain.docx'))
+    Check ($r.Code -eq 0) 'without a template: a Netmedia document' $r.Out
+    if ($r.Code -eq 0) {
+        Check ($r.Out -notmatch 'Word template:') 'without a template: none named' $r.Out
+        $p = Read-Docx (Join-Path $work 'plain.docx')
+        $text = (-join @([regex]::Matches($p['word/document.xml'], '<w:t(?: [^>]*)?>([^<]*)</w:t>') | ForEach-Object { $_.Groups[1].Value }))
+        Check ($text.Contains('ACME PORTAL') -and $text.Contains('Table of contents') -and -not $text.Contains('DOCUMENT TITLE')) 'without a template: the Netmedia cover with the title, the contents'
+        Check ($p['word/styles.xml'] -match 'Montserrat') 'without a template: the Netmedia template''s font'
+        $hdrRels = @($p.Keys | Where-Object { $_ -match '^word/_rels/header\d*\.xml\.rels$' } | ForEach-Object { $p[$_] }) -join ''
+        Check ($hdrRels -match 'Target="media/') 'without a template: the Netmedia header with its logo'
     }
 
     # 2. + 3. With the template (spaces in its path, relative to the root; started in a subfolder).
@@ -113,26 +97,12 @@ try {
         $sect = [regex]::Match($doc, '(?s)<w:sectPr\b.*</w:sectPr>\s*</w:body>').Value
         Check ($sect -match 'w:headerReference' -and $sect -match 'w:footerReference' -and $sect -match 'w:titlePg' -and $sect -match 'w:left="1418"') 'the template''s section properties are kept (headers, footers, margins, first page)'
         $styles = [regex]::Matches($doc, '<w:pStyle w:val="([^"]+)"') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
-        foreach ($s in 'Title', 'Subtitle', 'Heading1', 'Heading2', 'Heading3', 'Heading4', 'ListParagraph', 'TOCHeading') { Check ($styles -contains $s) "style $s used" "used: $($styles -join ', ')" }
-        # Normal: by name, or as the default paragraph style (Word leaves it out when it saves).
-        $body = [regex]::Match($doc, '(?s)<w:body>.*</w:body>').Value
-        $plainParas = @([regex]::Matches($body, '(?s)<w:p\b[^>]*>.*?</w:p>') | Where-Object { $_.Value -match '<w:t\b' -and $_.Value -notmatch '<w:pStyle ' }).Count
-        Check (($styles -contains 'Normal' -or $plainParas -gt 0) -and $p['word/styles.xml'] -match 'w:default="1" w:styleId="Normal"') 'style Normal used (the body text)' "pStyle Normal: $($styles -contains 'Normal'), paragraphs in the default style: $plainParas" 
-        Check ($doc -match '<w:tblStyle w:val="TableGrid"/>') 'tables use TableGrid'
-        $unknown = @($styles | Where-Object { $p['word/styles.xml'] -notmatch "w:styleId=`"$_`"" })
-        Check (-not $unknown.Count) 'every paragraph style is one of the template''s' "unknown: $($unknown -join ', ')"
+        foreach ($s in 'Heading1', 'Heading2') { Check ($styles -contains $s) "style $s used" "used: $($styles -join ', ')" }
         $text = (-join @([regex]::Matches($doc, '<w:t(?: [^>]*)?>([^<]*)</w:t>') | ForEach-Object { $_.Groups[1].Value }))
         $left = @($samples | Where-Object { $text.Contains($_) -or $doc.Contains($_) -or $p['word/_rels/document.xml.rels'].Contains($_) })
         Check (-not $left.Count) 'none of the template''s sample text is left' "found: $($left -join ', ')"
-        Check (-not $p.ContainsKey('word/media/cover.png')) 'the sample cover''s picture is gone'
         Check ($p['docProps/core.xml'] -notmatch 'DOCUMENT TITLE' -and $p['docProps/core.xml'] -match 'Acme Portal') 'the document''s title in its properties'
-        Check ($text.Contains('Acme Portal') -and $text.Contains('Password sign-in') -and $text.Contains('curl -s https://example.com/api/login')) 'the content is there'
-        Check ($doc -notmatch 'w:rFonts w:ascii="(Montserrat|Georgia|Lato|Segoe UI)') 'no fonts set over the template''s (only code gets a monospace font)'
-        $used = @([regex]::Matches($doc, '<w:numId w:val="(\d+)"/>') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
-        $defined = @([regex]::Matches($p['word/numbering.xml'], '<w:num w:numId="(\d+)"') | ForEach-Object { $_.Groups[1].Value })
-        Check ($used.Count -ge 2 -and -not @($used | Where-Object { $defined -notcontains $_ }).Count) 'lists are numbered, with numberings the document defines' "used: $($used -join ','), defined: $($defined -join ',')" 
-        Check ($r.Out -match 'fonts of the Word template not installed on this PC: [^
-]*LazySpec Missing Font') 'a warning names the template''s fonts this PC lacks' $r.Out
+        Check ($text.Contains('ACME PORTAL') -and $text.Contains('Password sign-in') -and $text.Contains('curl -s https://example.com/api/login')) 'the content is there (the cover''s title in capitals)'
     }
 
     # 4. A missing template: an error naming the resolved path.
