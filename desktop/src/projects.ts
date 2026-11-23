@@ -1,8 +1,10 @@
 // The projects this server works on, the commands it runs (git, gh, the OpenSpec CLI, PowerShell), and the
-// guards: what may be written (openspec/ only) and what may be read (the project, without secrets).
+// guards: what may be written (openspec/, the export folder's sources, the team's shared knowledge in .claude/) and
+// what may be read (the project, without secrets), and the Netmedia tools run_tool runs.
 
 import * as cp from 'child_process';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { Project } from '../../vscode/src/model';
 import { UserError } from './mcp';
@@ -83,14 +85,60 @@ function inside(dir: string, file: string): boolean {
   const r = path.relative(dir, file);
   return !!r && !r.startsWith('..') && !path.isAbsolute(r);
 }
-/** A path the PM's documents may be written at: under openspec/ (not exports/). */
+/** A setting of openspec/config.yaml: "<block>:" then "  key: value" (flat, one level). */
+export function configValue(p: Project, block: string, key: string): string {
+  let text = '';
+  try { text = fs.readFileSync(path.join(p.osDir, 'config.yaml'), 'utf8'); } catch { return ''; }
+  let inBlock = false;
+  for (const line of text.replace(/\r/g, '').split('\n')) {
+    if (!line.trim() || line.trimStart().startsWith('#')) { continue; }
+    if (!/^\s/.test(line)) { inBlock = new RegExp(`^${block}:\\s*$`).test(line); continue; }
+    const m = inBlock ? /^\s+([A-Za-z]+):\s*(.*?)\s*(#.*)?$/.exec(line) : null;
+    if (m && m[1] === key) { return m[2].replace(/^(['"])(.*)\1$/, '$2'); }
+  }
+  return '';
+}
+/** Where every export goes - spec exports, estimates, offers, documents: netmedia: exportDir: in
+ *  openspec/config.yaml (shared by every Netmedia tool), else lazyspec: exportDir: (older projects), else
+ *  openspec/exports/. Always inside the project. */
+export function exportDir(p: Project): string {
+  const d = configValue(p, 'netmedia', 'exportDir') || configValue(p, 'lazyspec', 'exportDir');
+  const dir = d ? path.resolve(p.root, d) : '';
+  return dir && inside(p.root, dir) ? dir : path.join(p.osDir, 'exports');
+}
+/** The team's shared knowledge the process writes outside openspec/ (committed by save): the offer memory, the
+ *  estimates' calibration, the agents' profiles and lessons. */
+export function isKnowledge(relPath: string): boolean {
+  const r = relPath.replace(/\\/g, '/');
+  return /^\.claude\/offers\.yaml$/i.test(r) || /^\.claude\/estimates\/.+\.(md|ya?ml|json)$/i.test(r)
+    || /^\.claude\/rules\/[^/]+-(profile|gotchas)\.md$/i.test(r);
+}
+export const KNOWLEDGE_PATHS = ['.claude/offers.yaml', '.claude/estimates', '.claude/rules'];
+/** A file of the process outside the specs: in the export folder (sources and data of exports: Markdown, JSON,
+ *  YAML, CSV) or the team's shared knowledge (isKnowledge). */
+export function writableFile(p: Project, given: unknown): string {
+  const s = String(given || '').trim();
+  if (!s) { throw new UserError('path is required (from the project folder).'); }
+  const file = path.resolve(p.root, s);
+  if (!inside(p.root, file)) { throw new UserError(`Only files inside the project can be written; not ${s}.`); }
+  const r = rel(p, file);
+  if (isKnowledge(r)) { return file; }
+  if (inside(exportDir(p), file)) {
+    if (!/\.(md|json|ya?ml|csv)$/i.test(file)) { throw new UserError('In the export folder only Markdown, JSON, YAML and CSV are written here; documents come from export_document or run_tool.'); }
+    return file;
+  }
+  throw new UserError(`${r} is not one of the process's files: the export folder (${rel(p, exportDir(p))}/), .claude/offers.yaml, .claude/estimates/, .claude/rules/*-profile.md or *-gotchas.md. Specs: write_document / edit_document.`);
+}
+/** A path the PM's documents may be written at: under openspec/ (not the export folder). */
 export function writable(p: Project, given: unknown, area: 'openspec' | 'changes' = 'openspec'): string {
   const s = String(given || '').trim();
   if (!s) { throw new UserError('path is required (from the project folder, e.g. openspec/changes/<change>/proposal.md).'); }
   const file = path.resolve(p.root, s);
   const base = area === 'changes' ? path.join(p.osDir, 'changes') : p.osDir;
   if (!inside(base, file)) { throw new UserError(`Only files under ${rel(p, base)}/ can be written; not ${s}.`); }
-  if (inside(path.join(p.osDir, 'exports'), file)) { throw new UserError('openspec/exports/ is written by export_document only.'); }
+  if (inside(path.join(p.osDir, 'exports'), file) || inside(exportDir(p), file)) {
+    throw new UserError(`${rel(p, exportDir(p))}/ is the export folder: write_file for sources, export_document or run_tool for documents.`);
+  }
   if (area === 'changes' && inside(path.join(p.osDir, 'changes', 'archive'), file)) { throw new UserError('Archived changes are not edited.'); }
   if (!/\.(md|ya?ml)$/i.test(file)) { throw new UserError('Only Markdown and YAML documents can be written.'); }
   return file;
@@ -166,6 +214,79 @@ export function kitScript(p: Project): string {
 export function powershell(): string {
   if (process.platform === 'win32') { return onPath('pwsh') || 'powershell.exe'; }
   return onPath('pwsh') || '/usr/local/bin/pwsh';
+}
+
+// --- the Netmedia tools (run_tool) ------------------------------------------------------------------------------
+
+/** The scripts of the Netmedia plugins (AIToolbelt) that run_tool may run, by name. The scripts exist once, in
+ *  AIToolbelt; nothing here is a copy of their logic. */
+export const NETMEDIA_TOOLS: Record<string, { plugin: string; script: string; runtime: 'python' | 'node'; what: string }> = {
+  'offer-prep': { plugin: 'netmedia', script: 'skills/prepare-offer/scripts/offer_prep.py', runtime: 'python', what: 'offer preparation: workbook sheets, headers, sections, specs, remembered picks, rates, prices, file name' },
+  offer: { plugin: 'netmedia-tools', script: 'offer/offer.py', runtime: 'python', what: 'the offer document: new, check, build (Word, PDF)' },
+  estimate: { plugin: 'netmedia', script: 'skills/estimate/scripts/build_estimate.py', runtime: 'python', what: 'the estimate workbook' },
+  document: { plugin: 'netmedia-document', script: 'scripts/netmedia_document.py', runtime: 'python', what: 'a Netmedia document (Word, PDF) from Markdown' },
+  translate: { plugin: 'netmedia-tools', script: 'skills/translate/scripts/deepl.ts', runtime: 'node', what: 'DeepL translation' },
+  hasek: { plugin: 'netmedia-tools', script: 'skills/hasek/scripts/hasek.ts', runtime: 'node', what: 'the Croatian check (Hašek)' },
+};
+function newest(files: string[]): string {
+  return files.map(f => { try { return { f, t: fs.statSync(f).mtimeMs }; } catch { return { f, t: 0 }; } })
+    .sort((a, b) => b.t - a.t)[0]?.f || '';
+}
+/** Copies of a plugin's file under a folder: <root>/**\/<plugin>/**\/<file>, up to six levels. */
+function findPluginFile(root: string, plugin: string, file: string): string[] {
+  const hits: string[] = [];
+  const walk = (dir: string, depth: number) => {
+    if (depth > 6) { return; }
+    let entries: fs.Dirent[] = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (!e.isDirectory() || e.name === 'node_modules' || e.name === '.git') { continue; }
+      const sub = path.join(dir, e.name);
+      if (e.name === plugin) {
+        if (isFile(path.join(sub, file))) { hits.push(path.join(sub, file)); }
+        for (const v of (() => { try { return fs.readdirSync(sub, { withFileTypes: true }); } catch { return []; } })()) {
+          if (v.isDirectory() && isFile(path.join(sub, v.name, file))) { hits.push(path.join(sub, v.name, file)); }
+        }
+      }
+      walk(sub, depth + 1);
+    }
+  };
+  walk(root, 0);
+  return hits;
+}
+/** Where a Netmedia tool's script is: NETMEDIA_PLUGINS (a folder with the plugins, e.g. an AIToolbelt clone's
+ *  plugins/), the plugins installed in Claude Code (~/.claude/plugins, the newest copy), else the copy bundled in
+ *  this extension (server/netmedia/<plugin>/...). */
+export function netmediaScript(name: string): { file: string; from: string } {
+  const t = NETMEDIA_TOOLS[name];
+  if (!t) { throw new UserError(`No tool "${name}". Tools: ${Object.keys(NETMEDIA_TOOLS).join(', ')}.`); }
+  const given = (process.env.NETMEDIA_PLUGINS || '').trim();
+  if (given && isFile(path.join(given, t.plugin, t.script))) { return { file: path.join(given, t.plugin, t.script), from: 'NETMEDIA_PLUGINS' }; }
+  const installed = newest(findPluginFile(path.join(os.homedir(), '.claude', 'plugins'), t.plugin, t.script));
+  if (installed) { return { file: installed, from: 'the installed plugin' }; }
+  const bundled = path.join(__dirname, 'netmedia', t.plugin, t.script);
+  if (isFile(bundled)) { return { file: bundled, from: 'bundled with LazySpec' }; }
+  return { file: '', from: '' };
+}
+/** The Python the Netmedia tools run with: the Netmedia environment (~/.netmedia/python, the same on Windows and
+ *  macOS), else py -3 (Windows) or python3. */
+export function python(): { cmd: string; pre: string[]; env: boolean } {
+  const venv = path.join(os.homedir(), '.netmedia', 'python', process.platform === 'win32' ? 'Scripts' : 'bin',
+    process.platform === 'win32' ? 'python.exe' : 'python');
+  if (isFile(venv)) { return { cmd: venv, pre: [], env: true }; }
+  if (process.platform === 'win32') { const py = onPath('py'); if (py) { return { cmd: py, pre: ['-3'], env: false }; } }
+  return { cmd: onPath('python3') || onPath('python') || 'python3', pre: [], env: false };
+}
+/** run_tool's guard: every argument that names a path is inside the project, not a secret. */
+export function checkToolArgs(p: Project, args: string[]): void {
+  for (const a of args) {
+    const value = a.includes('=') && a.startsWith('-') ? a.slice(a.indexOf('=') + 1) : a;
+    const looksLikePath = /[\\/]/.test(value) || /\.(md|json|ya?ml|csv|xlsx|docx|pdf|txt)$/i.test(value);
+    if (!looksLikePath || /^https?:\/\//i.test(value)) { continue; }
+    const file = path.resolve(p.root, value);
+    if (!inside(p.root, file) && file !== p.root) { throw new UserError(`run_tool works inside the project only; not ${value}.`); }
+    if (isSecret(rel(p, file))) { throw new UserError(`${rel(p, file)} may hold secrets; run_tool does not touch it.`); }
+  }
 }
 
 // --- text ----------------------------------------------------------------------------------------------------

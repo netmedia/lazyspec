@@ -11,6 +11,8 @@ const { after, before, test } = require('node:test');
 
 const SERVER = path.join(__dirname, '..', 'dist', 'server.js');
 const EXAMPLE = path.join(__dirname, '..', '..', 'examples', 'acme-portal');
+// The Netmedia plugins for run_tool: AIToolbelt cloned next to this repository (skipped without it).
+const PLUGINS = path.join(__dirname, '..', '..', '..', 'AIToolbelt', 'plugins');
 let tmp, root, child, rl, nextId = 1;
 const waiting = new Map();
 
@@ -43,7 +45,7 @@ before(async () => {
   git(['remote', 'add', 'origin', path.join(tmp, 'remote.git')]);
   git(['push', '-q', '-u', 'origin', 'develop']);
   git(['config', 'user.name', 't']); git(['config', 'user.email', 't@t']);
-  child = cp.spawn(process.execPath, [SERVER, path.join(tmp, 'projects')], { stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env, PATH: process.env.PATH.split(path.delimiter).filter(d => !/GitHub CLI/i.test(d)).join(path.delimiter) } });
+  child = cp.spawn(process.execPath, [SERVER, path.join(tmp, 'projects')], { stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env, NETMEDIA_PLUGINS: PLUGINS, PATH: process.env.PATH.split(path.delimiter).filter(d => !/GitHub CLI/i.test(d)).join(path.delimiter) } });
   rl = readline.createInterface({ input: child.stdout });
   rl.on('line', l => { const m = JSON.parse(l); waiting.get(m.id)?.(m); waiting.delete(m.id); });
   const init = await call('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
@@ -110,13 +112,50 @@ test('code is read-only and secrets stay out', async () => {
   assert.ok((await tool('read_code', { path: '../../x' })).isError);
 });
 
-test('save commits openspec/ only on a branch and pushes it', async () => {
+test('process files: the export folder from netmedia: exportDir, the shared knowledge, nothing else', async () => {
+  fs.appendFileSync(path.join(root, 'openspec', 'config.yaml'), '\nnetmedia:\n  exportDir: export\n');
+  assert.match(await ok('write_file', { path: 'export/offer-plan.json', content: '{"lang": "hr"}' }), /export\/offer-plan\.json: written/);
+  assert.match(await ok('write_file', { path: '.claude/offers.yaml', content: 'version: 1\n' }), /written/);
+  assert.match(await ok('write_file', { path: '.claude/rules/pm-profile.md', content: '# PM profile\n' }), /written/);
+  assert.ok((await tool('write_file', { path: '.claude/offers.yaml', content: 'x' })).isError, 'no overwrite by default');
+  for (const bad of ['src.cs', '.claude/settings.json', 'export/offer.docx', '../outside.md', 'openspec/changes/x/proposal.md']) {
+    assert.ok((await tool('write_file', { path: bad, content: 'x' })).isError, bad);
+  }
+  await ok('edit_document', { path: '.claude/offers.yaml', old_text: 'version: 1', new_text: 'version: 2' });
+  assert.match(fs.readFileSync(path.join(root, '.claude', 'offers.yaml'), 'utf8'), /version: 2/);
+  assert.ok((await tool('edit_document', { path: 'src.cs', old_text: 'class', new_text: 'klass' })).isError, 'code stays read-only');
+  const listed = JSON.parse(await ok('list_exports', { pattern: '.json' }));
+  assert.strictEqual(listed.folder, 'export');
+  assert.deepStrictEqual(listed.files.map(f => f.file), ['export/offer-plan.json']);
+  assert.ok((await tool('run_tool', { tool: 'offer-prep', args: ['name', '--number', 'P1', '--title', 'x', '-o', '../../outside.md'] })).isError, 'paths stay inside');
+  assert.ok((await tool('run_tool', { tool: 'rm' })).isError, 'only the listed tools');
+});
+
+test('export_document writes into the export folder of netmedia: exportDir', async () => {
+  const r = await tool('export_document', { format: 'html', item: 'user-accounts' });
+  if (/PowerShell is not there/.test(r.text)) { return; }
+  assert.ok(!r.isError, r.text);
+  assert.match(r.text.replace(/\\/g, '/'), /\/export\/[^/]+\.html$/);
+});
+
+test('run_tool runs the Netmedia script itself', { skip: !fs.existsSync(PLUGINS) && 'AIToolbelt is not next to this repository' }, async () => {
+  const about = JSON.parse(await ok('about'));
+  assert.strictEqual(about.netmediaTools['offer-prep'], 'NETMEDIA_PLUGINS');
+  const r = await tool('run_tool', { tool: 'offer-prep', args: ['name', '--sequence', '29', '--date', '2026-11-23', '--title', 'Online plaćanja'] });
+  if (/Python is not there/.test(r.text)) { return; }
+  assert.ok(!r.isError, r.text);
+  assert.match(r.text, /P2026-1123-029-Online-placanja-v001/);
+});
+
+test('save commits openspec/ and the shared knowledge only, on a branch, and pushes it', async () => {
   fs.appendFileSync(path.join(root, 'src.cs'), '// not a spec\n');
   const r = await ok('save', { message: 'Spec for invoice export' });
   assert.match(r, /new branch spec\/spec-for-invoice-export-\d{8}/);
   assert.match(r, /pushed to origin/);
   const files = git(['show', '--name-only', '--format=', 'HEAD']);
-  assert.ok(files.split('\n').filter(Boolean).every(f => f.startsWith('openspec/')), files);
+  assert.ok(files.split('\n').filter(Boolean).every(f => f.startsWith('openspec/') || f.startsWith('.claude/')), files);
+  assert.match(files, /\.claude\/offers\.yaml/);
+  assert.doesNotMatch(files, /^export\//m);
   assert.match(git(['status', '--porcelain']), /src\.cs/);
 });
 
