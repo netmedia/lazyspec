@@ -61,6 +61,8 @@ fs.copyFileSync(path.join(here, 'dist', 'server.js'), path.join(stage, 'server',
 for (const f of ['lazyspec.ps1', 'export-texts.json', 'kit.json', 'LAZYSPEC.md']) {
   fs.copyFileSync(path.join(repo, 'tools', 'lazyspec', f), path.join(stage, 'server', 'kit', f));
 }
+// The netmedia-document generator lazyspec.ps1 makes Word and PDF with (when no netmedia-document is installed).
+fs.cpSync(path.join(repo, 'tools', 'lazyspec', 'netmedia-document'), path.join(stage, 'server', 'kit', 'netmedia-document'), { recursive: true, filter: (src) => !/__pycache__/.test(src) });
 // The Netmedia plugins' tools that run_tool runs in Claude Desktop Chat, where the installed plugins' files can't be
 // reached: copied from AIToolbelt (NETMEDIA_AITOOLBELT, else the clone next to this repository) - a generated copy,
 // never edited here. Without AIToolbelt the extension is packed without them and run_tool says so.

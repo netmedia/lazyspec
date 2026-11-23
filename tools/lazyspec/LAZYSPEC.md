@@ -384,9 +384,9 @@ Tests: `.\tests\Test-Translation.ps1` (no network: `LAZYSPEC_DEEPL_FAKE`, `LAZYS
 
 | Format | Made with | Notes |
 |---|---|---|
-| PDF | Microsoft Edge (else Google Chrome), headless | page numbers and the title in the footer, links in the contents |
-| Word (`.docx`) | Microsoft Word, else pandoc; with a [document template](#word-document-template): LazySpec itself | Word's own table of contents (with page numbers) and page numbering; editable |
-| HTML | LazySpec itself | one file, the styles inside |
+| Word (`.docx`) | [netmedia-document](#netmedia-documents-word-and-pdf) (Python 3.10+ with `python-docx`) | a Netmedia document: the Netmedia cover, contents, styles, header and footer; Word fills in the contents' page numbers when it's there; editable |
+| PDF | the same Word document, exported by Microsoft Word (Windows or macOS) | the same Netmedia document; without Word: an error (export Word instead) |
+| HTML | LazySpec itself | one file, the styles inside, in the project's [theme](#document-theme) |
 
 Written to `openspec\exports\<project>-specification-<date>.<ext>` (another folder: `lazyspec: exportDir: <path>` in
 `openspec/config.yaml`, relative to the project's root; add it to `.gitignore`, or
@@ -395,9 +395,9 @@ and opens the document when it's done.
 
 ### Markdown documents
 
-Any Markdown file (meeting notes, a summary, a letter, anything sent to the client) as a document in the
-project's look (its [theme](#document-theme), or its [template](#word-document-template) for Word), in any
-of the three formats:
+Any Markdown file (meeting notes, a summary, a letter, anything sent to the client) as a document: Word and
+PDF as [Netmedia documents](#netmedia-documents-word-and-pdf) (the project's template copy, when it has one),
+HTML in the project's [theme](#document-theme):
 
 ```
 lazyspec -Export Word -Markdown "openspec_meetings\2026-11-04 summary.md"     # or Pdf, Html
@@ -405,8 +405,8 @@ lazyspec -Export Pdf -Markdown notes.md -Out D:\Clients\notes.pdf -Open
 ```
 
 - **Written next to the file**, the same name (`summary.docx`); `-Out` writes elsewhere.
-- **The project** is the one the file is in (an `openspec` folder above it): its theme, template, language,
-  author, client. A file outside a project: the default look (`-Theme`, `-Template` still work).
+- **The project** is the one the file is in (an `openspec` folder above it): its template, theme, language,
+  author, client. A file outside a project: the Netmedia template (`-Theme`, `-Template` still work).
 - **The front matter** (all optional):
 
   ```markdown
@@ -418,7 +418,7 @@ lazyspec -Export Pdf -Markdown notes.md -Out D:\Clients\notes.pdf -Open
   date: 4. 11. 2026.              # else today
   language: hr                    # the cover's and contents' words; else the project's
   toc: true                       # a contents of headings 1-2 (default: none)
-  cover: false                    # no cover page: the title at the top of the first page (default: a cover)
+  cover: false                    # HTML: no cover page, the title at the top of the first page (Word, PDF: always the Netmedia cover)
   ---
   ```
 
@@ -427,87 +427,76 @@ lazyspec -Export Pdf -Markdown notes.md -Out D:\Clients\notes.pdf -Open
   pages here; a hard line break (`\` or two spaces at a line's end) is kept; a `|` inside a table cell is
   written `\|`.
 - **Pictures:** a line with only `![caption](path)` (the path relative to the `.md` file; spaces as `%20`):
-  the picture inside the document (embedded in Word), the page's width at most, the caption under it. A
+  the picture inside the document, the page's width at most, the caption under it. A
   picture that isn't there: a note in the output, its caption in its place.
 
 Tests: `.\tests\Test-MarkdownDocument.ps1` (in the LazySpec repository).
 
-### Document theme
+### Netmedia documents (Word and PDF)
 
-One look for every document LazySpec makes, **in all three formats** (PDF, Word, HTML), with no Word or other
-program needed: `documentTheme:` under `lazyspec:` in `openspec/config.yaml`, a YAML file relative to the
-project's root (spaces are fine); `-Theme <path>` (relative to the current folder) wins over it for one export.
-Not set: `openspec/artifacts/document-theme.yaml` when it's there (where `netmedia:openspec-init` puts Netmedia's
-theme). A Word template is never taken by default: only `documentTemplate:` (else Word would leave the theme).
+Every Word and PDF document LazySpec makes is a **Netmedia document**, made by the `netmedia-document`
+generator (`netmedia_document.py`) from the export - the same generator as every other Netmedia document
+(guides, conventions, estimates' and offers' documents): the template's cover (the logo, the title in capitals,
+the subtitle and date, the cover's lines such as the client and the scope), its table of contents (in the
+export's language: Table of contents, Sadržaj, Inhalt, Inhoud), its styles (Montserrat, headings 1-5), header
+with the logo, footer with the page number. A requirement is a heading with its scenarios under it, a scenario
+an indented sentence, a diagram a picture with its caption, tasks a list with ☑ for the done ones.
 
-```yaml
-lazyspec:
-  # documentTheme: the look of every generated document - export, meeting notes, summaries.
-  documentTheme: openspec/artifacts/document-theme.yaml
-```
+- **The generator:** the installed `netmedia-document` plugin (the newest under `~/.claude/plugins`: the latest
+  Netmedia template), else the AIToolbelt clone next to LazySpec, else **LazySpec's own copy** in
+  `tools/lazyspec/netmedia-document/` (LazySpec works on its own; `NETMEDIA_DOCUMENT_PLUGIN` names another).
+  The export says which it used.
+- **Python 3.10+ with `python-docx`:** the Netmedia environment (`~/.netmedia/python`), else `py -3`,
+  `python3` or `python`. Missing: the export stops and names the command that installs it.
+- **PDF:** Microsoft Word (Windows or macOS) exports the Word document. Without Word the PDF export stops with
+  that reason; export Word instead. Word also fills in the contents' page numbers (without it: in Word,
+  right-click the contents, Update Field).
 
-The theme sets the page (size, margins), colours, the styles (the cover's title and subtitle, headings 1-6,
-text, the contents' heading, tables, links, code: font, size, bold, italic, underline, colour, spacing, line
-height, alignment), the header and footer (left, centre, right: a text with `{title}` `{subtitle}`
-`{client}` `{date}` `{page}` `{pages}`, or the logo; none on the cover unless `firstPage: true`) and the
-cover's logo. Every key, explained: [`examples/document-theme/document-theme.yaml`](../../examples/document-theme/document-theme.yaml)
-in the LazySpec repository.
+#### The template: Netmedia's, or the project's copy
 
-Next to the theme:
-
-- `fonts/`: the fonts' `.ttf` (or `.otf`) files. PDF and HTML use them without installing them (inside the
-  document); **Word gets them embedded** (as Word embeds fonts: regular, bold, italic, bold italic), so the
-  document shows them on any PC. Name a family in the theme as the font calls itself (`Montserrat`); a font
-  not in `fonts/` must be installed, else a warning names it. Use `.ttf` for Word (an `.otf` gets a warning).
-  Check that the font's licence allows embedding (OFL fonts, such as Montserrat, do).
-- the logos (`.png`, `.jpg`, `.gif`), at the paths the theme names (relative to it).
-
-| | HTML | PDF (Edge) | Word |
-|---|---|---|---|
-| Fonts | `@font-face`, from `fonts/` | the same, embedded in the PDF | embedded in the .docx (obfuscated, as Word does) |
-| Styles | CSS | CSS | the built-in styles: Normal, Title, Subtitle, Heading 1-6, TOC Heading, Table Grid, Hyperlink |
-| Page, header, footer | - | `@page`: size, margins, logo, texts, page numbers | section: size, margins, header and footer parts, PAGE / NUMPAGES |
-
-- **Set, but missing, broken (the error names the line) or a logo missing:** the export stops with an error
-  naming the path (exit code 1), never the default look.
-- **A theme and a [document template](#word-document-template):** Word documents use the template, PDF and
-  HTML the theme (the export says so); `-Theme` on the command line: Word uses the theme too.
-- **Not set:** as before.
-
-Tests: `.\tests\Test-DocumentTheme.ps1` (in the LazySpec repository).
-
-### Word document template
-
-Client documents in the company's layout: `documentTemplate:` under `lazyspec:` in `openspec/config.yaml`,
-a `.docx` relative to the project's root (spaces are fine, no quotes needed); `-Template <path>` (relative to
-the current folder) wins over it for one export.
+By default the generator's template, the latest Netmedia one. A project keeps **its own copy** with
+`documentTemplate:` under `lazyspec:` in `openspec/config.yaml` (a `.docx` relative to the project's root;
+spaces are fine), and `-Template <path>` (relative to the current folder) wins over it for one export:
 
 ```yaml
 lazyspec:
-  # documentTemplate: the Word template (.docx) every generated document uses - export, meeting notes, summaries.
+  # documentTemplate: the project's copy of the Netmedia template (netmedia:openspec-init puts it there and
+  # netmedia-document:theme refreshes it) - its header, footer, logo and styles in every Word and PDF document.
   documentTemplate: openspec/artifacts/Document template.docx
 ```
 
-Every Word document LazySpec makes is then built on that template:
-
-- **Kept from the template:** its styles, page setup, section properties, headers and footers with their
-  pictures (the logo), the first page's own header and footer, its fonts (LazySpec sets none, except a
-  monospace one for code).
-- **Not kept:** its sample body (a sample cover "DOCUMENT TITLE", a sample contents, sample sections), with
-  the pictures and links only that sample used. Only the body's last section properties (`w:sectPr`) stay.
-- **The content in the template's built-in styles:** `Title` and `Subtitle` (the cover), `Heading1`..`Heading6`,
-  `Normal` (text), `ListParagraph` (lists; their numbering after the template's own), `TableGrid` (tables),
-  `TOCHeading` (the contents' heading; the contents a Word TOC field). Found by their names, so a template in
-  another Word language works too.
-- **Built by LazySpec itself** (no Word or pandoc needed); Word, when it's there, fills in the contents' page
-  numbers (else: right-click the contents in Word, Update Field).
-- **Set, but missing or not a .docx:** the export stops with an error naming the resolved path (exit code 1),
-  never the default look.
-- **Fonts:** the ones the template sets or declares that this PC lacks are named in a warning (Word puts
-  others in their place until they are installed).
-- Not set: Word documents as before. PDF and HTML don't use the template.
+- **A copy of the Netmedia template:** it keeps the cover's `DOCUMENT TITLE` paragraph and the `Table of
+  contents` title, which the generator fills in; everything after the contents' title is its sample body
+  and goes. Its styles, page setup, headers and footers (with their pictures) stay.
+- **Set, but missing, not a .docx or without those two:** the export stops with an error naming the path
+  (exit code 1), never another look.
 
 Tests: `.\tests\Test-WordTemplate.ps1` (in the LazySpec repository).
+
+### Document theme
+
+The look of **HTML** exports: `documentTheme:` under `lazyspec:` in `openspec/config.yaml`, a YAML file relative
+to the project's root (spaces are fine); `-Theme <path>` (relative to the current folder) wins over it for one
+export. Not set: `openspec/artifacts/document-theme.yaml` when it's there (where `netmedia:openspec-init` puts
+Netmedia's theme). Word and PDF don't use it: they are [Netmedia documents](#netmedia-documents-word-and-pdf).
+
+```yaml
+lazyspec:
+  # documentTheme: the look of HTML exports.
+  documentTheme: openspec/artifacts/document-theme.yaml
+```
+
+The theme sets the colours, the styles (the cover's title and subtitle, headings 1-6, text, the contents'
+heading, tables, links, code: font, size, bold, italic, underline, colour, spacing, line height, alignment)
+and the cover's logo. Every key, explained: [`examples/document-theme/document-theme.yaml`](../../examples/document-theme/document-theme.yaml)
+in the LazySpec repository. Next to the theme: `fonts/` (the fonts' `.ttf` or `.otf` files, inside the HTML
+with `@font-face`) and the logos at the paths the theme names.
+
+- **Set, but missing, broken (the error names the line) or a logo missing:** the export stops with an error
+  naming the path (exit code 1), never the default look - for every format, so a broken theme is found early.
+- **Not set:** LazySpec's own look.
+
+Tests: `.\tests\Test-DocumentTheme.ps1` (in the LazySpec repository).
 
 ## The project's settings
 
@@ -531,8 +520,8 @@ it), the export's settings that belong to the specification; they win over `lazy
 lazyspec:
   name: Acme – Portal i javni API          # on the cover, instead of the folder's name
   client: Acme d.o.o.                      # also: subtitle, author, language
-  documentTemplate: openspec/artifacts/Document template.docx   # Word documents on it (see Export)
-  documentTheme: openspec/artifacts/document-theme.yaml    # PDF, Word and HTML in that look (see Export)
+  documentTemplate: openspec/artifacts/Document template.docx   # Word and PDF on the project's template copy (see Export)
+  documentTheme: openspec/artifacts/document-theme.yaml    # HTML in that look (see Export)
   exportDir: openspec/exports              # where exports go (the default; relative to the project's root)
   titles:                                  # a capability's (or spec's) title in the export
     add-online-payments:                   # a group per change (its folder's name): for that change
@@ -566,7 +555,7 @@ A Figma link is saved as a PNG in the change's `diagrams\` folder (`openspec\dia
 of the process). Every diagram of a change from the same Figma file is shown at the scale of the change's
 whole diagram (`change`; the one at which that fits the page): the boxes as large in all of them. Without a
 whole diagram: two thirds of its size on the board. Commit it, and the export
-works without Figma, for everyone. In PDF and HTML the images are inside the document; Word embeds them too.
+works without Figma, for everyone. The images are inside the document in every format.
 
 **Every export** (PDF, Word, HTML; the UI and the command line), for each diagram:
 

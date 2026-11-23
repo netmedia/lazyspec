@@ -9,4 +9,7 @@ fs.mkdirSync(to, { recursive: true });
 for (const f of ['lazyspec.ps1', 'export-texts.json', 'kit.json', 'LAZYSPEC.md']) {
   fs.copyFileSync(path.join(from, f), path.join(to, f));
 }
+// The netmedia-document generator: Word and PDF exports are Netmedia documents (used when none is installed).
+fs.rmSync(path.join(to, 'netmedia-document'), { recursive: true, force: true });
+fs.cpSync(path.join(from, 'netmedia-document'), path.join(to, 'netmedia-document'), { recursive: true });
 console.log(`kit: ${to}`);

@@ -1,95 +1,58 @@
 #Requires -Version 5.1
-
-#  +==========================================================================+
-#  |   LazySpec  -  docs\build-documents.ps1                                  |
-#  |   The documents in docs\, made by LazySpec itself                        |
-#  |                                                                          |
-#  |   Author  : Netmedia                                                     |
-#  |   Web     : https://netmedia.agency                                      |
-#  |   Email   : netmedia@netmedia.hr                                         |
-#  |   Product : LazySpec  -  https://github.com/netmedia/lazyspec            |
-#  +==========================================================================+
-
 <#
 .SYNOPSIS
-    Makes the documents in docs\ from the repository's Markdown and the demo project, in a document theme
-    (Netmedia's: plugins\netmedia-document\theme\ in the AIToolbelt repository).
+Builds the Word documents (and PDFs) docs/documents.json lists, with the netmedia-document plugin - the Netmedia
+cover, contents, styles and document history, the same in every Netmedia repository.
 
 .DESCRIPTION
-    - docs\LazySpec-Developer-Guide.docx / .pdf   from docs\developer-guide.md
-    - docs\LazySpec-Reference.docx / .pdf         from tools\lazyspec\LAZYSPEC.md
-    - docs\LazySpec-README.docx / .pdf            from README.md
-    - docs\examples\                              exports of the demo project (examples\acme-portal): the
-                                                  specification with the plan, one change, a saved bundle
+The documents, their sources, titles, versions and history are in docs/documents.json; this script only finds
+the tools and runs:
 
-    The reference and the README get their cover's subtitle and contents from front matter added to a copy
-    next to them (removed afterwards): the Markdown files stay as GitHub shows them.
+    python <netmedia-document>/scripts/netmedia_document.py --documents docs/documents.json
 
-.PARAMETER Theme
-    The document theme (.yaml). Default: the AIToolbelt repository next to this one,
-    plugins\netmedia-document\theme\document-theme.yaml (else its older place, templates\document-theme.yaml).
+netmedia-document: -Plugin, else NETMEDIA_DOCUMENT_PLUGIN, else the AIToolbelt clone next to this repository
+(plugins/netmedia-document), else the newest installed copy under ~/.claude/plugins. Python: the Netmedia
+environment (~/.netmedia/python), else python on the PATH, with python-docx. Word (Windows or macOS) fills in
+the contents' page numbers and writes the PDFs.
+
+.PARAMETER Only
+Only these documents (their output names, with or without .docx).
+
+.PARAMETER Pdf
+PDFs of every document too (a document with "pdf": true in documents.json always gets one).
 
 .EXAMPLE
-    .\docs\build-documents.ps1
-    .\docs\build-documents.ps1 -Theme D:\Development\Netmedia\AIToolbelt\plugins\netmedia-document\theme\document-theme.yaml
+.\docs\build-documents.ps1
+.\docs\build-documents.ps1 -Only LazySpec-Reference -Pdf
 #>
 [CmdletBinding()]
-param([string]$Theme)
+param([string[]]$Only, [switch]$Pdf, [string]$Plugin)
 
 $ErrorActionPreference = 'Stop'
-$repo = Split-Path $PSScriptRoot -Parent
-$lazyspec = Join-Path $repo 'tools\lazyspec\lazyspec.ps1'
-if (-not $Theme) {
-    $toolbelt = Join-Path (Split-Path $repo -Parent) 'AIToolbelt'
-    $Theme = Join-Path $toolbelt 'plugins\netmedia-document\theme\document-theme.yaml'
-    if (-not (Test-Path -LiteralPath $Theme)) { $Theme = Join-Path $toolbelt 'templates\document-theme.yaml' }
-}
-if (-not (Test-Path -LiteralPath $Theme)) { throw "The document theme isn't there: $Theme (-Theme <path>)" }
-$Theme = (Resolve-Path -LiteralPath $Theme).Path
-$docs = Join-Path $repo 'docs'
-$shell = (Get-Process -Id $PID).Path
-$utf8 = New-Object Text.UTF8Encoding $false
+$docs = $PSScriptRoot
+$repo = Split-Path $docs -Parent
 
-# lazyspec in a PowerShell of its own (it ends with exit), in $Dir; stops on a failed export.
-function Invoke-Export([string]$Dir, [string[]]$Arguments) {
-    Push-Location $Dir
-    try {
-        & $shell -NoProfile -ExecutionPolicy Bypass -File $lazyspec @Arguments -Theme $Theme -KeepDiagrams | ForEach-Object { Write-Host "    $_" }
-        if ($LASTEXITCODE) { throw "lazyspec $($Arguments -join ' ') failed (exit code $LASTEXITCODE)" }
+function Test-Plugin([string]$Dir) { return $Dir -and (Test-Path -LiteralPath (Join-Path $Dir 'scripts/netmedia_document.py')) }
+$candidates = @($Plugin, $env:NETMEDIA_DOCUMENT_PLUGIN, (Join-Path (Split-Path $repo -Parent) 'AIToolbelt/plugins/netmedia-document'))
+$found = $candidates | Where-Object { Test-Plugin $_ } | Select-Object -First 1
+if (-not $found) {
+    $installed = Join-Path $HOME '.claude/plugins'
+    if (Test-Path -LiteralPath $installed) {
+        $script = Get-ChildItem -LiteralPath $installed -Recurse -Filter netmedia_document.py -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match 'netmedia-document' } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($script) { $found = Split-Path (Split-Path $script.FullName -Parent) -Parent }
     }
-    finally { Pop-Location }
 }
-# A Markdown file in both formats; $FrontMatter: a copy with it, next to the file (its links still work).
-function Export-Markdown([string]$Source, [string]$Name, [string]$FrontMatter) {
-    $md = $Source
-    if ($FrontMatter) {
-        $md = Join-Path (Split-Path $Source -Parent) ".$Name.md"
-        [IO.File]::WriteAllText($md, "---`n$FrontMatter`n---`n`n" + [IO.File]::ReadAllText($Source), $utf8)
-    }
-    try {
-        foreach ($f in 'Word', 'Pdf') {
-            $ext = @{ Word = 'docx'; Pdf = 'pdf' }[$f]
-            Write-Host "  $Name.$ext" -ForegroundColor Cyan
-            Invoke-Export $repo @('-Export', $f, '-Markdown', $md, '-Out', (Join-Path $docs "$Name.$ext"))
-        }
-    }
-    finally { if ($FrontMatter) { Remove-Item -LiteralPath $md -Force -ErrorAction SilentlyContinue } }
-}
+if (-not $found) { throw 'netmedia-document not found: /plugin install netmedia-document --marketplace netmedia/aitoolbelt, or -Plugin <its folder>.' }
 
-Write-Host ''
-Write-Host "  LazySpec documents, theme: $Theme" -ForegroundColor Cyan
-Export-Markdown (Join-Path $docs 'developer-guide.md') 'LazySpec-Developer-Guide' ''
-Export-Markdown (Join-Path $repo 'tools\lazyspec\LAZYSPEC.md') 'LazySpec-Reference' "subtitle: Reference`nauthor: Netmedia`nlanguage: en`ntoc: true"
-Export-Markdown (Join-Path $repo 'README.md') 'LazySpec-README' "subtitle: Overview, install and use`nauthor: Netmedia`nlanguage: en`ntoc: true"
+$python = @((Join-Path $HOME '.netmedia/python/Scripts/python.exe'), (Join-Path $HOME '.netmedia/python/bin/python3')) |
+    Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if (-not $python) { $python = @('python', 'python3', 'py') | Where-Object { Get-Command $_ -ErrorAction SilentlyContinue } | Select-Object -First 1 }
+if (-not $python) { throw 'Python 3.10+ is needed (the Netmedia environment ~/.netmedia/python, or python on the PATH).' }
 
-# The demo project's exports: what a client gets.
-$demo = Join-Path $repo 'examples\acme-portal'
-$out = Join-Path $docs 'examples'
-[void](New-Item -ItemType Directory -Force -Path $out)
-Write-Host '  examples: the specification with the plan, one change, a saved bundle' -ForegroundColor Cyan
-Invoke-Export $demo @('-Export', 'Pdf', '-IncludeChanges', '-ClientFriendly', '-Out', (Join-Path $out 'Acme-Portal-Specification.pdf'))
-Invoke-Export $demo @('-Export', 'Pdf', '-Item', '01-add-user-signup', '-ClientFriendly', '-Out', (Join-Path $out 'Acme-Portal-Add-user-sign-up.pdf'))
-Invoke-Export $demo @('-Export', 'Word', '-Item', '01-add-user-signup', '-ClientFriendly', '-Out', (Join-Path $out 'Acme-Portal-Add-user-sign-up.docx'))
-Invoke-Export $demo @('-Export', 'Pdf', '-Item', 'accounts-and-orders', '-ClientFriendly', '-Out', (Join-Path $out 'Acme-Portal-Accounts-and-orders.pdf'))
-Write-Host ''
-Write-Host "  Done: $docs" -ForegroundColor Green
+$arguments = @((Join-Path $found 'scripts/netmedia_document.py'), '--documents', (Join-Path $docs 'documents.json'))
+if ($Pdf) { $arguments += '--pdf' }
+if ($Only) { $arguments += '--only'; $arguments += $Only }
+Write-Host "  netmedia-document: $found" -ForegroundColor Cyan
+& $python @arguments
+if ($LASTEXITCODE) { throw "netmedia_document.py ended with exit code $LASTEXITCODE" }

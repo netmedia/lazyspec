@@ -57,8 +57,10 @@ Removes what -Install added (the profile function and the global copy with its P
 
 .PARAMETER Export
 Exports the specification (every spec in openspec/specs, in the Scope order) as one document for the
-client, then exits: Pdf (through Microsoft Edge or Google Chrome), Word (through Microsoft Word, else
-pandoc) or Html. A cover page, the contents, a chapter per spec. The cover's texts: lazyspec.json "export".
+client, then exits: Word, Pdf or Html. Word and PDF are Netmedia documents, made by the netmedia-document
+generator (Python 3.10+ with python-docx; PDF: Microsoft Word exports it): the Netmedia cover, contents,
+styles, header and footer, as every Netmedia document. Html: in the project's theme. A cover page, the
+contents, a chapter per spec. The cover's texts: lazyspec.json "export".
 
 .PARAMETER Out
 -Export: the file to write. Default: openspec\exports\<project>-specification-<date>.<pdf|docx|html> in the
@@ -108,23 +110,24 @@ With a token that is what an export does anyway; when a download fails, the save
 -Export: the saved diagrams only, even with a token: no Figma. A diagram without a saved image is left out.
 
 .PARAMETER Template
--Export Word: the Word template (.docx) to build the document on, relative to the current folder; wins over
-"lazyspec: documentTemplate:" in openspec/config.yaml (relative to the project's root). The template's
-styles, page setup, headers and footers (with their logos) stay, its sample body goes; the content uses its
-Title, Subtitle, Heading1..6, Normal, ListParagraph, TableGrid and TOCHeading styles. Set but missing or not
-a .docx: an error, never the default look.
+-Export Word / Pdf: the project's own copy of the Netmedia Word template (.docx), relative to the current
+folder; wins over "lazyspec: documentTemplate:" in openspec/config.yaml (relative to the project's root).
+Neither set: netmedia-document's template, the latest Netmedia one (the installed netmedia-document plugin,
+else LazySpec's copy in tools\lazyspec\netmedia-document). A copy keeps the template's "DOCUMENT TITLE" cover
+paragraph and "Table of contents" title, which the generator fills in. Set but missing or not a .docx: an
+error, never the default look.
 
 .PARAMETER Theme
--Export: the document theme (.yaml) for the look of PDF, Word and HTML, relative to the current folder; wins
-over "lazyspec: documentTheme:" in openspec/config.yaml (relative to the project's root). Its fonts: the
-files in fonts\ next to it (embedded in Word). Set but missing or broken: an error, never the default look.
+-Export Html: the document theme (.yaml) for the look of HTML, relative to the current folder; wins over
+"lazyspec: documentTheme:" in openspec/config.yaml (relative to the project's root). Its fonts: the files in
+fonts\ next to it. Set but missing or broken: an error, never the default look. Word and PDF: the template.
 See examples\document-theme\document-theme.yaml in the LazySpec repository.
 
 .PARAMETER Markdown
 -Export: a Markdown file (meeting notes, a summary, a letter ...) as the document, instead of the
-specification: in the project's look (its theme or template), as PDF, Word or HTML; written next to it
+specification: as a Netmedia document (Word, PDF) or in the project's theme (HTML); written next to it
 (-Out: elsewhere). Its front matter: title, subtitle, client, author, date, language, toc (true: a contents
-of its headings 1-2), cover (false: the title on the first page, no cover page). No title there: its first
+of its headings 1-2), cover (false, HTML only: the title on the first page, no cover page). No title there: its first
 "# " heading, else the file's name.
 
 .PARAMETER Open
@@ -326,14 +329,14 @@ function Show-Usage {
     & $d '  groupLabelPlural in openspec\config.yaml (Group, Groups; Phase, Module ...), its groups: groups:.'
     & $d '  One document: a cover, the contents, a chapter per spec (in the Scope order); with'
     & $d '  -IncludeChanges the active changes too. Written to openspec\exports\ (-Out: elsewhere; lazyspec: exportDir:).'
-    & $d '  PDF: Edge or Chrome. Word: Microsoft Word, else pandoc. The cover: lazyspec.json "export".'
+    & $d '  Word and PDF: Netmedia documents (netmedia-document; Python with python-docx, PDF through Word).'
+    & $d '  The cover: lazyspec.json "export".'
     & $d '  -ClientFriendly: scenarios as sentences (When x, then y.). In the workflow schema''s language:'
     & $d '  "language: hr" in schema.yaml translates the export''s texts and OpenSpec''s English headings.'
     & $d '  Diagrams: lazyspec: diagrams: in openspec\config.yaml (FigJam links; -RefreshDiagrams, FIGMA_TOKEN).'
-    & $d '  Word in the company layout: lazyspec: documentTemplate: <a .docx, from the project root> in'
-    & $d '  openspec\config.yaml, or -Template <path> (wins). Missing or broken: an error, not the default look.'
-    & $d '  One look in PDF, Word and HTML: lazyspec: documentTheme: <a .yaml>, or -Theme <path>; its fonts in'
-    & $d '  fonts\ next to it (embedded in Word). A template and a theme: Word uses the template.'
+    & $d '  The Word template: the latest Netmedia one; the project''s own copy: lazyspec: documentTemplate:'
+    & $d '  <a .docx, from the project root> in openspec\config.yaml, or -Template <path> (wins).'
+    & $d '  HTML''s look: lazyspec: documentTheme: <a .yaml>, or -Theme <path>; its fonts in fonts\ next to it.'
     & $d '  Not set: openspec\artifacts\document-theme.yaml when it is there (the Netmedia conventions).'
     & $d '  In the project''s .gitignore: .lazyspec/ (LazySpec''s own notes, the agent''s prompts), and'
     & $d '  openspec/exports/ unless you commit what went to the client.'
@@ -3439,7 +3442,7 @@ $subtitleHtml
 
 "@)
     if ($client) { [void]$h.Append("<p class=`"meta`">$(Html (Get-ExportText 'client')): <strong>$(Html $client)</strong></p>`n") }
-    [void]$h.Append("<p class=`"meta`">$(Html (Get-ExportText 'date')): $date</p>`n")
+    [void]$h.Append("<p class=`"meta date`">$(Html (Get-ExportText 'date')): $date</p>`n")
     if ($author) { [void]$h.Append("<p class=`"meta`">$(Html (Get-ExportText 'preparedBy')): $(Html $author)</p>`n") }
     if ($Doc) {
         # A document: its contents (toc: true; headings 1-2), then its text on a page of its own after a cover.
@@ -3552,128 +3555,80 @@ function Stop-ProcessTree($Proc) {
     if ($env:OS -eq 'Windows_NT') { try { & taskkill.exe /T /F /PID $Proc.Id 2>&1 | Out-Null } catch { } }
     else { try { $Proc.Kill() } catch { } }
 }
-# The PDF's named destinations (a heading's id) and their pages (1 = the first). Edge and Chrome write the
-# PDF's objects plainly (only the page contents and fonts are compressed): the catalog's /Dests and /Pages.
-function Get-PdfDestPages([string]$Path) {
-    $t = [Text.Encoding]::GetEncoding(28591).GetString([IO.File]::ReadAllBytes($Path))
-    $obj = {
-        param([string]$N)
-        $at = [regex]::Match($t, "(?m)^$N 0 obj\b")
-        if (-not $at.Success) { return '' }
-        $end = $t.IndexOf('endobj', $at.Index)
-        $st = $t.IndexOf('stream', $at.Index)
-        if ($st -ge 0 -and $st -lt $end) { $end = $st }
-        return $t.Substring($at.Index, $end - $at.Index)
+# --- Word and PDF: the netmedia-document plugin -----------------------------------------------------------
+# Every Word and PDF export is a Netmedia document, made by netmedia-document's netmedia_document.py from the
+# export's HTML: the template's cover (logo, title, subtitle, date, the cover's lines), its table of contents,
+# styles, header and footer. The same generator as every other Netmedia document.
+# netmedia-document: NETMEDIA_DOCUMENT_PLUGIN, else the installed plugin (the newest under ~/.claude/plugins: the
+# latest Netmedia template), else the AIToolbelt clone next to LazySpec, else LazySpec's own copy
+# (tools\lazyspec\netmedia-document, from tools\update-netmedia-document.ps1): LazySpec works on its own.
+# The template: -Template or "lazyspec: documentTemplate:" (the project's copy of the Netmedia template, which
+# keeps its "DOCUMENT TITLE" cover paragraph and "Table of contents" title), else netmedia-document's.
+# Python 3.10+ with python-docx: the Netmedia environment (~/.netmedia/python), else py -3, python3, python.
+# PDF: Microsoft Word (Windows or macOS) exports it from the Word document.
+# A netmedia-document that reads HTML (html_source.py: since AIToolbelt's November 2026 release).
+function Test-NetmediaDocumentDir([string]$Dir) { return $Dir -and (Test-Path -LiteralPath (Join-Path $Dir 'scripts/html_source.py')) }
+function Get-NetmediaDocumentDir {
+    if (Test-NetmediaDocumentDir $env:NETMEDIA_DOCUMENT_PLUGIN) { return $env:NETMEDIA_DOCUMENT_PLUGIN }
+    # Installed: the plugin cache (<marketplace>/netmedia-document/<version>) and the marketplaces' clones; the newest.
+    $installed = Join-Path $HOME '.claude/plugins'
+    $hit = @(Get-Item -Path (Join-Path $installed 'cache/*/netmedia-document/*/scripts/html_source.py'), (Join-Path $installed 'marketplaces/*/plugins/netmedia-document/scripts/html_source.py') -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1)
+    if ($hit) { return $hit[0].Directory.Parent.FullName }
+    foreach ($d in @((Join-Path (Split-Path (Split-Path (Split-Path $kitDir -Parent) -Parent) -Parent) 'AIToolbelt/plugins/netmedia-document'),
+            (Join-Path $kitDir 'netmedia-document'))) {
+        if (Test-NetmediaDocumentDir $d) { return [IO.Path]::GetFullPath($d) }
     }
-    $cat = [regex]::Match($t, '/Type\s*/Catalog\b[^>]*')
-    $pages = [regex]::Match($cat.Value, '/Pages\s+(\d+)\s+0\s+R')
-    $dests = [regex]::Match($cat.Value, '/Dests\s+(\d+)\s+0\s+R')
-    $map = @{}
-    if (-not $pages.Success -or -not $dests.Success) { return $map }
-    # The pages in order: the page tree, depth first.
-    $order = @{}
-    $stack = New-Object Collections.Stack
-    $stack.Push($pages.Groups[1].Value)
-    $n = 0
-    while ($stack.Count) {
-        $id = $stack.Pop()
-        $o = & $obj $id
-        $kids = [regex]::Match($o, '/Kids\s*\[([^\]]*)\]')
-        if ($o -match '/Type\s*/Pages\b' -and $kids.Success) {
-            $refs = @([regex]::Matches($kids.Groups[1].Value, '(\d+)\s+0\s+R') | ForEach-Object { $_.Groups[1].Value })
-            for ($i = $refs.Count - 1; $i -ge 0; $i--) { $stack.Push($refs[$i]) }
-        }
-        else { $n++; $order[$id] = $n }
-    }
-    foreach ($m in [regex]::Matches((& $obj $dests.Groups[1].Value), '/([^\s/\[\]<>()]+)\s*\[\s*(\d+)\s+0\s+R')) {
-        if ($order.ContainsKey($m.Groups[2].Value)) { $map[$m.Groups[1].Value] = $order[$m.Groups[2].Value] }
-    }
-    return $map
+    throw "Word and PDF need the netmedia-document generator: it isn't installed and LazySpec's copy is missing ($(Join-Path $kitDir 'netmedia-document')). Reinstall LazySpec, or /plugin install netmedia-document --marketplace netmedia/aitoolbelt."
 }
-function Export-Pdf([string]$HtmlPath, [string]$Target) {
-    Invoke-PdfPrint $HtmlPath $Target
-    # The contents' page numbers: where the first print put each chapter; then printed again with them
-    # (a number on its entry's line: the pages stay as they were).
-    $html = [IO.File]::ReadAllText($HtmlPath)
-    if ($html -notmatch 'data-page-for="') { return }
-    $pages = @{}
-    try { $pages = Get-PdfDestPages $Target } catch { }
-    if (-not $pages.Count) { Write-Host "  ! the contents without page numbers (the PDF's links weren't readable)"; return }
-    $html = [regex]::Replace($html, '<span class="pg" data-page-for="([^"]+)">0</span>', {
-            param($m)
-            $p = $pages[$m.Groups[1].Value]
-            if ($p) { return "<span class=`"pg`">$p</span>" }
-            return '<span class="pg"></span>'
-        })
-    [IO.File]::WriteAllText($HtmlPath, $html, (New-Object Text.UTF8Encoding $false))
-    Write-Host "  $($g.caret) the contents' page numbers: printing again"
-    Remove-Item -LiteralPath $Target -Force
-    Invoke-PdfPrint $HtmlPath $Target
-}
-function Invoke-PdfPrint([string]$HtmlPath, [string]$Target) {
-    $browser = Find-Browser
-    if (-not $browser) { throw 'PDF needs Microsoft Edge or Google Chrome (neither was found).' }
-    Write-Host "  $($g.caret) printing with $(Split-Path $browser -Leaf)"
-    $profileDir = Join-Path (Split-Path $HtmlPath -Parent) 'browser'
-    $argLine = "--headless=new --disable-gpu --no-first-run --no-default-browser-check --disable-extensions --user-data-dir=`"$profileDir`" " +
-        "--no-pdf-header-footer --print-to-pdf-no-header --print-to-pdf=`"$Target`" `"$(Get-FileUri $HtmlPath)`""
-    $p = Start-Browser $browser $argLine $profileDir
-    # Headless Edge sometimes stays running after it wrote the PDF: done when the file stops growing.
-    $watch = [Diagnostics.Stopwatch]::StartNew()
-    $size = -1; $stable = 0
-    while ($watch.Elapsed.TotalSeconds -lt 120) {
-        Start-Sleep -Milliseconds 250
-        $now = -1
-        if (Test-Path -LiteralPath $Target) { try { $now = (Get-Item -LiteralPath $Target).Length } catch { } }
-        if ($now -gt 0 -and $now -eq $size) { $stable++ } else { $stable = 0 }
-        $size = $now
-        if ($p.HasExited -and $now -gt 0) { break }
-        if ($stable -ge 4) { break }
-        if ($p.HasExited -and $watch.Elapsed.TotalSeconds -gt 5 -and $now -le 0) { break }
+$script:ndPython = $null
+function Get-NetmediaPython {
+    if ($script:ndPython) { return $script:ndPython }
+    $candidates = @(
+        @{ Exe = (Join-Path $HOME '.netmedia/python/Scripts/python.exe'); Args = @() },
+        @{ Exe = (Join-Path $HOME '.netmedia/python/bin/python3'); Args = @() },
+        @{ Exe = 'py'; Args = @('-3') }, @{ Exe = 'python3'; Args = @() }, @{ Exe = 'python'; Args = @() })
+    $noDocx = ''
+    foreach ($c in $candidates) {
+        $exe = $c.Exe
+        if ([IO.Path]::IsPathRooted($exe)) { if (-not (Test-Path -LiteralPath $exe)) { continue } }
+        else { $cmd = Get-Command $exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; if (-not $cmd) { continue }; $exe = $cmd.Source }
+        # The Microsoft Store's python.exe stub only opens the Store: a real one prints its version.
+        $out = & $exe @($c.Args) -c 'import sys; print(sys.version_info >= (3, 10)); import docx' 2>&1
+        if ($LASTEXITCODE -eq 0 -and "$out" -match 'True') { $script:ndPython = [pscustomobject]@{ Exe = $exe; Args = $c.Args }; return $script:ndPython }
+        if ("$out" -match 'True' -and "$out" -match "No module named 'docx'") { $noDocx = $exe }
     }
-    Stop-ProcessTree $p
-    if (-not (Wait-File $Target 2)) { throw "$(Split-Path $browser -Leaf) wrote no PDF." }
+    if ($noDocx) { throw "Word and PDF need python-docx: `"$noDocx`" -m pip install python-docx" }
+    throw 'Word and PDF need Python 3.10+ with python-docx (the Netmedia environment ~/.netmedia/python, or python from python.org; then: python -m pip install python-docx).'
 }
-# HTML -> Word: Word itself (its own table of contents, page numbers), else pandoc.
-function Export-Word([string]$HtmlPath, [string]$Target) {
-    $word = $null
-    try { $word = New-Object -ComObject Word.Application } catch { }
-    if ($word) {
-        Write-Host "  $($g.caret) converting with Microsoft Word"
-        $doc = $null
-        try {
-            $word.Visible = $false
-            $word.DisplayAlerts = 0
-            $doc = $word.Documents.Open($HtmlPath, $false, $true, $false)
-            $doc.ActiveWindow.View.Type = 3                     # print layout, not web layout
-            # The diagrams come in as links to the files: into the document with them.
-            foreach ($shape in @($doc.InlineShapes)) { try { if ($shape.LinkFormat) { $shape.LinkFormat.SavePictureWithDocument = $true; $shape.LinkFormat.BreakLink() } } catch { } }
-            $doc.PageSetup.PaperSize = 7                        # A4
-            $doc.PageSetup.TopMargin = 56.7; $doc.PageSetup.BottomMargin = 62.4
-            $doc.PageSetup.LeftMargin = 51; $doc.PageSetup.RightMargin = 51
-            $range = $doc.Content
-            if ($range.Find.Execute('[[TOC]]')) {
-                $range.Text = ''
-                [void]$doc.TablesOfContents.Add($range, $true, 1, $script:wordMode.TocLevels)
-                $doc.TablesOfContents.Item(1).Update()
-            }
-            [void]$doc.Sections.Item(1).Footers.Item(1).PageNumbers.Add(2, $false)  # right, not on the cover
-            $doc.SaveAs2($Target, 16)                          # .docx
-        }
-        finally {
-            if ($doc) { try { $doc.Close($false) } catch { } }
-            try { $word.Quit() } catch { }
-            [void][Runtime.InteropServices.Marshal]::ReleaseComObject($word)
-        }
-        return
+# The export's HTML -> $Target (.docx, or .pdf through a Word document next to the HTML).
+function Export-NetmediaDocument([string]$HtmlPath, [string]$Target, [string]$Format, [string]$TemplatePath, $Meta, [bool]$Toc = $true) {
+    $nd = Get-NetmediaDocumentDir
+    $py = Get-NetmediaPython
+    Write-Host "  $($g.caret) Netmedia document: $nd"
+    $docx = $Target
+    if ($Format -eq 'Pdf') { $docx = Join-Path (Split-Path $HtmlPath -Parent) ([IO.Path]::GetFileNameWithoutExtension($Target) + '.docx') }
+    $arguments = @($py.Args) + @((Join-Path $nd 'scripts/netmedia_document.py'), $HtmlPath, '-o', $docx, '--language', $script:exportLang, '--no-history')
+    if ($Meta) {
+        if ($Meta.title) { $arguments += @('--title', [string]$Meta.title) }
+        if ($Meta.subtitle) { $arguments += @('--subtitle', [string]$Meta.subtitle) }
+        if ($Meta.date) { $arguments += @('--date', [string]$Meta.date) }
+        if ($Meta.author) { $arguments += @('--author', [string]$Meta.author) }
     }
-    $pandoc = Get-Command pandoc -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $pandoc) { throw 'Word needs Microsoft Word or pandoc (neither was found).' }
-    Write-Host "  $($g.caret) converting with pandoc"
-    $html = (Read-Text $HtmlPath).Replace('<p>[[TOC]]</p>', '')
-    [IO.File]::WriteAllText($HtmlPath, $html, (New-Object Text.UTF8Encoding $false))
-    & $pandoc.Source $HtmlPath -f html -t docx --toc "--toc-depth=$($script:wordMode.TocLevels)" -o $Target
-    if ($LASTEXITCODE) { throw "pandoc ended with exit code $LASTEXITCODE." }
+    if (-not $Toc) { $arguments += '--no-toc' }
+    if ($TemplatePath) { $arguments += @('--template', $TemplatePath); Write-Host "  $($g.caret) Word template: $TemplatePath" }
+    if ($Format -eq 'Pdf') { $arguments += '--pdf' }
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'      # Python's notes come on stderr
+    try { $out = @(& $py.Exe @arguments 2>&1) } finally { $ErrorActionPreference = $prev }
+    $code = $LASTEXITCODE
+    foreach ($line in $out) { $t = "$line".Trim(); if ($t -and $t -notmatch '^(written|toc updated)') { Write-Host "  $t" } }
+    if ($code) { throw "netmedia-document stopped (exit code $code)." }
+    if (-not (Test-Path -LiteralPath $docx)) { throw 'netmedia-document wrote no Word document.' }
+    if ($Format -ne 'Pdf') { return }
+    $pdf = [IO.Path]::ChangeExtension($docx, 'pdf')
+    if (-not (Test-Path -LiteralPath $pdf)) { throw 'PDF needs Microsoft Word (Windows or macOS): it exports the Netmedia document. Export Word instead, or install Word.' }
+    Move-Item -LiteralPath $pdf -Destination $Target -Force
 }
 
 # --- the document theme ("lazyspec: documentTheme:" in config.yaml, or -Theme): one look, three formats -----
@@ -4233,246 +4188,9 @@ function Get-ThemeCss($T, $Meta, [bool]$Paged) {
     return $sb.ToString()
 }
 
-# --- the theme as a Word base document ---
-function ConvertTo-Twips([double]$Mm) { return [int][Math]::Round($Mm * 1440 / 25.4) }
-function Get-ThemeRpr($S, [bool]$WithFont = $true) {
-    $r = ''
-    if ($WithFont -and $S.font) { $f = Xml $S.font; $r += "<w:rFonts w:ascii=`"$f`" w:hAnsi=`"$f`" w:eastAsia=`"$f`" w:cs=`"$f`"/>" }
-    if ($S.Contains('bold')) { if ($S.bold -eq 'true') { $r += '<w:b/><w:bCs/>' } else { $r += '<w:b w:val="0"/><w:bCs w:val="0"/>' } }
-    if ($S.Contains('italic')) { if ($S.italic -eq 'true') { $r += '<w:i/><w:iCs/>' } else { $r += '<w:i w:val="0"/><w:iCs w:val="0"/>' } }
-    if ($S.color) { $r += "<w:color w:val=`"$($S.color.TrimStart('#'))`"/>" }
-    if ($S.size) { $hp = [int][Math]::Round((ConvertTo-Pt $S.size 'size') * 2); $r += "<w:sz w:val=`"$hp`"/><w:szCs w:val=`"$hp`"/>" }
-    if ($S.Contains('underline')) { if ($S.underline -eq 'true') { $r += '<w:u w:val="single"/>' } else { $r += '<w:u w:val="none"/>' } }
-    if ($r) { return "<w:rPr>$r</w:rPr>" }
-    return ''
-}
-function Get-ThemePpr($S, [string]$Before, [string]$After, [bool]$Heading, [int]$Outline = -1) {
-    $p = ''
-    if ($Heading) { $p += '<w:keepNext/><w:keepLines/>' }
-    if ($S.Contains('pageBreakBefore') -and $S.pageBreakBefore -eq 'true') { $p += '<w:pageBreakBefore/>' }
-    $b = $Before; $a = $After
-    if ($S.spaceBefore) { $b = [string](ConvertTo-Twips ((ConvertTo-Pt $S.spaceBefore 'spaceBefore') * 25.4 / 72)) }
-    if ($S.spaceAfter) { $a = [string](ConvertTo-Twips ((ConvertTo-Pt $S.spaceAfter 'spaceAfter') * 25.4 / 72)) }
-    $sp = ''
-    if ($b) { $sp += " w:before=`"$b`"" }
-    if ($a) { $sp += " w:after=`"$a`"" }
-    if ($S.lineHeight) {
-        $lh = [double]::Parse($S.lineHeight, [Globalization.CultureInfo]::InvariantCulture)
-        # With a size: at least size x line height, as a browser sets it (Word's multiple multiplies the font's own
-        # line gap, large in some fonts); without one: Word's multiple.
-        if ($S.size) { $sp += " w:line=`"$([int][Math]::Round((ConvertTo-Pt $S.size 'size') * $lh * 20))`" w:lineRule=`"atLeast`"" }
-        else { $sp += " w:line=`"$([int][Math]::Round(240 * $lh))`" w:lineRule=`"auto`"" }
-    }
-    if ($sp) { $p += "<w:spacing$sp/>" }
-    if ($S.align) { $p += "<w:jc w:val=`"$(@{ left = 'left'; center = 'center'; right = 'right'; justify = 'both'; both = 'both' }[$S.align])`"/>" }
-    if ($Outline -ge 0) { $p += "<w:outlineLvl w:val=`"$Outline`"/>" }
-    if ($p) { return "<w:pPr>$p</w:pPr>" }
-    return ''
-}
-function Get-ThemeStylesXml($T) {
-    $s = $T.Styles
-    $w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
-    $body = $s.body
-    $x = New-Object Text.StringBuilder
-    [void]$x.Append("<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><w:styles $w><w:docDefaults><w:rPrDefault>$(Get-ThemeRpr ([ordered]@{ font = $body.font; size = $body.size; color = $body.color }))</w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after=`"120`" w:line=`"276`" w:lineRule=`"auto`"/></w:pPr></w:pPrDefault></w:docDefaults>")
-    $para = {
-        param([string]$Id, [string]$Name, [string]$Extra, [string]$Ppr, [string]$Rpr, [string]$Based = 'Normal')
-        $basedOn = ''
-        if ($Based) { $basedOn = "<w:basedOn w:val=`"$Based`"/><w:next w:val=`"Normal`"/>" }
-        [void]$x.Append("<w:style w:type=`"paragraph`" w:styleId=`"$Id`"><w:name w:val=`"$Name`"/>$basedOn$Extra<w:qFormat/>$Ppr$Rpr</w:style>")
-    }
-    [void]$x.Append("<w:style w:type=`"paragraph`" w:default=`"1`" w:styleId=`"Normal`"><w:name w:val=`"Normal`"/><w:qFormat/>$(Get-ThemePpr ([ordered]@{ size = $body.size; spaceBefore = $body.spaceBefore; spaceAfter = $body.spaceAfter; lineHeight = $body.lineHeight; align = $body.align }) '' '120' $false)$(Get-ThemeRpr $body)</w:style>")
-    [void]$x.Append('<w:style w:type="character" w:default="1" w:styleId="DefaultParagraphFont"><w:name w:val="Default Paragraph Font"/><w:uiPriority w:val="1"/><w:semiHidden/><w:unhideWhenUsed/></w:style>')
-    [void]$x.Append('<w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:uiPriority w:val="99"/><w:semiHidden/><w:unhideWhenUsed/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style>')
-    [void]$x.Append('<w:style w:type="numbering" w:default="1" w:styleId="NoList"><w:name w:val="No List"/><w:uiPriority w:val="99"/><w:semiHidden/><w:unhideWhenUsed/></w:style>')
-    & $para 'Title' 'Title' '' (Get-ThemePpr $s.title '0' '120' $true) (Get-ThemeRpr $s.title)
-    & $para 'Subtitle' 'Subtitle' '' (Get-ThemePpr $s.subtitle '0' '600' $true) (Get-ThemeRpr $s.subtitle)
-    $space = @{ 1 = @('0', '280'); 2 = @('360', '120'); 3 = @('280', '80'); 4 = @('200', '60'); 5 = @('200', '60'); 6 = @('200', '60') }
-    for ($i = 1; $i -le 6; $i++) { & $para "Heading$i" "heading $i" '' (Get-ThemePpr $s["heading$i"] $space[$i][0] $space[$i][1] $true ($i - 1)) (Get-ThemeRpr $s["heading$i"]) }
-    $la = [int][Math]::Max(40, [Math]::Round((ConvertTo-Pt $(if ($body.spaceAfter) { $body.spaceAfter } else { '6pt' }) 'spaceAfter') * 10))
-    & $para 'ListParagraph' 'List Paragraph' '<w:uiPriority w:val="34"/>' "<w:pPr><w:spacing w:after=`"$la`"/><w:ind w:left=`"720`"/></w:pPr>" ''
-    & $para 'TOCHeading' 'TOC Heading' '<w:uiPriority w:val="39"/><w:unhideWhenUsed/>' (Get-ThemePpr $s.tocHeading '0' '280' $true 9) (Get-ThemeRpr $s.tocHeading) 'Heading1'
-    $tw = ConvertTo-Twips ($T.PageW - $T.Margins.left - $T.Margins.right)
-    & $para 'TOC1' 'toc 1' '<w:uiPriority w:val="39"/><w:unhideWhenUsed/>' "<w:pPr><w:tabs><w:tab w:val=`"right`" w:leader=`"dot`" w:pos=`"$tw`"/></w:tabs><w:spacing w:before=`"120`" w:after=`"0`"/></w:pPr>" ''
-    & $para 'TOC2' 'toc 2' '<w:uiPriority w:val="39"/><w:unhideWhenUsed/>' "<w:pPr><w:tabs><w:tab w:val=`"right`" w:leader=`"dot`" w:pos=`"$tw`"/></w:tabs><w:spacing w:before=`"120`" w:after=`"0`"/><w:ind w:left=`"220`"/></w:pPr>" ''
-    $tb = $s.table
-    $bc = $tb.borderColor.TrimStart('#')
-    $edges = -join @('top', 'left', 'bottom', 'right', 'insideH', 'insideV' | ForEach-Object { "<w:$_ w:val=`"single`" w:sz=`"4`" w:space=`"0`" w:color=`"$bc`"/>" })
-    [void]$x.Append("<w:style w:type=`"table`" w:styleId=`"TableGrid`"><w:name w:val=`"Table Grid`"/><w:basedOn w:val=`"TableNormal`"/><w:uiPriority w:val=`"39`"/><w:pPr><w:spacing w:before=`"40`" w:after=`"40`" w:line=`"240`" w:lineRule=`"auto`"/></w:pPr>$(Get-ThemeRpr ([ordered]@{ font = $tb.font; size = $tb.size; color = $tb.color }))<w:tblPr><w:tblBorders>$edges</w:tblBorders><w:tblCellMar><w:left w:w=`"108`" w:type=`"dxa`"/><w:right w:w=`"108`" w:type=`"dxa`"/></w:tblCellMar></w:tblPr><w:tblStylePr w:type=`"firstRow`"><w:rPr><w:b/><w:bCs/></w:rPr><w:tcPr><w:shd w:val=`"clear`" w:color=`"auto`" w:fill=`"$($tb.headerBackground.TrimStart('#'))`"/></w:tcPr></w:tblStylePr></w:style>")
-    $link = [ordered]@{}
-    foreach ($k in $s.link.Keys) { if ($k -ne 'font') { $link[$k] = $s.link[$k] } }
-    if (-not $link.Contains('underline')) { $link['underline'] = 'true' }
-    [void]$x.Append("<w:style w:type=`"character`" w:styleId=`"Hyperlink`"><w:name w:val=`"Hyperlink`"/><w:basedOn w:val=`"DefaultParagraphFont`"/><w:uiPriority w:val=`"99`"/><w:unhideWhenUsed/>$(Get-ThemeRpr $link $false)</w:style>")
-    [void]$x.Append('</w:styles>')
-    return $x.ToString()
-}
-# A header's or footer's paragraph: left, a centre tab, centre, a right tab, right; a logo, texts, PAGE / NUMPAGES.
-function Get-ThemeBandXml($T, $B, $Meta, [string]$LogoRel, [int]$DocPr) {
-    $width = ConvertTo-Twips ($T.PageW - $T.Margins.left - $T.Margins.right)
-    $f = Xml $T.Styles.body.font
-    $hp = [int][Math]::Round((ConvertTo-Pt $B.Size 'size') * 2)
-    $rpr = "<w:rPr><w:rFonts w:ascii=`"$f`" w:hAnsi=`"$f`" w:cs=`"$f`"/><w:color w:val=`"$($B.Color.TrimStart('#'))`"/><w:sz w:val=`"$hp`"/><w:szCs w:val=`"$hp`"/></w:rPr>"
-    $field = { param([string]$Code) "<w:r>$rpr<w:fldChar w:fldCharType=`"begin`"/></w:r><w:r>$rpr<w:instrText xml:space=`"preserve`"> $Code </w:instrText></w:r><w:r>$rpr<w:fldChar w:fldCharType=`"separate`"/></w:r><w:r>$rpr<w:t>1</w:t></w:r><w:r>$rpr<w:fldChar w:fldCharType=`"end`"/></w:r>" }
-    $slotXml = {
-        param([string]$V)
-        if (-not $V) { return '' }
-        if ($V -eq 'logo') {
-            Initialize-ImageTool
-            $size = [LazySpecImage]::Size($B.Logo)
-            $cy = [long]($B.LogoHeight * 36000); $cx = [long]($cy * $size[0] / $size[1])
-            $name = Split-Path $B.Logo -Leaf
-            return "<w:r><w:drawing><wp:inline distT=`"0`" distB=`"0`" distL=`"0`" distR=`"0`"><wp:extent cx=`"$cx`" cy=`"$cy`"/><wp:docPr id=`"$DocPr`" name=`"Logo`"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a=`"http://schemas.openxmlformats.org/drawingml/2006/main`" noChangeAspect=`"1`"/></wp:cNvGraphicFramePr><a:graphic xmlns:a=`"http://schemas.openxmlformats.org/drawingml/2006/main`"><a:graphicData uri=`"http://schemas.openxmlformats.org/drawingml/2006/picture`"><pic:pic xmlns:pic=`"http://schemas.openxmlformats.org/drawingml/2006/picture`"><pic:nvPicPr><pic:cNvPr id=`"$DocPr`" name=`"$(Xml $name)`"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed=`"$LogoRel`"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x=`"0`" y=`"0`"/><a:ext cx=`"$cx`" cy=`"$cy`"/></a:xfrm><a:prstGeom prst=`"rect`"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>"
-        }
-        $o = ''
-        foreach ($part in ([regex]::Split((Expand-ThemeText $V $Meta), '(\{page\}|\{pages\})') | Where-Object { $_ -ne '' })) {
-            if ($part -eq '{page}') { $o += & $field 'PAGE' }
-            elseif ($part -eq '{pages}') { $o += & $field 'NUMPAGES' }
-            else { $o += "<w:r>$rpr<w:t xml:space=`"preserve`">$(Xml $part)</w:t></w:r>" }
-        }
-        return $o
-    }
-    $tab = "<w:r>$rpr<w:tab/></w:r>"
-    return "<w:p><w:pPr><w:tabs><w:tab w:val=`"center`" w:pos=`"$([int]($width / 2))`"/><w:tab w:val=`"right`" w:pos=`"$width`"/></w:tabs><w:spacing w:after=`"0`"/></w:pPr>$(& $slotXml $B.Left)$tab$(& $slotXml $B.Center)$tab$(& $slotXml $B.Right)</w:p>"
-}
-# Word's theme part: the theme's fonts as its heading and body fonts, its colours as the accents.
-function Get-ThemePartXml($T) {
-    $s = $T.Styles
-    $accent = '4472C4'
-    if ($s.heading1.color) { $accent = $s.heading1.color.TrimStart('#') }
-    $text = '000000'
-    if ($s.body.color) { $text = $s.body.color.TrimStart('#') }
-    $link = '0563C1'
-    if ($s.link.color) { $link = $s.link.color.TrimStart('#') }
-    $clr = { param([string]$N, [string]$V) "<a:$N><a:srgbClr val=`"$V`"/></a:$N>" }
-    $fill = '<a:solidFill><a:schemeClr val="phClr"/></a:solidFill>'
-    $ln = '<a:ln w="6350"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln>'
-    $eff = '<a:effectStyle><a:effectLst/></a:effectStyle>'
-    return "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><a:theme xmlns:a=`"http://schemas.openxmlformats.org/drawingml/2006/main`" name=`"LazySpec`"><a:themeElements>" +
-        "<a:clrScheme name=`"LazySpec`"><a:dk1><a:sysClr val=`"windowText`" lastClr=`"000000`"/></a:dk1><a:lt1><a:sysClr val=`"window`" lastClr=`"FFFFFF`"/></a:lt1>$(& $clr 'dk2' $text)$(& $clr 'lt2' 'E7E6E6')" +
-        "$(& $clr 'accent1' $accent)$(& $clr 'accent2' $accent)$(& $clr 'accent3' 'A5A5A5')$(& $clr 'accent4' 'FFC000')$(& $clr 'accent5' '5B9BD5')$(& $clr 'accent6' '70AD47')$(& $clr 'hlink' $link)$(& $clr 'folHlink' '954F72')</a:clrScheme>" +
-        "<a:fontScheme name=`"LazySpec`"><a:majorFont><a:latin typeface=`"$(Xml $s.heading1.font)`"/><a:ea typeface=`"`"/><a:cs typeface=`"`"/></a:majorFont><a:minorFont><a:latin typeface=`"$(Xml $s.body.font)`"/><a:ea typeface=`"`"/><a:cs typeface=`"`"/></a:minorFont></a:fontScheme>" +
-        "<a:fmtScheme name=`"LazySpec`"><a:fillStyleLst>$fill$fill$fill</a:fillStyleLst><a:lnStyleLst>$ln$ln$ln</a:lnStyleLst><a:effectStyleLst>$eff$eff$eff</a:effectStyleLst><a:bgFillStyleLst>$fill$fill$fill</a:bgFillStyleLst></a:fmtScheme>" +
-        '</a:themeElements><a:objectDefaults/><a:extraClrSchemeLst/></a:theme>'
-}
-# The base .docx of a theme: its styles, page, header and footer (none on the cover unless firstPage), and
-# its fonts embedded (obfuscated, as Word embeds them): Word shows them without installing them.
-function New-ThemeDocxBase($T, $Meta) {
-    $w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
-    $wp = 'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"'
-    $relT = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
-    $parts = [ordered]@{}
-    $ct = New-Object Text.StringBuilder
-    [void]$ct.Append('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="jpg" ContentType="image/jpeg"/><Default Extension="gif" ContentType="image/gif"/><Default Extension="odttf" ContentType="application/vnd.openxmlformats-officedocument.obfuscatedFont"/>')
-    $override = { param([string]$Part, [string]$Type) [void]$ct.Append("<Override PartName=`"$Part`" ContentType=`"application/vnd.openxmlformats-officedocument.$Type`"/>") }
-    & $override '/word/document.xml' 'wordprocessingml.document.main+xml'
-    & $override '/word/styles.xml' 'wordprocessingml.styles+xml'
-    & $override '/word/settings.xml' 'wordprocessingml.settings+xml'
-    & $override '/word/fontTable.xml' 'wordprocessingml.fontTable+xml'
-    & $override '/word/numbering.xml' 'wordprocessingml.numbering+xml'
-    & $override '/docProps/app.xml' 'extended-properties+xml'
-    [void]$ct.Append('<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>')
-    $parts['_rels/.rels'] = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><Relationships xmlns=`"http://schemas.openxmlformats.org/package/2006/relationships`"><Relationship Id=`"rId1`" Type=`"$relT/officeDocument`" Target=`"word/document.xml`"/><Relationship Id=`"rId2`" Type=`"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties`" Target=`"docProps/core.xml`"/><Relationship Id=`"rId3`" Type=`"$relT/extended-properties`" Target=`"docProps/app.xml`"/></Relationships>"
-    $parts['docProps/core.xml'] = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><cp:coreProperties xmlns:cp=`"http://schemas.openxmlformats.org/package/2006/metadata/core-properties`" xmlns:dc=`"http://purl.org/dc/elements/1.1/`" xmlns:dcterms=`"http://purl.org/dc/terms/`" xmlns:xsi=`"http://www.w3.org/2001/XMLSchema-instance`"><dc:title>$(Xml $Meta.title)</dc:title><dc:creator>$(Xml $Meta.author)</dc:creator><dcterms:created xsi:type=`"dcterms:W3CDTF`">$((Get-Date).ToUniversalTime().ToString('s'))Z</dcterms:created></cp:coreProperties>"
-    $parts['docProps/app.xml'] = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>LazySpec</Application></Properties>'
-    $parts['word/styles.xml'] = Get-ThemeStylesXml $T
-    $parts['word/settings.xml'] = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><w:settings $w><w:embedTrueTypeFonts/><w:defaultTabStop w:val=`"709`"/><w:characterSpacingControl w:val=`"doNotCompress`"/><w:compat><w:compatSetting w:name=`"compatibilityMode`" w:uri=`"http://schemas.microsoft.com/office/word`" w:val=`"15`"/></w:compat></w:settings>"
-    $parts['word/numbering.xml'] = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><w:numbering $w></w:numbering>"
-    $parts['word/theme/theme1.xml'] = Get-ThemePartXml $T
-    & $override '/word/theme/theme1.xml' 'theme+xml'
-    $docRels = New-Object Text.StringBuilder
-    [void]$docRels.Append("<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><Relationships xmlns=`"http://schemas.openxmlformats.org/package/2006/relationships`"><Relationship Id=`"rId1`" Type=`"$relT/styles`" Target=`"styles.xml`"/><Relationship Id=`"rId2`" Type=`"$relT/settings`" Target=`"settings.xml`"/><Relationship Id=`"rId3`" Type=`"$relT/fontTable`" Target=`"fontTable.xml`"/><Relationship Id=`"rId4`" Type=`"$relT/numbering`" Target=`"numbering.xml`"/><Relationship Id=`"rId5`" Type=`"$relT/theme`" Target=`"theme/theme1.xml`"/>")
-    # The fonts: the theme's families, each with its files (regular, bold, italic, bold italic) embedded.
-    $ft = New-Object Text.StringBuilder
-    $ftRels = New-Object Text.StringBuilder
-    [void]$ft.Append("<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><w:fonts $w>")
-    $n = 0
-    $embedded = @()
-    foreach ($fam in (Get-ThemeFontFamilies $T)) {
-        [void]$ft.Append("<w:font w:name=`"$(Xml $fam)`"><w:charset w:val=`"00`"/><w:family w:val=`"auto`"/><w:pitch w:val=`"variable`"/>")
-        $slots = [ordered]@{ Regular = $null; Bold = $null; Italic = $null; BoldItalic = $null }
-        foreach ($f in (Get-ThemeFontFiles $T $fam)) {
-            $bold = if ($f.Family -ieq $fam) { $f.Style -match '(?i)bold' } else { $f.Weight -ge 600 }
-            $slot = @('Regular', 'Bold', 'Italic', 'BoldItalic')[([int]$bold) + 2 * [int]$f.Italic]
-            if (-not $slots[$slot]) { $slots[$slot] = $f }
-        }
-        foreach ($slot in $slots.Keys) {
-            $f = $slots[$slot]
-            if (-not $f) { continue }
-            $n++
-            $key = [guid]::NewGuid()
-            $parts["word/fonts/font$n.odttf"] = [LazySpecFont]::Obfuscate([IO.File]::ReadAllBytes($f.Path), $key)
-            [void]$ftRels.Append("<Relationship Id=`"rIdFont$n`" Type=`"$relT/font`" Target=`"fonts/font$n.odttf`"/>")
-            [void]$ft.Append("<w:embed$slot r:id=`"rIdFont$n`" w:fontKey=`"{$($key.ToString().ToUpper())}`"/>")
-            $embedded += "$fam $slot"
-        }
-        [void]$ft.Append('</w:font>')
-    }
-    [void]$ft.Append('</w:fonts>')
-    $parts['word/fontTable.xml'] = $ft.ToString()
-    if ($ftRels.Length) { $parts['word/_rels/fontTable.xml.rels'] = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><Relationships xmlns=`"http://schemas.openxmlformats.org/package/2006/relationships`">$($ftRels.ToString())</Relationships>" }
-    # Header and footer; empty ones for the first page (the cover) unless firstPage.
-    $sect = ''
-    $titlePg = $false
-    $docPr = 1
-    foreach ($band in @(@{ B = $T.Header; Kind = 'header'; Tag = 'hdr' }, @{ B = $T.Footer; Kind = 'footer'; Tag = 'ftr' })) {
-        $b = $band.B
-        if (-not $b.Any) { continue }
-        $logoRel = ''
-        $rels = ''
-        if ($b.Logo -and ($b.Left -eq 'logo' -or $b.Center -eq 'logo' -or $b.Right -eq 'logo')) {
-            $ext = [IO.Path]::GetExtension($b.Logo).TrimStart('.').ToLower()
-            $parts["word/media/$($band.Kind)-logo.$ext"] = [IO.File]::ReadAllBytes($b.Logo)
-            $logoRel = 'rIdLogo'
-            $rels = "<Relationship Id=`"rIdLogo`" Type=`"$relT/image`" Target=`"media/$($band.Kind)-logo.$ext`"/>"
-        }
-        $parts["word/$($band.Kind)1.xml"] = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><w:$($band.Tag) $w $wp>$(Get-ThemeBandXml $T $b $Meta $logoRel $docPr)</w:$($band.Tag)>"
-        $docPr++
-        if ($rels) { $parts["word/_rels/$($band.Kind)1.xml.rels"] = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><Relationships xmlns=`"http://schemas.openxmlformats.org/package/2006/relationships`">$rels</Relationships>" }
-        & $override "/word/$($band.Kind)1.xml" "wordprocessingml.$($band.Kind)+xml"
-        [void]$docRels.Append("<Relationship Id=`"rId$($band.Kind)1`" Type=`"$relT/$($band.Kind)`" Target=`"$($band.Kind)1.xml`"/>")
-        $sect += "<w:$($band.Kind)Reference w:type=`"default`" r:id=`"rId$($band.Kind)1`"/>"
-        if (-not $b.FirstPage) {
-            $parts["word/$($band.Kind)0.xml"] = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><w:$($band.Tag) $w><w:p/></w:$($band.Tag)>"
-            & $override "/word/$($band.Kind)0.xml" "wordprocessingml.$($band.Kind)+xml"
-            [void]$docRels.Append("<Relationship Id=`"rId$($band.Kind)0`" Type=`"$relT/$($band.Kind)`" Target=`"$($band.Kind)0.xml`"/>")
-            $sect += "<w:$($band.Kind)Reference w:type=`"first`" r:id=`"rId$($band.Kind)0`"/>"
-            $titlePg = $true
-        }
-    }
-    # The schema's order: the header references before the footer ones.
-    $refs = @([regex]::Matches($sect, '<w:headerReference[^>]*/>') | ForEach-Object { $_.Value }) + @([regex]::Matches($sect, '<w:footerReference[^>]*/>') | ForEach-Object { $_.Value })
-    $m = $T.Margins
-    $hdrDist = ConvertTo-Twips ([Math]::Min(12.5, $m.top / 2))
-    $ftrDist = ConvertTo-Twips ([Math]::Min(12.5, $m.bottom / 2))
-    $sectPr = "<w:sectPr>$($refs -join '')<w:pgSz w:w=`"$(ConvertTo-Twips $T.PageW)`" w:h=`"$(ConvertTo-Twips $T.PageH)`"/><w:pgMar w:top=`"$(ConvertTo-Twips $m.top)`" w:right=`"$(ConvertTo-Twips $m.right)`" w:bottom=`"$(ConvertTo-Twips $m.bottom)`" w:left=`"$(ConvertTo-Twips $m.left)`" w:header=`"$hdrDist`" w:footer=`"$ftrDist`" w:gutter=`"0`"/><w:cols w:space=`"709`"/>$(if ($titlePg) { '<w:titlePg/>' })</w:sectPr>"
-    $parts['word/document.xml'] = "<?xml version=`"1.0`" encoding=`"UTF-8`" standalone=`"yes`"?><w:document $w $wp><w:body>$sectPr</w:body></w:document>"
-    [void]$docRels.Append('</Relationships>')
-    $parts['word/_rels/document.xml.rels'] = $docRels.ToString()
-    [void]$ct.Append('</Types>')
-    $parts['[Content_Types].xml'] = $ct.ToString()
-    if ($embedded.Count) { Write-Host "  $($g.caret) fonts embedded in the Word document: $($embedded -join ', ')" }
-    # The package, as bytes.
-    Add-Type -AssemblyName System.IO.Compression
-    $ms = New-Object IO.MemoryStream
-    $zip = New-Object IO.Compression.ZipArchive($ms, [IO.Compression.ZipArchiveMode]::Create, $true)
-    try {
-        foreach ($k in $parts.Keys) {
-            $v = $parts[$k]
-            if ($v -is [string]) { $v = (New-Object Text.UTF8Encoding $false).GetBytes($v) }
-            $s = $zip.CreateEntry($k).Open()
-            $s.Write($v, 0, $v.Length)
-            $s.Dispose()
-        }
-    } finally { $zip.Dispose() }
-    return , $ms.ToArray()
-}
 
-# --- Word with the project's template ("lazyspec: documentTemplate:" in config.yaml, or -Template) -------
-# The template is the base document: its styles, page setup, section properties, headers and footers (and
-# their images) stay; its sample body goes, only its last w:sectPr is kept. The content is written with the
-# template's built-in styles: Title and Subtitle (the cover), Heading1..6, Normal, ListParagraph, TableGrid,
-# TOCHeading; no fonts of its own except for code. Built here, from the export's HTML: no Word or pandoc
-# needed. Word, when it's there, only fills in the contents' page numbers.
+# --- the project's own Word template ("lazyspec: documentTemplate:" in config.yaml, or -Template) -------
+# A copy of the Netmedia template that netmedia-document builds Word and PDF exports on (Export-NetmediaDocument).
 
 function Open-ZipBytes([byte[]]$Bytes, [string]$Mode) {
     Add-Type -AssemblyName System.IO.Compression
@@ -4492,13 +4210,6 @@ function Read-ZipText($Zip, [string]$Name) {
     $r = New-Object IO.StreamReader($e.Open(), [Text.Encoding]::UTF8)
     try { return $r.ReadToEnd() } finally { $r.Dispose() }
 }
-function Write-ZipBytes($Zip, [string]$Name, [byte[]]$Bytes) {
-    $e = $Zip.GetEntry($Name)
-    if ($e) { $e.Delete() }
-    $s = $Zip.CreateEntry($Name).Open()
-    try { $s.Write($Bytes, 0, $Bytes.Length) } finally { $s.Dispose() }
-}
-function Write-ZipText($Zip, [string]$Name, [string]$Text) { Write-ZipBytes $Zip $Name ((New-Object Text.UTF8Encoding $false).GetBytes($Text)) }
 
 # The template's path, checked: -Template (relative to the current folder), else documentTemplate (relative to
 # the project's root); '' when neither is set. Set but missing or broken: an error, never the default look.
@@ -4525,611 +4236,17 @@ function Get-DocumentTemplate {
     return $path
 }
 
-# The fonts the template sets (styles, theme, headers, footers) that this PC doesn't have: Word and PDF
-# printers put others in their place.
-function Get-MissingTemplateFonts([string]$Path) {
-    $pkg = Open-ZipBytes (Read-SharedBytes $Path) 'Read'
-    $fonts = @{}
-    try {
-        foreach ($e in @($pkg.Zip.Entries)) {
-            if ($e.FullName -notmatch '^word/(styles|fontTable|header\d*|footer\d*|theme/theme\d*)\.xml$') { continue }
-            $t = Read-ZipText $pkg.Zip $e.FullName
-            foreach ($m in [regex]::Matches($t, 'w:(?:ascii|hAnsi)="([^"]+)"')) { $fonts[$m.Groups[1].Value] = $true }
-            # The fonts the template declares (fontTable): its author's, even where no style uses them yet.
-            foreach ($m in [regex]::Matches($t, '<w:font w:name="([^"]+)"')) { $fonts[$m.Groups[1].Value] = $true }
-            foreach ($m in [regex]::Matches($t, '<a:(?:latin) typeface="([^"]+)"')) { $fonts[$m.Groups[1].Value] = $true }
-        }
-    }
-    finally { $pkg.Zip.Dispose(); $pkg.Stream.Dispose() }
-    # The installed ones (the machine's and the user's) by their family names.
-    $installed = Get-InstalledFontFamilies
-    $missing = @()
-    foreach ($name in ($fonts.Keys | Sort-Object)) {
-        if (-not $name -or $name.StartsWith('+')) { continue }
-        $n = $name.ToLower()
-        if ($installed.ContainsKey($n)) { continue }
-        $missing += $name
-    }
-    return , $missing
-}
-function Write-TemplateFontWarning([string]$Path) {
-    $missing = @()
-    try { $missing = Get-MissingTemplateFonts $Path } catch { Write-Host "  ! the template's fonts not checked: $($_.Exception.Message)"; return }
-    if ($missing.Count) { Write-Host "  ! fonts of the Word template not installed on this PC: $($missing -join ', ') (Word and PDF use others in their place)" }
-}
 
-function Xml([string]$T) { return [Security.SecurityElement]::Escape($T) }
 $script:wordCode = @{ Font = 'Consolas'; Size = 18 }
 # A scenario's text in Word (half-points; 0: the style's): with a theme, 1pt under its body's.
 $script:wordScenarioSize = 0
 # The specification: a chapter (heading 1) a page, the contents of headings 1; a Markdown document: neither, headings 1-2.
-$script:wordMode = @{ ChapterBreaks = $true; TocLevels = 1; TocBreak = $true }
 
-# The converter's state, for one document.
-function New-WordContext($Styles, [long]$WidthTwips, [int]$NumBase) {
-    return @{
-        Styles = $Styles; Width = $WidthTwips; NumBase = $NumBase; Rels = (New-Object Collections.ArrayList); Media = (New-Object Collections.ArrayList)
-        RelIds = @{}; Bookmarks = @{}; BookmarkId = 0; DocPr = 1000; Nums = (New-Object Collections.ArrayList); Toc = (New-Object Collections.ArrayList)
-    }
-}
-# A built-in style's ID in the template (found by its name: localized templates have other IDs); '' when it has none.
-function Get-TemplateStyles([string]$StylesXml) {
-    $byName = @{}
-    $ids = @{}
-    foreach ($m in [regex]::Matches($StylesXml, '<w:style\b[^>]*w:styleId="([^"]+)"[^>]*>\s*<w:name w:val="([^"]+)"')) {
-        $byName[$m.Groups[2].Value.ToLower()] = $m.Groups[1].Value
-        $ids[$m.Groups[1].Value] = $true
-    }
-    $want = [ordered]@{ Title = 'title'; Subtitle = 'subtitle'; Normal = 'normal'; ListParagraph = 'list paragraph'; TableGrid = 'table grid'; TOCHeading = 'toc heading'; TOC1 = 'toc 1'; TOC2 = 'toc 2'; Hyperlink = 'hyperlink' }
-    for ($i = 1; $i -le 6; $i++) { $want["Heading$i"] = "heading $i" }
-    $styles = @{}
-    foreach ($k in $want.Keys) {
-        $styles[$k] = ''
-        if ($byName.ContainsKey($want[$k])) { $styles[$k] = $byName[$want[$k]] } elseif ($ids.ContainsKey($k)) { $styles[$k] = $k }
-    }
-    return $styles
-}
-function Get-BookmarkName($Ctx, [string]$Id) {
-    if (-not $Ctx.Bookmarks.ContainsKey($Id)) {
-        $n = 'ls_' + ($Id -replace '[^A-Za-z0-9_]', '_')
-        if ($n.Length -gt 34) { $n = $n.Substring(0, 34) }
-        $n = "$n$($Ctx.Bookmarks.Count)"
-        $Ctx.Bookmarks[$Id] = $n
-    }
-    return $Ctx.Bookmarks[$Id]
-}
-function Add-WordRel($Ctx, [string]$Type, [string]$Target, [bool]$External) {
-    $key = "$Type|$Target"
-    if ($Ctx.RelIds.ContainsKey($key)) { return $Ctx.RelIds[$key] }
-    $id = "rIdLs$($Ctx.Rels.Count + 1)"
-    [void]$Ctx.Rels.Add([pscustomobject]@{ Id = $id; Type = $Type; Target = $Target; External = $External })
-    $Ctx.RelIds[$key] = $id
-    return $id
-}
 
-# --- inline content: runs ---
-function New-RunFormat { return @{ B = $false; I = $false; Code = $false; Link = ''; Size = 0 } }
-function Copy-RunFormat($F) { return @{ B = $F.B; I = $F.I; Code = $F.Code; Link = $F.Link; Size = $F.Size } }
-# The runs of an element's inline content, as a list of { T (text) | Br | Xml (a drawing) , Format }.
-function Add-InlineRuns($Ctx, $Node, $Fmt, $Runs) {
-    foreach ($c in $Node.ChildNodes) {
-        if ($c.NodeType -eq 'Text' -or $c.NodeType -eq 'SignificantWhitespace' -or $c.NodeType -eq 'Whitespace') { [void]$Runs.Add(@{ T = $c.Value; F = $Fmt }); continue }
-        if ($c.NodeType -ne 'Element') { continue }
-        $tag = $c.LocalName.ToLower()
-        $f = Copy-RunFormat $Fmt
-        switch ($tag) {
-            { $_ -in 'strong', 'b', 'th' } { $f.B = $true; Add-InlineRuns $Ctx $c $f $Runs }
-            { $_ -in 'em', 'i' } { $f.I = $true; Add-InlineRuns $Ctx $c $f $Runs }
-            'code' { $f.Code = $true; Add-InlineRuns $Ctx $c $f $Runs }
-            'br' { [void]$Runs.Add(@{ Br = $true; F = $Fmt }) }
-            'img' { $x = Get-WordImage $Ctx $c; if ($x) { [void]$Runs.Add(@{ Xml = $x; F = $Fmt }) } }
-            'a' {
-                $href = $c.GetAttribute('href')
-                if ($href) { $f.Link = $href }
-                if ($c.GetAttribute('name') -and -not $c.HasChildNodes) { continue }
-                Add-InlineRuns $Ctx $c $f $Runs
-            }
-            'span' {
-                # A requirement's or scenario's label ("Requirement"): before its title, with a colon.
-                if ($c.GetAttribute('class') -eq 'tag') { $f.B = $true; [void]$Runs.Add(@{ T = "$($c.InnerText.Trim()): "; F = $f }); continue }
-                Add-InlineRuns $Ctx $c $f $Runs
-            }
-            default { Add-InlineRuns $Ctx $c $f $Runs }
-        }
-    }
-}
-# Runs as WordprocessingML: white space as HTML shows it (not in code blocks), links as hyperlinks.
-function Format-Runs($Ctx, $Runs, [bool]$Pre) {
-    $sb = New-Object Text.StringBuilder
-    $space = $true
-    $items = New-Object Collections.ArrayList
-    foreach ($r in $Runs) {
-        if ($r.Br -or $r.Xml) { [void]$items.Add($r); $space = $true; continue }
-        $t = [string]$r.T
-        if (-not $Pre) {
-            $t = [regex]::Replace($t, '\s+', ' ')
-            if ($space -and $t.StartsWith(' ')) { $t = $t.Substring(1) }
-            if (-not $t) { continue }
-            $space = $t.EndsWith(' ')
-        }
-        [void]$items.Add(@{ T = $t; F = $r.F })
-    }
-    # No space at the paragraph's end.
-    for ($i = $items.Count - 1; $i -ge 0; $i--) {
-        if ($items[$i].Br -or $items[$i].Xml) { break }
-        $items[$i].T = $items[$i].T.TrimEnd()
-        if ($items[$i].T) { break }
-    }
-    $link = ''
-    foreach ($r in $items) {
-        $l = ''
-        if (-not $r.Br -and -not $r.Xml) { $l = $r.F.Link }
-        if ($l -ne $link) {
-            if ($link) { [void]$sb.Append('</w:hyperlink>') }
-            $link = $l
-            if ($link) {
-                if ($link.StartsWith('#')) { [void]$sb.Append("<w:hyperlink w:anchor=`"$(Get-BookmarkName $Ctx $link.Substring(1))`" w:history=`"1`">") }
-                else { [void]$sb.Append("<w:hyperlink r:id=`"$(Add-WordRel $Ctx 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink' $link $true)`" w:history=`"1`">") }
-            }
-        }
-        if ($r.Xml) { [void]$sb.Append($r.Xml); continue }
-        if ($r.Br) { [void]$sb.Append('<w:r><w:br/></w:r>'); continue }
-        if (-not $r.T) { continue }
-        $rpr = ''
-        if ($r.F.Link -and $Ctx.Styles.Hyperlink) { $rpr += "<w:rStyle w:val=`"$($Ctx.Styles.Hyperlink)`"/>" }
-        # Code: the only font LazySpec sets (monospace, the theme's code font); the template's fonts everywhere else.
-        $cf = Xml $script:wordCode.Font
-        if ($r.F.Code) { $rpr += "<w:rFonts w:ascii=`"$cf`" w:hAnsi=`"$cf`" w:cs=`"$cf`"/>" }
-        if ($r.F.B) { $rpr += '<w:b/><w:bCs/>' }
-        if ($r.F.I) { $rpr += '<w:i/><w:iCs/>' }
-        if ($r.F.Code -and $r.F.Size -ge 0) { $sz = $script:wordCode.Size; if ($r.F.Size) { $sz = $r.F.Size }; $rpr += "<w:sz w:val=`"$sz`"/><w:szCs w:val=`"$sz`"/>" }
-        elseif (-not $r.F.Code -and $r.F.Size -ge 0 -and $Ctx.TextSize) { $rpr += "<w:sz w:val=`"$($Ctx.TextSize)`"/><w:szCs w:val=`"$($Ctx.TextSize)`"/>" }
-        if ($rpr) { $rpr = "<w:rPr>$rpr</w:rPr>" }
-        $lines = $r.T.Split("`n")
-        for ($k = 0; $k -lt $lines.Count; $k++) {
-            if ($k) { [void]$sb.Append("<w:r>$rpr<w:br/></w:r>") }
-            if ($lines[$k]) { [void]$sb.Append("<w:r>$rpr<w:t xml:space=`"preserve`">$(Xml $lines[$k])</w:t></w:r>") }
-        }
-    }
-    if ($link) { [void]$sb.Append('</w:hyperlink>') }
-    return $sb.ToString()
-}
-# A paragraph: its properties in the schema's order.
-function Add-WordPara($Ctx, $Sb, [string]$Style, [string]$Runs, $Opt) {
-    if (-not $Opt) { $Opt = @{} }
-    $ppr = ''
-    $sid = ''
-    if ($Style) { $sid = $Ctx.Styles[$Style] }
-    if ($sid) { $ppr += "<w:pStyle w:val=`"$sid`"/>" }
-    if ($Opt.KeepNext) { $ppr += '<w:keepNext/>' }
-    if ($Opt.PageBreak) { $ppr += '<w:pageBreakBefore/>' }
-    if ($Opt.NumId) { $ppr += "<w:numPr><w:ilvl w:val=`"$($Opt.Level)`"/><w:numId w:val=`"$($Opt.NumId)`"/></w:numPr>" }
-    if ($Opt.Border) { $ppr += '<w:pBdr><w:bottom w:val="single" w:sz="4" w:space="1" w:color="auto"/></w:pBdr>' }
-    if ($Opt.Before -or $Opt.After) {
-        $sp = ''
-        if ($Opt.Before) { $sp += " w:before=`"$($Opt.Before)`"" }
-        if ($Opt.After) { $sp += " w:after=`"$($Opt.After)`"" }
-        $ppr += "<w:spacing$sp/>"
-    }
-    if ($Opt.Indent) { $ppr += "<w:ind w:left=`"$($Opt.Indent)`"/>" }
-    if ($Opt.Center) { $ppr += '<w:jc w:val="center"/>' }
-    if ($ppr) { $ppr = "<w:pPr>$ppr</w:pPr>" }
-    $bm = ''; $bmEnd = ''
-    if ($Opt.Bookmark) {
-        $Ctx.BookmarkId++
-        $bm = "<w:bookmarkStart w:id=`"$($Ctx.BookmarkId)`" w:name=`"$(Get-BookmarkName $Ctx $Opt.Bookmark)`"/>"
-        $bmEnd = "<w:bookmarkEnd w:id=`"$($Ctx.BookmarkId)`"/>"
-    }
-    [void]$Sb.Append("<w:p>$ppr$bm$Runs$bmEnd</w:p>")
-}
-function Get-InlineXml($Ctx, $Node, [bool]$Pre = $false, [bool]$Heading = $false) {
-    $runs = New-Object Collections.ArrayList
-    $f = New-RunFormat
-    # In a heading, code keeps the heading's size (only the font is code's).
-    if ($Heading) { $f.Size = -1 }
-    if ($Pre) {
-        $f.Code = $true
-        # A code block's own size (a diagram's long lines: smaller), in half-points.
-        $m = [regex]::Match($Node.GetAttribute('style'), 'font-size:\s*([\d.]+)pt')
-        if ($m.Success) { $f.Size = [int][Math]::Round([double]::Parse($m.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture) * 2) }
-    }
-    Add-InlineRuns $Ctx $Node $f $runs
-    return Format-Runs $Ctx $runs $Pre
-}
 
-# A picture (a diagram): into the package, at most the text's width (and a page's height).
-function Get-WordImage($Ctx, $Img) {
-    $src = $Img.GetAttribute('src')
-    $bytes = $null
-    $ext = 'png'
-    try {
-        if ($src -match '^data:image/([a-z+]+);base64,(.*)$') { $ext = $Matches[1]; $bytes = [Convert]::FromBase64String($Matches[2]) }
-        elseif ($src) { $p = $src; if ($src -match '^file:') { $p = ([Uri]$src).LocalPath }; $bytes = [IO.File]::ReadAllBytes($p); $ext = [IO.Path]::GetExtension($p).TrimStart('.').ToLower() }
-    } catch { Write-Host "  ! a picture not added: $($_.Exception.Message)"; return '' }
-    if (-not $bytes) { return '' }
-    if ($ext -eq 'jpg') { $ext = 'jpeg' }
-    if ($ext -notin 'png', 'jpeg', 'gif', 'bmp') { Write-Host "  ! a $ext picture not added (Word takes png, jpeg, gif, bmp)"; return '' }
-    $w = 0; $h = 0
-    try {
-        Initialize-ImageTool
-        $size = [LazySpecImage]::SizeOf($bytes)
-        $w = $size[0]; $h = $size[1]
-    } catch { }
-    if (-not $w) { $w = [int]$Img.GetAttribute('width'); $h = [int]$Img.GetAttribute('height') }
-    if (-not $w -or -not $h) { $w = 600; $h = 400 }
-    # 96 dpi; the text's width; at most 22 cm high. A height in mm (the cover's logo): that height.
-    $cx = [long]$w * 9525; $cy = [long]$h * 9525
-    $mm = $Img.GetAttribute('data-height-mm')
-    if ($mm) { $cy = [long]([double]::Parse($mm, [Globalization.CultureInfo]::InvariantCulture) * 36000); $cx = [long]($cy * $w / $h) }
-    $maxX = $Ctx.Width * 635; $maxY = [long](22 * 360000)
-    $k = [Math]::Min(1.0, [Math]::Min($maxX / $cx, $maxY / $cy))
-    $cx = [long]($cx * $k); $cy = [long]($cy * $k)
-    $n = $Ctx.Media.Count + 1
-    $name = "lazyspec-image$n.$ext"
-    [void]$Ctx.Media.Add([pscustomobject]@{ Name = $name; Bytes = $bytes; Ext = $ext })
-    $rid = Add-WordRel $Ctx 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image' "media/$name" $false
-    $Ctx.DocPr++
-    $id = $Ctx.DocPr
-    $alt = Xml $Img.GetAttribute('alt')
-    return "<w:r><w:drawing><wp:inline distT=`"0`" distB=`"0`" distL=`"0`" distR=`"0`"><wp:extent cx=`"$cx`" cy=`"$cy`"/><wp:docPr id=`"$id`" name=`"Picture $id`" descr=`"$alt`"/>" +
-        '<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>' +
-        '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
-        "<pic:pic xmlns:pic=`"http://schemas.openxmlformats.org/drawingml/2006/picture`"><pic:nvPicPr><pic:cNvPr id=`"$id`" name=`"$name`"/><pic:cNvPicPr/></pic:nvPicPr>" +
-        "<pic:blipFill><a:blip r:embed=`"$rid`"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>" +
-        "<pic:spPr><a:xfrm><a:off x=`"0`" y=`"0`"/><a:ext cx=`"$cx`" cy=`"$cy`"/></a:xfrm><a:prstGeom prst=`"rect`"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>" +
-        '</a:graphicData></a:graphic></wp:inline></w:drawing></w:r>'
-}
 
-# A list (ul / ol): a numbering of its own (so ordered lists start at 1), its level by how deep it is.
-function New-WordList($Ctx, [string]$Kind) {
-    [void]$Ctx.Nums.Add($Kind)
-    return $Ctx.NumBase + $Ctx.Nums.Count
-}
-function Add-WordList($Ctx, $Sb, $List, [int]$Level) {
-    $kind = 'bullet'
-    if ($List.LocalName -eq 'ol') { $kind = 'decimal'; if ($List.GetAttribute('type') -eq 'a') { $kind = 'letter' } }
-    $num = New-WordList $Ctx $kind
-    foreach ($li in $List.ChildNodes) {
-        if ($li.NodeType -ne 'Element' -or $li.LocalName -ne 'li') { continue }
-        # A scenario's steps (WHEN / THEN ...) and task lists: no bullet, their own marks.
-        $plain = $li.GetAttribute('class') -match '\bstep\b'
-        $first = @{ NumId = $num; Level = [Math]::Min(8, $Level) }
-        if ($plain) { $first = $null }
-        Add-WordBlocks $Ctx $Sb $li $Level 'ListParagraph' $first (360 * ($Level + 1) + 360)
-    }
-}
-# A table: TableGrid, the text's width, the header row repeated on every page.
-function Add-WordTable($Ctx, $Sb, $Table) {
-    $rows = @($Table.SelectNodes('.//tr'))
-    if (-not $rows.Count) { return }
-    $cols = 0
-    foreach ($r in $rows) { $n = @($r.ChildNodes | Where-Object { $_.NodeType -eq 'Element' -and $_.LocalName -in 'td', 'th' }).Count; if ($n -gt $cols) { $cols = $n } }
-    if (-not $cols) { return }
-    $cw = [long][Math]::Floor($Ctx.Width / $cols)
-    # Its columns' widths: the HTML's (<col style="width: N%">, Get-TableWidths), else equal.
-    $pcts = @($Table.SelectNodes('.//col') | ForEach-Object { $m = [regex]::Match($_.GetAttribute('style'), 'width:\s*([\d.]+)%'); if ($m.Success) { [double]::Parse($m.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture) } })
-    $widths = @(for ($i = 0; $i -lt $cols; $i++) { if ($pcts.Count -eq $cols) { [long][Math]::Floor($Ctx.Width * $pcts[$i] / 100) } else { $cw } })
-    $tblStyle = ''
-    if ($Ctx.Styles.TableGrid) { $tblStyle = "<w:tblStyle w:val=`"$($Ctx.Styles.TableGrid)`"/>" }
-    # The style's header row (bold, shaded) only on a table that has one.
-    $hasHead = [bool]$Table.SelectSingleNode('.//thead') -or [bool](@($rows[0].ChildNodes | Where-Object { $_.NodeType -eq 'Element' }).Count -and -not @($rows[0].ChildNodes | Where-Object { $_.NodeType -eq 'Element' -and $_.LocalName -ne 'th' }).Count)
-    $look = if ($hasHead) { 'w:val="04A0" w:firstRow="1"' } else { 'w:val="0080" w:firstRow="0"' }
-    [void]$Sb.Append("<w:tbl><w:tblPr>$tblStyle<w:tblW w:w=`"5000`" w:type=`"pct`"/><w:tblLook $look w:lastRow=`"0`" w:firstColumn=`"0`" w:lastColumn=`"0`" w:noHBand=`"0`" w:noVBand=`"1`"/></w:tblPr><w:tblGrid>")
-    for ($i = 0; $i -lt $cols; $i++) { [void]$Sb.Append("<w:gridCol w:w=`"$($widths[$i])`"/>") }
-    [void]$Sb.Append('</w:tblGrid>')
-    foreach ($r in $rows) {
-        $cells = @($r.ChildNodes | Where-Object { $_.NodeType -eq 'Element' -and $_.LocalName -in 'td', 'th' })
-        $head = ($r.ParentNode.LocalName -eq 'thead') -or (@($cells | Where-Object { $_.LocalName -eq 'th' }).Count -eq $cells.Count -and $cells.Count)
-        [void]$Sb.Append('<w:tr>')
-        if ($head) { [void]$Sb.Append('<w:trPr><w:tblHeader/></w:trPr>') }
-        for ($i = 0; $i -lt $cols; $i++) {
-            # A cell's background (a changed row of models.md): its shading.
-            $shd = ''
-            if ($i -lt $cells.Count) {
-                $bg = [regex]::Match($cells[$i].GetAttribute('style'), 'background:\s*#([0-9A-Fa-f]{6})')
-                if ($bg.Success) { $shd = "<w:shd w:val=`"clear`" w:color=`"auto`" w:fill=`"$($bg.Groups[1].Value.ToUpper())`"/>" }
-            }
-            [void]$Sb.Append("<w:tc><w:tcPr><w:tcW w:w=`"$($widths[$i])`" w:type=`"dxa`"/>$shd</w:tcPr>")
-            $cell = New-Object Text.StringBuilder
-            if ($i -lt $cells.Count) {
-                $content = $cells[$i]
-                # A header cell's text bold (as the browser shows it).
-                if ($content.LocalName -eq 'th') {
-                    $content = $Ctx.Doc.CreateElement('td')
-                    $strong = $Ctx.Doc.CreateElement('strong')
-                    foreach ($n in @($cells[$i].ChildNodes)) { [void]$strong.AppendChild($n.CloneNode($true)) }
-                    [void]$content.AppendChild($strong)
-                }
-                Add-WordBlocks $Ctx $cell $content 0 'Normal' $null 0
-            }
-            # Every cell holds a paragraph at least.
-            if (-not $cell.Length) { [void]$cell.Append('<w:p/>') }
-            # Its paragraphs tight, as a table's (Normal's paragraph spacing would win over the table style's):
-            # a spacing in each paragraph's properties, in the schema's place (before ind / jc).
-            $tight = '<w:spacing w:before="20" w:after="20" w:line="240" w:lineRule="auto"/>'
-            $cx = [regex]::Replace($cell.ToString(), '<w:p><w:pPr>((?:(?!</w:pPr>).)*?)(<w:ind\b|<w:jc\b|</w:pPr>)', {
-                    param($m) if ($m.Groups[1].Value -match '<w:spacing\b') { $m.Value } else { "<w:p><w:pPr>$($m.Groups[1].Value)$tight$($m.Groups[2].Value)" } })
-            $cx = $cx.Replace('<w:p/>', "<w:p><w:pPr>$tight</w:pPr></w:p>").Replace('<w:p><w:r>', "<w:p><w:pPr>$tight</w:pPr><w:r>")
-            [void]$Sb.Append($cx)
-            [void]$Sb.Append('</w:tc>')
-        }
-        [void]$Sb.Append('</w:tr>')
-    }
-    [void]$Sb.Append('</w:tbl>')
-}
-# The contents: the template's TOCHeading, then a TOC field over Heading 1 (filled in here, without page
-# numbers; Word adds them when it's there, F9 in Word otherwise).
-function Add-WordToc($Ctx, $Sb) {
-    $p = ''
-    if ($Ctx.Styles.TOC1) { $p = "<w:pPr><w:pStyle w:val=`"$($Ctx.Styles.TOC1)`"/></w:pPr>" }
-    [void]$Sb.Append("<w:p>$p<w:r><w:fldChar w:fldCharType=`"begin`"/></w:r><w:r><w:instrText xml:space=`"preserve`"> TOC \o `"1-$($script:wordMode.TocLevels)`" \h \z \u </w:instrText></w:r><w:r><w:fldChar w:fldCharType=`"separate`"/></w:r></w:p>")
-    foreach ($e in $Ctx.Toc) {
-        # An entry in its level's style (toc 1, toc 2).
-        $ep = $p
-        $sid = $Ctx.Styles["TOC$($e.Level)"]
-        if ($sid) { $ep = "<w:pPr><w:pStyle w:val=`"$sid`"/></w:pPr>" }
-        [void]$Sb.Append("<w:p>$ep<w:hyperlink w:anchor=`"$(Get-BookmarkName $Ctx $e.Id)`" w:history=`"1`"><w:r><w:t xml:space=`"preserve`">$(Xml $e.Text)</w:t></w:r></w:hyperlink></w:p>")
-    }
-    [void]$Sb.Append("<w:p>$p<w:r><w:fldChar w:fldCharType=`"end`"/></w:r></w:p>")
-}
 
-# An element's content as blocks: inline content (text, links ...) gathers into paragraphs of $Style;
-# headings, lists, tables, code, pictures make their own. $First: the first paragraph's numbering (a list
-# item's), $Indent: every other paragraph's left indent (a list item's text, a scenario).
-function Add-WordBlocks($Ctx, $Sb, $Node, [int]$Level, [string]$Style, $First, [int]$Indent) {
-    $state = @{ First = $First }
-    # The next paragraph's properties: the number once, else the indent.
-    $nextOpt = {
-        $o = @{}
-        if ($state.First) { $o = @{ NumId = $state.First.NumId; Level = $state.First.Level } }
-        elseif ($Indent) { $o = @{ Indent = $Indent } }
-        $state.First = $null
-        return $o
-    }
-    $pending = New-Object Collections.ArrayList
-    $flush = {
-        if (-not $pending.Count) { return }
-        $runs = New-Object Collections.ArrayList
-        foreach ($n in $pending) {
-            if ($n.NodeType -eq 'Element') {
-                $wrap = $Ctx.Doc.CreateElement('span')
-                [void]$wrap.AppendChild($n.CloneNode($true))
-                Add-InlineRuns $Ctx $wrap (New-RunFormat) $runs
-            }
-            else { [void]$runs.Add(@{ T = $n.Value; F = (New-RunFormat) }) }
-        }
-        $pending.Clear()
-        $xml = Format-Runs $Ctx $runs $false
-        if (-not $xml) { return }
-        Add-WordPara $Ctx $Sb $Style $xml (& $nextOpt)
-    }
-    $blockTags = 'p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'table', 'pre', 'blockquote', 'hr'
-    $inList = $Style -eq 'ListParagraph'
-    foreach ($c in @($Node.ChildNodes)) {
-        if ($c.NodeType -ne 'Element' -or $c.LocalName -notin $blockTags) { [void]$pending.Add($c); continue }
-        & $flush
-        $tag = $c.LocalName
-        $cls = $c.GetAttribute('class')
-        switch -Regex ($tag) {
-            '^h([1-6])$' {
-                $lv = [int]$Matches[1]
-                $id = $c.GetAttribute('id')
-                $opt = @{ KeepNext = $true }
-                # A chapter: a page of its own (the specification), in the contents (a part's title too).
-                if ($lv -eq 1 -and $script:wordMode.ChapterBreaks) { $opt.PageBreak = $true }
-                if ($lv -le $script:wordMode.TocLevels) {
-                    if (-not $id) { $id = "part$($Ctx.Toc.Count)" }
-                    [void]$Ctx.Toc.Add([pscustomobject]@{ Id = $id; Text = [regex]::Replace($c.InnerText.Trim(), '\s+', ' '); Level = $lv })
-                }
-                if ($id) { $opt.Bookmark = $id }
-                Add-WordPara $Ctx $Sb "Heading$lv" (Get-InlineXml $Ctx $c $false $true) $opt
-                $state.First = $null
-            }
-            '^(ul|ol)$' { $lv = 0; if ($inList) { $lv = $Level + 1 }; $state.First = $null; Add-WordList $Ctx $Sb $c $lv }
-            '^table$' { $state.First = $null; Add-WordTable $Ctx $Sb $c }
-            '^pre$' { Add-WordPara $Ctx $Sb 'Normal' (Get-InlineXml $Ctx $c $true) (& $nextOpt) }
-            '^hr$' { Add-WordPara $Ctx $Sb 'Normal' '' @{ Border = $true } }
-            '^blockquote$' { Add-WordBlocks $Ctx $Sb $c $Level 'Normal' $null ($Indent + 567) }
-            '^p$' {
-                # The contents' place: filled in when the chapters are known.
-                if ($c.InnerText.Trim() -eq '[[TOC]]') { [void]$Sb.Append('<!--lazyspec-toc-->'); break }
-                switch ($cls) {
-                    'title' { Add-WordPara $Ctx $Sb 'Title' (Get-InlineXml $Ctx $c) @{} }
-                    'subtitle' { Add-WordPara $Ctx $Sb 'Subtitle' (Get-InlineXml $Ctx $c) @{} }
-                    'toc-title' { Add-WordPara $Ctx $Sb 'TOCHeading' (Get-InlineXml $Ctx $c) @{ PageBreak = $script:wordMode.TocBreak } }
-                    'page-break' { Add-WordPara $Ctx $Sb 'Normal' '' @{ PageBreak = $true } }
-                    'caption' { Add-WordPara $Ctx $Sb 'Normal' (Get-InlineXml $Ctx $c) @{ Center = $true } }
-                    default { Add-WordPara $Ctx $Sb $Style (Get-InlineXml $Ctx $c) (& $nextOpt) }
-                }
-            }
-            default {
-                # A div: the cover, a scenario (indented), a diagram (its picture centred), what's inside.
-                if ($cls -eq 'bar') { break }
-                if ($cls -eq 'cover-logo') {
-                    foreach ($img in @($c.SelectNodes('.//img'))) { $x = Get-WordImage $Ctx $img; if ($x) { Add-WordPara $Ctx $Sb 'Normal' $x @{ After = 600 } } }
-                    break
-                }
-                if ($cls -eq 'diagram') {
-                    # Room above it and below its caption, as in PDF (16pt, 20pt).
-                    foreach ($img in @($c.SelectNodes('.//img'))) { $x = Get-WordImage $Ctx $img; if ($x) { Add-WordPara $Ctx $Sb 'Normal' $x @{ Center = $true; KeepNext = $true; Before = 320 } } }
-                    foreach ($cap in @($c.SelectNodes('./p'))) { Add-WordPara $Ctx $Sb 'Normal' (Get-InlineXml $Ctx $cap) @{ Center = $true; After = 400 } }
-                    break
-                }
-                $in = $Indent
-                $size = $Ctx.TextSize
-                if ($cls -eq 'scenario') { $in += 284; if ($script:wordScenarioSize) { $Ctx.TextSize = $script:wordScenarioSize } }
-                Add-WordBlocks $Ctx $Sb $c $Level $Style $state.First $in
-                $Ctx.TextSize = $size
-                $state.First = $null
-            }
-        }
-    }
-    & $flush
-}
 
-# The export's HTML -> a .docx on the template.
-function Export-WordTemplate([string]$Html, [string]$Target, [string]$TemplatePath) {
-    Write-Host "  $($g.caret) Word template: $TemplatePath"
-    Export-WordOnBase $Html $Target (Read-SharedBytes $TemplatePath) $TemplatePath
-}
-# The export's HTML -> a .docx on the theme's base document.
-function Export-WordTheme([string]$Html, [string]$Target, $T, $Meta) {
-    $script:wordCode = @{ Font = $T.Styles.code.font; Size = [int][Math]::Round((ConvertTo-Pt $T.Styles.code.size 'size') * 2) }
-    $script:wordScenarioSize = [int][Math]::Round((Get-ScenarioPt $T) * 2)
-    Export-WordOnBase $Html $Target (New-ThemeDocxBase $T $Meta) $T.Path
-}
-# The export's HTML -> a .docx on a base document (the template's, or the theme's).
-function Export-WordOnBase([string]$Html, [string]$Target, [byte[]]$Base, [string]$Source) {
-    $pkg = Open-ZipBytes $Base 'Update'
-    try {
-        $zip = $pkg.Zip
-        $docXml = Read-ZipText $zip 'word/document.xml'
-        # The body goes, its last section's properties stay (headers, footers, margins, the cover's own first page).
-        $bodyStart = [regex]::Match($docXml, '<w:body>')
-        $sect = [regex]::Match($docXml, '(?s)<w:sectPr\b(?:(?!<w:sectPr\b).)*?</w:sectPr>\s*</w:body>')
-        if (-not $bodyStart.Success) { throw "The Word template has no <w:body>: $Source" }
-        $sectPr = ''
-        if ($sect.Success) { $sectPr = [regex]::Replace($sect.Value, '\s*</w:body>$', '') }
-        $oldBody = $docXml.Substring($bodyStart.Index, $docXml.IndexOf('</w:body>') - $bodyStart.Index)
-        $head = $docXml.Substring(0, $bodyStart.Index)
-        # The namespaces the content needs, on the root as Word writes them.
-        $nsNeeded = @{
-            w = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'; r = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
-            wp = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing'
-        }
-        foreach ($k in $nsNeeded.Keys) { if ($head -notmatch "xmlns:$k=") { $head = [regex]::Replace($head, '<w:document\b', "<w:document xmlns:$k=`"$($nsNeeded[$k])`"", 1) } }
-        # The text's width: the page's, less the margins (twips).
-        $width = 9026
-        $pg = [regex]::Match($sectPr, '<w:pgSz\b[^>]*w:w="(\d+)"'); $ml = [regex]::Match($sectPr, '<w:pgMar\b[^>]*w:left="(\d+)"'); $mr = [regex]::Match($sectPr, '<w:pgMar\b[^>]*w:right="(\d+)"')
-        if ($pg.Success -and $ml.Success -and $mr.Success) { $width = [long]$pg.Groups[1].Value - [long]$ml.Groups[1].Value - [long]$mr.Groups[1].Value }
-
-        $numXml = Read-ZipText $zip 'word/numbering.xml'
-        $numMax = 0
-        if ($numXml) { foreach ($m in [regex]::Matches($numXml, '<w:num w:numId="(\d+)"')) { $numMax = [Math]::Max($numMax, [int]$m.Groups[1].Value) } }
-        $ctx = New-WordContext (Get-TemplateStyles (Read-ZipText $zip 'word/styles.xml')) $width $numMax
-        # The export's HTML as XML (it writes well-formed HTML; the void tags closed, the named entities as numbers).
-        $body = [regex]::Match($Html, '(?s)<body>(.*)</body>').Groups[1].Value
-        $body = [regex]::Replace($body, '<(br|hr|img|meta|col|input)\b([^>]*?)/?>', '<$1$2/>')
-        $body = $body.Replace('&nbsp;', '&#160;')
-        $x = New-Object Xml.XmlDocument
-        $x.PreserveWhitespace = $true
-        $x.LoadXml("<body>$body</body>")
-        $ctx.Doc = $x
-        $sb = New-Object Text.StringBuilder
-        Add-WordBlocks $ctx $sb $x.DocumentElement 0 'Normal' $null 0
-        # The contents, now that the chapters are known.
-        $toc = New-Object Text.StringBuilder
-        if ($ctx.Toc.Count) { Add-WordToc $ctx $toc }
-        $content = $sb.ToString().Replace('<!--lazyspec-toc-->', $toc.ToString())
-        $newDoc = "$head<w:body>$content<w:p/>$sectPr</w:body></w:document>"
-        try { [void]([xml]$newDoc) } catch { throw "LazySpec wrote a broken word/document.xml (a bug: please report it): $($_.Exception.Message)" }
-        Write-ZipText $zip 'word/document.xml' $newDoc
-
-        # Relationships: the content's; the sample body's pictures and links go (the headers' have their own).
-        $relsXml = Read-ZipText $zip 'word/_rels/document.xml.rels'
-        $dropped = @()
-        foreach ($m in [regex]::Matches($relsXml, '<Relationship\b[^>]*/>')) {
-            $id = [regex]::Match($m.Value, 'Id="([^"]+)"').Groups[1].Value
-            $type = [regex]::Match($m.Value, 'Type="[^"]*/([^"/]+)"').Groups[1].Value
-            if ($type -notin 'image', 'hyperlink') { continue }
-            if ($oldBody -match "r:(?:embed|id|link)=`"$([regex]::Escape($id))`"" -and $newDoc -notmatch "`"$([regex]::Escape($id))`"") {
-                $relsXml = $relsXml.Replace($m.Value, '')
-                if ($type -eq 'image') { $dropped += [regex]::Match($m.Value, 'Target="([^"]+)"').Groups[1].Value }
-            }
-        }
-        $add = -join @($ctx.Rels | ForEach-Object {
-                $mode = ''
-                if ($_.External) { $mode = ' TargetMode="External"' }
-                "<Relationship Id=`"$($_.Id)`" Type=`"$($_.Type)`" Target=`"$(Xml $_.Target)`"$mode/>" })
-        $relsXml = $relsXml.Replace('</Relationships>', "$add</Relationships>")
-        # The numbering: the content's lists (bullets; 1. 2.; a) b)), after the template's own.
-        if ($ctx.Nums.Count) {
-            if (-not $numXml) {
-                $numXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"></w:numbering>'
-                $relsXml = $relsXml.Replace('</Relationships>', '<Relationship Id="rIdLsNum" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>')
-                $ct = Read-ZipText $zip '[Content_Types].xml'
-                Write-ZipText $zip '[Content_Types].xml' $ct.Replace('</Types>', '<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/></Types>')
-            }
-            $absMax = 0; foreach ($m in [regex]::Matches($numXml, 'w:abstractNumId="(\d+)"')) { $absMax = [Math]::Max($absMax, [int]$m.Groups[1].Value) }
-            $abs = @{}
-            $absXml = New-Object Text.StringBuilder
-            foreach ($kind in 'bullet', 'decimal', 'letter') {
-                $absMax++
-                $abs[$kind] = $absMax
-                [void]$absXml.Append("<w:abstractNum w:abstractNumId=`"$absMax`"><w:multiLevelType w:val=`"hybridMultilevel`"/>")
-                for ($l = 0; $l -le 8; $l++) {
-                    $fmt = 'bullet'; $text = @([string][char]0x2022, [string][char]0x25E6, [string][char]0x25AA)[$l % 3]
-                    if ($kind -eq 'decimal') { $fmt = @('decimal', 'lowerLetter', 'lowerRoman')[$l % 3]; $text = "%$($l + 1)." }
-                    # Lettered (answers under a numbered question): letters at any level, as in PDF and HTML.
-                    if ($kind -eq 'letter') { $fmt = 'lowerLetter'; $text = "%$($l + 1)." }
-                    [void]$absXml.Append("<w:lvl w:ilvl=`"$l`"><w:start w:val=`"1`"/><w:numFmt w:val=`"$fmt`"/><w:lvlText w:val=`"$(Xml $text)`"/><w:lvlJc w:val=`"left`"/><w:pPr><w:ind w:left=`"$(360 * ($l + 1) + 360)`" w:hanging=`"360`"/></w:pPr></w:lvl>")
-                }
-                [void]$absXml.Append('</w:abstractNum>')
-            }
-            $nums = New-Object Text.StringBuilder
-            for ($i = 0; $i -lt $ctx.Nums.Count; $i++) {
-                $id = $numMax + 1 + $i
-                [void]$nums.Append("<w:num w:numId=`"$id`"><w:abstractNumId w:val=`"$($abs[$ctx.Nums[$i]])`"/><w:lvlOverride w:ilvl=`"0`"><w:startOverride w:val=`"1`"/></w:lvlOverride></w:num>")
-            }
-            # The abstract numberings before every w:num (the schema's order).
-            $firstNum = $numXml.IndexOf('<w:num ')
-            if ($firstNum -lt 0) { $firstNum = $numXml.IndexOf('<w:numIdMacAtCleanup'); }
-            if ($firstNum -lt 0) { $firstNum = $numXml.IndexOf('</w:numbering>') }
-            $numXml = $numXml.Insert($firstNum, $absXml.ToString())
-            $cleanup = $numXml.IndexOf('<w:numIdMacAtCleanup')
-            if ($cleanup -lt 0) { $cleanup = $numXml.IndexOf('</w:numbering>') }
-            $numXml = $numXml.Insert($cleanup, $nums.ToString())
-            Write-ZipText $zip 'word/numbering.xml' $numXml
-        }
-        Write-ZipText $zip 'word/_rels/document.xml.rels' $relsXml
-        # The pictures, and their types.
-        $ct = Read-ZipText $zip '[Content_Types].xml'
-        foreach ($m in $ctx.Media) {
-            Write-ZipBytes $zip "word/media/$($m.Name)" $m.Bytes
-            if ($ct -notmatch "Extension=`"$($m.Ext)`"") { $ct = $ct.Replace('<Override ', "<Default Extension=`"$($m.Ext)`" ContentType=`"image/$($m.Ext)`"/><Override ") }
-        }
-        # A .dotx as the template: the result is a document.
-        $ct = $ct.Replace('wordprocessingml.template.main+xml', 'wordprocessingml.document.main+xml')
-        Write-ZipText $zip '[Content_Types].xml' $ct
-        # The sample body's pictures that nothing uses any more.
-        $allRels = -join @($zip.Entries | Where-Object { $_.FullName -match '\.rels$' } | ForEach-Object { Read-ZipText $zip $_.FullName })
-        foreach ($t in $dropped) {
-            if ($allRels -notmatch [regex]::Escape("Target=`"$t`"")) { $e = $zip.GetEntry("word/$t"); if ($e) { $e.Delete() } }
-        }
-        # The document's title in its properties.
-        $core = Read-ZipText $zip 'docProps/core.xml'
-        if ($core) {
-            $t = $x.SelectSingleNode("//p[@class='title']")
-            if ($t) {
-                $title = Xml $t.InnerText.Trim()
-                $core = [regex]::Replace($core, '<dc:title\s*/>|<dc:title>[^<]*</dc:title>', "<dc:title>$title</dc:title>")
-                Write-ZipText $zip 'docProps/core.xml' $core
-            }
-        }
-    }
-    finally { $pkg.Zip.Dispose() }
-    [IO.File]::WriteAllBytes($Target, $pkg.Stream.ToArray())
-    $pkg.Stream.Dispose()
-    # The contents' page numbers: Word fills them in when it's there (the rest of the document as written).
-    $word = $null
-    try { $word = New-Object -ComObject Word.Application } catch { }
-    if (-not $word) { Write-Host "  ! the contents have no page numbers yet: in Word, right-click them, Update Field (no Word on this PC)"; return }
-    $doc = $null
-    try {
-        $word.Visible = $false
-        $word.DisplayAlerts = 0
-        $doc = $word.Documents.Open($Target, $false, $false, $false)
-        foreach ($t in @($doc.TablesOfContents)) { $t.Update() }
-        $doc.Save()
-        Write-Host "  $($g.caret) contents' page numbers by Microsoft Word"
-    }
-    catch { Write-Host "  ! the contents' page numbers not filled in ($($_.Exception.Message)): in Word, Update Field" }
-    finally {
-        if ($doc) { try { $doc.Close($false) } catch { } }
-        try { $word.Quit() } catch { }
-        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($word)
-    }
-}
 
 # Where exports go: netmedia: exportDir: in openspec/config.yaml (shared by every Netmedia tool), else
 # lazyspec: exportDir: (relative to the project's root), else openspec\exports\.
@@ -5151,20 +4268,21 @@ function Invoke-Export([string]$Format, [string]$Target, [bool]$WithChanges, [bo
         if (-not (Test-Path -LiteralPath $md -PathType Leaf)) { throw "The Markdown file isn't there: $md" }
         if ($ItemName -or $WithChanges) { Write-Host "  ! -Item and -IncludeChanges are for the specification: not used with -Markdown" }
         $mdDoc = Read-MarkdownDocument $md
-        $script:wordMode = @{ ChapterBreaks = $false; TocLevels = 2; TocBreak = $mdDoc.Cover }
         if (-not $hasRoot) { Write-Host "  ! $(Split-Path $md -Leaf) isn't in a project (no openspec folder above it): no project theme or template (-Theme, -Template still work)" }
     }
     elseif (-not $hasRoot) { throw "No openspec folder in $((Get-Location).Path) or above it: nothing to export." }
-    # Word: the project's template, when it has one; every format: its theme (checked first: a missing one
-    # stops the export). Both: Word documents use the template, PDF and HTML the theme.
+    # Word and PDF: Netmedia documents (netmedia-document), on the project's template when it has one (else
+    # netmedia-document's); HTML: the project's theme (checked first: a missing one stops the export).
     $templatePath = ''
-    if ($Format -eq 'Word' -and -not ($Theme -and -not $Template)) { $templatePath = Get-DocumentTemplate }
-    elseif ($Template) { Write-Host "  ! -Template is for Word documents: the $Format export doesn't use it" }
+    if ($Format -ne 'Html') { $templatePath = Get-DocumentTemplate }
+    elseif ($Template) { Write-Host "  ! -Template is for Word and PDF: the HTML export doesn't use it" }
     $script:docTheme = Get-DocumentTheme
-    if ($script:docTheme -and $templatePath) { Write-Host "  ! a document template and a theme: this Word document uses the template ($(Split-Path $templatePath -Leaf)); PDF and HTML use the theme" }
-    elseif ($script:docTheme) { Write-Host "  $($g.caret) document theme: $($script:docTheme.Path)"; Write-ThemeFontWarning $script:docTheme ($Format -eq 'Word') }
+    if ($script:docTheme -and $Format -eq 'Html') { Write-Host "  $($g.caret) document theme: $($script:docTheme.Path)"; Write-ThemeFontWarning $script:docTheme $false }
     $ext = @{ Pdf = 'pdf'; Word = 'docx'; Html = 'html' }[$Format]
-    if ($mdDoc) { $doc = Get-ExportHtml $Format $false '' $Friendly $mdDoc } else { $doc = Get-ExportHtml $Format $WithChanges $ItemName $Friendly $null $ItemTitle }
+    # Word and PDF are made from the Word flavour of the HTML (pictures as files, the contents left to Word).
+    $htmlFormat = $Format
+    if ($Format -eq 'Pdf') { $htmlFormat = 'Word' }
+    if ($mdDoc) { $doc = Get-ExportHtml $htmlFormat $false '' $Friendly $mdDoc } else { $doc = Get-ExportHtml $htmlFormat $WithChanges $ItemName $Friendly $null $ItemTitle }
     if ($mdDoc) { $what = "document $(Split-Path $mdDoc.Path -Leaf): $($mdDoc.Title)" }
     elseif ($doc.Item) {
         if (-not $doc.Chapters) { throw "$($doc.Item.Name) has none of its documents yet: nothing to export." }
@@ -5221,10 +4339,9 @@ function Invoke-Export([string]$Format, [string]$Target, [bool]$WithChanges, [bo
             $htmlPath = Join-Path $tmp 'specification.html'
             [IO.File]::WriteAllText($htmlPath, $doc.Html, $utf8)
             if (Test-Path -LiteralPath $Target) { Remove-Item -LiteralPath $Target -Force }
-            if ($Format -eq 'Pdf') { Export-Pdf $htmlPath $Target }
-            elseif ($templatePath) { Write-TemplateFontWarning $templatePath; Export-WordTemplate $doc.Html $Target $templatePath }
-            elseif ($script:docTheme) { Export-WordTheme $doc.Html $Target $script:docTheme $doc.Meta }
-            else { Export-Word $htmlPath $Target }
+            $toc = $true
+            if ($mdDoc) { $toc = [bool]$mdDoc.Toc }
+            Export-NetmediaDocument $htmlPath $Target $Format $templatePath $doc.Meta $toc
         }
         finally { Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue }
     }

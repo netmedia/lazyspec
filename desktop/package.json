@@ -1,7 +1,7 @@
 {
   "name": "lazyspec-desktop",
   "private": true,
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "LazySpec for Claude: a project's OpenSpec specs and changes as MCP tools (Claude Desktop extension, Claude Code plugin).",
   "license": "SEE LICENSE IN ../LICENSE",
   "scripts": {
