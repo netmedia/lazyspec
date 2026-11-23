@@ -66,8 +66,8 @@ for (const f of ['lazyspec.ps1', 'export-texts.json', 'kit.json', 'LAZYSPEC.md']
 // never edited here. Without AIToolbelt the extension is packed without them and run_tool says so.
 const NETMEDIA_BUNDLE = {
   netmedia: ['skills/prepare-offer/scripts', 'skills/estimate/scripts', 'skills/estimate/assets'],
-  'netmedia-tools': ['offer', 'skills/translate/scripts', 'skills/hasek/scripts'],
-  'netmedia-document': ['scripts', 'theme'],
+  'netmedia-tools': ['skills/translate/scripts', 'skills/hasek/scripts'],
+  'netmedia-document': ['scripts', 'theme', 'offer'],
 };
 const toolbelt = process.env.NETMEDIA_AITOOLBELT || path.join(repo, '..', 'AIToolbelt');
 if (fs.existsSync(path.join(toolbelt, 'plugins'))) {
