@@ -36,7 +36,7 @@ function change(p: Project, name: unknown, archivedToo = false): Change {
 }
 function entryOut(p: Project, e: Entry) {
   return {
-    kind: kindWord(e.kind), in: e.where, capability: e.cap || undefined, under: e.context || undefined,
+    kind: kindWord(e.kind), id: e.id || undefined, in: e.where, capability: e.cap || undefined, under: e.context || undefined,
     number: e.num || undefined, text: e.text, done: e.kind === 'task' ? e.done : undefined, path: rel(p, e.path), line: e.line,
   };
 }
@@ -172,9 +172,9 @@ export const tools: Tool[] = [
   },
   {
     name: 'find', title: 'Find', readOnly: true,
-    description: 'Tasks, requirements, scenarios and sections in the specs and changes: by task number (1.3), by words (all must match), g2 / group 2 for one group. Each result has path and line, which edit and remove tools take.',
+    description: 'Tasks, requirements, scenarios, sections, open questions and decisions in the specs, the changes and openspec/project-tasks.md: by task number (1.3), by item id or its beginning (OSN-T-04, OSN-T-0, OSN-T, osn: the exact id first; a retired id: what became of it), by words (all must match), g2 / group 2 for one group. Each result has path and line, which edit and remove tools take.',
     inputSchema: schema({
-      query: str('Words, a task number, or g<group>.'),
+      query: str('Words, a task number, an item id (or its beginning), or g<group>.'),
       kind: { type: 'string', enum: ['all', 'tasks', 'open tasks', 'requirements', 'scenarios', 'sections'], description: 'Only this kind (default all).' },
       include_archived: bool('Also archived changes.'), limit: num('At most this many (default 50).'),
     }, ['query']),

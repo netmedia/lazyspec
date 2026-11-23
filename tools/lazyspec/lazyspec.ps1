@@ -1211,6 +1211,7 @@ function Reload {
     $script:projectSchema = $null
     $script:projectConfig = $null
     $script:projectGroups = $null
+    $script:projectKeys = $null
     $script:groupingOn = $null
     $script:groupDeps = @{}
     $script:specs = @(Load-Specs)
@@ -1538,8 +1539,8 @@ function Render-Markdown([string]$Text, [int]$Width) {
         if ($t.Trim().StartsWith('|')) { $table += $t; continue }
         if (-not $t.Trim()) { if (-not $blank) { [void]$lines.Add(@()) }; $blank = $true; continue }
         $blank = $false
-        if ($t -match '^###\s+Requirement:\s*(.*)$') { Add-Wrapped $lines "$($g.diamond) " $st.accent (Plain-Inline $Matches[1]) $st.bold $Width; continue }
-        if ($t -match '^####\s+Scenario:\s*(.*)$') { Add-Wrapped $lines "  $($g.tri) " $st.shared (Plain-Inline $Matches[1]) $st.shared $Width; continue }
+        if ($t -match '^###\s+(?:Requirement|Zahtjev|Anforderung):\s*(.*)$') { Add-Wrapped $lines "$($g.diamond) " $st.accent (Plain-Inline $Matches[1]) $st.bold $Width; continue }
+        if ($t -match '^####\s+(?:Scenario|Scenarij|Szenario):\s*(.*)$') { Add-Wrapped $lines "  $($g.tri) " $st.shared (Plain-Inline $Matches[1]) $st.shared $Width; continue }
         if ($t -match '^(#{1,6})\s+(.*)$') {
             $level = $Matches[1].Length
             $h = Plain-Inline $Matches[2]
@@ -5228,6 +5229,100 @@ function Use-Pick([string]$Then, [string]$Names, [string]$Title, [string]$Id) {
     $script:readItem = $item; $script:readTab = 0; $script:readScroll = 0; $script:screen = 'read'
 }
 
+# --- item ids (<KEY>-<KIND>-<nn>: OSN-T-04) and openspec/keys.yaml ------------------------------------------
+# An item's id at the start of its text (after a task's number): "OSN-T-04 ...", "1.1 OSN-T-04 ..."; '' none.
+function Get-ItemId([string]$Text) {
+    $m = [regex]::Match($Text.Trim(), '^(?:\d+(?:\.\d+)+\.?\s+)?([A-Z][A-Z0-9]{1,5}-[A-Z]-\d{2,})\b')
+    if ($m.Success) { return $m.Groups[1].Value }
+    return ''
+}
+# The text without its id ("1.1 OSN-T-04 Do it" -> "1.1 Do it"), where the id is shown as a label of its own.
+function Get-TextWithoutId([string]$Text, [string]$Id) {
+    if (-not $Id) { return $Text }
+    return ([regex]('(^|\s)' + [regex]::Escape($Id) + '\b\s*')).Replace($Text, '$1', 1).Trim()
+}
+# A query word that looks like an id or its beginning (osn-, OSN-T, OSN-T-0, OSN-T-04); a plain word that can
+# begin one (osn: an id's beginning, and text as any word).
+function Test-IdLike([string]$T) { return ($T -match '^[A-Za-z][A-Za-z0-9]{1,5}-([A-Za-z](-\d*)?)?$' -or $T -match '^[A-Za-z][A-Za-z0-9]{1,5}-[A-Za-z]-\d+$') }
+function Test-IdWord([string]$T) { return ($T -match '^[A-Za-z][A-Za-z0-9]{1,5}$') }
+# Ids in order: key, kind, then the number (OSN-T-09, OSN-T-10, OSN-T-040).
+function Get-IdSortKey([string]$Id) {
+    $p = $Id.Split('-')
+    $n = 0L
+    if ($p.Count -gt 2) { [void][long]::TryParse($p[2], [ref]$n) }
+    return '{0}-{1}-{2:D12}' -f $p[0], $p[1], $n
+}
+# A flow-style field ({key: OSN, name: "Osnova", into: [A, B]}).
+function Get-FlowField([string]$Body, [string]$Name) {
+    $m = [regex]::Match($Body, '(?:^|[{,\s])' + $Name + ':\s*("[^"]*"|''[^'']*''|\[[^\]]*\]|[^,}]*)')
+    if ($m.Success) { return (Unquote $m.Groups[1].Value.Trim()) }
+    return ''
+}
+# openspec/keys.yaml (written by another tool; flow style, an entry a line): the kinds, the keys (key, group,
+# name) and the retired ids (id, reason, into). Missing: none.
+function Get-ProjectKeys {
+    if ($null -ne $script:projectKeys) { return $script:projectKeys }
+    $k = [pscustomobject]@{ Kinds = @{}; Keys = @(); Retired = @() }
+    $script:projectKeys = $k
+    if (-not $hasRoot) { return $k }
+    $sec = ''; $n = 0
+    foreach ($line in (Read-Text (Join-Path $osDir 'keys.yaml')).Replace("`r", '').Split("`n")) {
+        $n++
+        if (-not $line.Trim() -or $line.TrimStart().StartsWith('#')) { continue }
+        if ($line -match '^([A-Za-z_]+):\s*(.*)$') {
+            $sec = $Matches[1]
+            if ($sec -eq 'kinds') { foreach ($part in ($Matches[2] -replace '^\s*\{|\}\s*$', '').Split(',')) { if ($part -match '^\s*([A-Za-z]):\s*(.+?)\s*$') { $k.Kinds[$Matches[1].ToUpper()] = Unquote $Matches[2] } } }
+            continue
+        }
+        if ($line -notmatch '^\s*-\s*\{(.*)\}\s*$') { continue }
+        $body = $Matches[1]
+        if ($sec -eq 'keys') {
+            $key = Get-FlowField $body 'key'
+            if ($key) { $k.Keys += [pscustomobject]@{ Key = $key; Group = (Get-FlowField $body 'group'); Name = (Get-FlowField $body 'name') } }
+        }
+        elseif ($sec -eq 'retired') {
+            $id = Get-FlowField $body 'id'
+            if (-not $id) { continue }
+            $into = @(((Get-FlowField $body 'into') -replace '^\[|\]$', '').Split(',') | ForEach-Object { (Unquote $_.Trim()) } | Where-Object { $_ })
+            $k.Retired += [pscustomobject]@{ Id = $id; Reason = (Get-FlowField $body 'reason'); Into = $into; Line = $n }
+        }
+    }
+    return $k
+}
+# openspec/project-tasks.md (shared work: pre-project, after development, infra), as a change of its own.
+function Get-ProjectTasksItem {
+    if (-not $hasRoot) { return $null }
+    $f = Join-Path $osDir 'project-tasks.md'
+    if (-not (Test-Path -LiteralPath $f)) { return $null }
+    $text = Read-Text $f
+    $done = Count $text '(?mi)^\s*[-*]\s+\[x\]'
+    $total = $done + (Count $text '(?m)^\s*[-*]\s+\[ \]')
+    $stage = 'In Progress'
+    if (-not $total) { $stage = 'Draft' } elseif ($done -eq $total) { $stage = 'Completed' }
+    $doc = [pscustomobject]@{ Id = 'tasks'; Title = 'Project tasks'; Generates = 'project-tasks.md'; Files = @($f); Requires = @(); IsSpecs = $false }
+    return [pscustomobject]@{
+        Type = 'change'; Name = 'project-tasks'; Title = 'Project tasks'; Stage = $stage; Archived = $false; Done = $done; Total = $total
+        Modified = $null; Dir = $osDir; Path = $f; Caps = @(); Tasks = $text
+        Workflow = [pscustomobject]@{ Name = 'project-tasks'; Tracks = 'project-tasks.md'; Artifacts = @(); Grouping = @() }; Docs = @($doc); Group = ''; GroupFrom = ''
+    }
+}
+# A retired id (keys.yaml): "OSN-T-11 - split into OSN-T-73, OSN-T-74" (or "removed"), then its successors.
+function Get-RetiredResults($R) {
+    $f = Join-Path $osDir 'keys.yaml'
+    $why = $R.Reason
+    if (@($R.Into).Count) { if (-not $why) { $why = 'replaced' }; $why = "$why into $(@($R.Into) -join ', ')" } elseif (-not $why) { $why = 'retired' }
+    $text = "$($R.Id) - $why"
+    $doc = [pscustomobject]@{ Id = 'keys'; Title = 'Keys'; Generates = 'keys.yaml'; Files = @($f); Requires = @(); IsSpecs = $false }
+    $item = [pscustomobject]@{ Type = 'change'; Name = 'keys'; Title = 'Keys'; Stage = 'Draft'; Archived = $false; Done = 0; Total = 0; Modified = $null; Dir = $osDir; Path = $f; Caps = @(); Tasks = ''; Workflow = [pscustomobject]@{ Name = 'keys'; Tracks = ''; Artifacts = @(); Grouping = @() }; Docs = @($doc); Group = ''; GroupFrom = '' }
+    $self = [pscustomobject]@{
+        Kind = 'item'; Item = $item; Where = 'keys.yaml'; Cap = ''; Group = 'retired'; Num = ''; Text = $text; Done = $false; Path = $f; Line = $R.Line
+        After = ''; Needle = $R.Id; Hay = $text.ToLower(); Art = 'Keys'; Id = $R.Id
+    }
+    $into = @($R.Into | ForEach-Object { $_.ToLower() })
+    $next = @(Get-SearchIndex | Where-Object { $_.Id -and $into -contains $_.Id.ToLower() } | Sort-Object @{ Expression = { Get-IdSortKey $_.Id } })
+    return @($self) + $next
+}
+
 # Find (t on Home): the tasks of the plan's changes, and the requirements and scenarios of the specs and of
 # the changes' delta specs. A task number (1.3), words, a change's name or number; Enter: Read, at it.
 function Add-SpecSearchEntries($List, $Item, [string]$Path, [string]$Cap, [string]$Where, [string]$Art) {
@@ -5244,7 +5339,7 @@ function Add-SpecSearchEntries($List, $Item, [string]$Path, [string]$Cap, [strin
         if ($kind -eq 'scn') { $context = $req }
         [void]$List.Add([pscustomobject]@{
                 Kind = $kind; Item = $Item; Where = $Where; Cap = $Cap; Group = $context; Num = ''; Text = $text; Done = $false; Path = $Path; Line = $i + 1
-                After = $Cap; Needle = $text; Hay = "$($Item.Name) $Where $Cap $context $text".ToLower(); Art = $Art
+                After = $Cap; Needle = $text; Hay = "$($Item.Name) $Where $Cap $context $text".ToLower(); Art = $Art; Id = (Get-ItemId $text)
             })
     }
 }
@@ -5257,6 +5352,16 @@ function Add-SectionEntries($List, $Item, [string]$Path, [string]$Where, [string
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $l = $lines[$i]
         if ($l.Trim().StartsWith('```')) { $fence = -not $fence; continue }
+        if (-not $fence -and $l -match '^\s*[-*]\s+(.+?)\s*$' -and $l -notmatch '^\s*[-*]\s+\[[ xX]\]') {
+            $text = Plain-Inline $Matches[1]
+            if ([regex]::IsMatch($text, '^[A-Z][A-Z0-9]{1,5}-[QD]-\d{2,}\b')) {
+                [void]$List.Add([pscustomobject]@{
+                        Kind = 'item'; Item = $Item; Where = $Where; Cap = ''; Group = ''; Num = ''; Text = $text; Done = $false; Path = $Path; Line = $i + 1
+                        After = ''; Needle = $text; Hay = "$($Item.Name) $Where $Art $text".ToLower(); Art = $Art; Id = (Get-ItemId $text)
+                    })
+            }
+            continue
+        }
         if ($fence -or $l -notmatch '^(#{2,6})\s+(.+?)\s*#*$') { continue }
         $h = $Matches[2]
         if ($h -match '^(Requirement|Zahtjev|Anforderung|Scenario|Scenarij|Szenario):' -or $h -match '(?i)^(\w+\s+)?Requirements$') { continue }
@@ -5267,7 +5372,7 @@ function Add-SectionEntries($List, $Item, [string]$Path, [string]$Where, [string
         if ($body.Length -gt 3000) { $body = $body.Substring(0, 3000) }
         [void]$List.Add([pscustomobject]@{
                 Kind = 'sec'; Item = $Item; Where = $Where; Cap = ''; Group = ''; Num = ''; Text = $text; Done = $false; Path = $Path; Line = $i + 1
-                After = ''; Needle = $text; Hay = "$($Item.Name) $Where $Art $text $body".ToLower(); Art = $Art
+                After = ''; Needle = $text; Hay = "$($Item.Name) $Where $Art $text $body".ToLower(); Art = $Art; Id = ''
             })
     }
 }
@@ -5275,7 +5380,7 @@ function Get-SearchIndex {
     $key = "$($script:signature)/$($script:showArchived)/$($script:specs.Count)/$($script:changes.Count)"
     if ($script:searchIndex -and $script:searchKey -eq $key) { return $script:searchIndex }
     $list = New-Object Collections.ArrayList
-    $changes = @($script:changes | Where-Object { -not $_.Archived } | Sort-Object Name) + @($script:changes | Where-Object { $_.Archived -and $script:showArchived } | Sort-Object Name)
+    $changes = @(Get-ProjectTasksItem | Where-Object { $_ }) + @($script:changes | Where-Object { -not $_.Archived } | Sort-Object Name) + @($script:changes | Where-Object { $_.Archived -and $script:showArchived } | Sort-Object Name)
     foreach ($c in $changes) {
         $where = Get-ItemTitle $c
         # Its tasks: the file its workflow tracks (tasks.md by default).
@@ -5296,7 +5401,7 @@ function Get-SearchIndex {
                 if ($text -match '^(\d+(?:\.\d+)+)\.?\s') { $num = $Matches[1] }
                 [void]$list.Add([pscustomobject]@{
                         Kind = 'task'; Item = $c; Where = $where; Cap = ''; Group = $group; Num = $num; Text = $text; Done = $done; Path = $f; Line = $i + 1
-                        After = $group; Needle = $text; Hay = "$($c.Name) $where $group $text".ToLower(); Art = $tasksArt
+                        After = $group; Needle = $text; Hay = "$($c.Name) $where $group $text".ToLower(); Art = $tasksArt; Id = (Get-ItemId $text)
                     })
             }
         }
@@ -5332,6 +5437,11 @@ function Find-Search([string]$Query, [string]$Kind, [string]$Art = 'all') {
         $toks = $keep
     }
     if (-not $toks.Count -and $null -eq $grp) { return @() }
+    # A retired id: what became of it (keys.yaml), then its successors.
+    if ($toks.Count -eq 1 -and $null -eq $grp -and (Test-IdLike $toks[0])) {
+        $r = @((Get-ProjectKeys).Retired | Where-Object { $_.Id.ToLower() -eq $toks[0] })
+        if ($r.Count) { return Get-RetiredResults $r[0] }
+    }
     $out = New-Object Collections.ArrayList
     foreach ($e in (Get-SearchIndex)) {
         if ($Kind -eq 'tasks' -and $e.Kind -ne 'task') { continue }
@@ -5347,7 +5457,9 @@ function Find-Search([string]$Query, [string]$Kind, [string]$Art = 'all') {
                 $n = $t.TrimEnd('.')
                 if ($e.Kind -ne 'task' -or -not ($e.Num -eq $n -or $e.Num.StartsWith("$n."))) { $ok = $false; break }
             }
-            elseif (-not $e.Hay.Contains($t)) { $ok = $false; break }
+            # An id or its beginning (osn-t-0): the beginning of the item's id; a plain word (osn): that, or its text.
+            elseif (Test-IdLike $t) { if (-not ([string]$e.Id).ToLower().StartsWith($t)) { $ok = $false; break } }
+            elseif (-not ($e.Hay.Contains($t) -or ($e.Id -and (Test-IdWord $t) -and ([string]$e.Id).ToLower().StartsWith($t)))) { $ok = $false; break }
         }
         if ($ok) { [void]$out.Add($e) }
     }
@@ -5356,10 +5468,25 @@ function Find-Search([string]$Query, [string]$Kind, [string]$Art = 'all') {
     foreach ($e in $out) {
         $own = "$($e.Item.Name) $($e.Where) $($e.Cap) $($e.Group) $($e.Text) $($e.Art)".ToLower()
         $all = $true
-        foreach ($t in $toks) { if ($t -notmatch '^\d+(\.\d+)+\.?$' -and -not $own.Contains($t)) { $all = $false; break } }
+        foreach ($t in $toks) {
+            if ($t -match '^\d+(\.\d+)+\.?$' -or (Test-IdLike $t) -or ($e.Id -and ([string]$e.Id).ToLower().StartsWith($t))) { continue }
+            if (-not $own.Contains($t)) { $all = $false; break }
+        }
         if ($all) { [void]$first.Add($e) } else { [void]$then.Add($e) }
     }
-    return @($first) + @($then)
+    $ordered = @($first) + @($then)
+    # By id: the exact id first, then the ids it begins, in id order; then the rest as before.
+    $idToks = @($toks | Where-Object { (Test-IdLike $_) -or (Test-IdWord $_) })
+    if (-not $idToks.Count) { return $ordered }
+    $exact = @(); $byId = @(); $rest = @()
+    foreach ($e in $ordered) {
+        $id = ([string]$e.Id).ToLower()
+        if ($id -and $idToks -contains $id) { $exact += $e }
+        elseif ($id -and @($idToks | Where-Object { $id.StartsWith($_) }).Count) { $byId += $e }
+        else { $rest += $e }
+    }
+    $byId = @($byId | Sort-Object @{ Expression = { Get-IdSortKey $_.Id } })
+    return @($exact) + @($byId) + @($rest)
 }
 function Start-Search {
     if (-not $script:search) { $script:search = [pscustomobject]@{ Query = ''; Kind = 'all'; Art = 'all'; Index = 0; Focus = 'type'; Marked = [ordered]@{} } }
@@ -5385,7 +5512,7 @@ function Draw-Search([int]$W, [int]$H) {
     [void]$lines.Add(@())
     $bodyRows = $H - 4
     if (-not $s.Query.Trim()) {
-        foreach ($l in (Wrap "Type a task number (1.3), a change and a number (01 1.3, signup 1.3), or words: the tasks, requirements, scenarios and sections (with their text) of the specs and the changes that contain them all. Tab: all, tasks, open tasks, requirements, scenarios, sections. Shift+Tab: in which document (proposal, specs, design, tasks, models ...). Enter opens it in Read, at it.$(if (Test-Grouping) { " g1 or $((Get-ProjectGroups).Label.ToLower()) 1: only that group's." })" ($W - 8))) { [void]$lines.Add(@(S "  $l" $st.muted)) }
+        foreach ($l in (Wrap "Type a task number (1.3), a change and a number (01 1.3, signup 1.3), an item id or its beginning (OSN-T-04, OSN-T, osn), or words: the tasks, requirements, scenarios and sections (with their text) of the specs and the changes that contain them all. Tab: all, tasks, open tasks, requirements, scenarios, sections. Shift+Tab: in which document (proposal, specs, design, tasks, models ...). Enter opens it in Read, at it.$(if (Test-Grouping) { " g1 or $((Get-ProjectGroups).Label.ToLower()) 1: only that group's." })" ($W - 8))) { [void]$lines.Add(@(S "  $l" $st.muted)) }
     }
     elseif (-not $res.Count) { [void]$lines.Add(@(S '  nothing found' $st.faint)) }
     else {
@@ -5411,9 +5538,11 @@ function Draw-Search([int]$W, [int]$H) {
             $aw = 11
             $row = @((S "  $mark" $st.accent), $box, $glyph, (S (Pad (Short $e.Art ($aw - 1)) $aw) $st.accent), (S (Pad (Short $where $ww) $ww) $st.muted), (S '  '))
             $tw = [Math]::Max(10, $W - $ww - $aw - 12)
-            if ($e.Kind -eq 'scn' -and $e.Group) { $row += (S (Short $e.Text $tw) $style); $row += (S "  $($g.mid) $($e.Group)" $st.faint) }
-            elseif ($e.Kind -eq 'task' -and $e.Group) { $row += (S (Short $e.Text $tw) $style); $row += (S "  $($g.mid) $($e.Group)" $st.faint) }
-            else { $row += (S (Short $e.Text $tw) $style) }
+            $text = $e.Text
+            if ($e.Id) { $row += (S "$($e.Id) " $st.key); $tw = [Math]::Max(10, $tw - $e.Id.Length - 1); $text = Get-TextWithoutId $e.Text $e.Id }
+            if ($e.Kind -eq 'scn' -and $e.Group) { $row += (S (Short $text $tw) $style); $row += (S "  $($g.mid) $($e.Group)" $st.faint) }
+            elseif ($e.Kind -eq 'task' -and $e.Group) { $row += (S (Short $text $tw) $style); $row += (S "  $($g.mid) $($e.Group)" $st.faint) }
+            else { $row += (S (Short $text $tw) $style) }
             [void]$lines.Add($row)
         }
     }
@@ -5524,7 +5653,8 @@ function Open-SearchResult($E) {
     $ti = 0
     for ($i = 0; $i -lt $tabs.Count; $i++) {
         if ($E.Kind -eq 'task' -and $tabs[$i].Path -eq $E.Path) { $ti = $i; break }
-        if ($E.Kind -ne 'task' -and $item.Type -eq 'change' -and $tabs[$i].Title -like 'Specs*') { $ti = $i; break }
+        if ($E.Kind -eq 'item' -and @($tabs[$i].Files) -contains $E.Path) { $ti = $i; break }
+        if ($E.Kind -ne 'task' -and $E.Kind -ne 'item' -and $item.Type -eq 'change' -and $tabs[$i].Title -like 'Specs*') { $ti = $i; break }
     }
     $doc = Render-Markdown $tabs[$ti].Text ((Get-Size)[0] - 6)
     $plain = @($doc | ForEach-Object { (To-Plain $_).ToLower() })
@@ -5673,7 +5803,7 @@ function Start-AgentAnswer {
 # heading of its level or above), a scenario (to the next heading of its level or above). The index after it.
 function Get-BlockEnd($Lines, [int]$At, [string]$Kind) {
     $j = $At + 1
-    if ($Kind -eq 'task') {
+    if ($Kind -eq 'task' -or $Kind -eq 'item') {
         $ind = $Lines[$At].Length - $Lines[$At].TrimStart().Length
         while ($j -lt $Lines.Count -and $Lines[$j].Trim() -and ($Lines[$j].Length - $Lines[$j].TrimStart().Length) -gt $ind) { $j++ }
         return $j

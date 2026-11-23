@@ -1,0 +1,7 @@
+kinds: {T: task, R: requirement, S: scenario, Q: open question, D: decision}
+keys:
+  - {key: OSN, group: 1, name: "Osnova", next: {T: 73, R: 12, S: 41, Q: 3, D: 5}}
+  - {key: ZAJ, group: 0, name: "Zajedničko"}
+retired:
+  - {id: OSN-T-11, reason: split, into: [OSN-T-73, OSN-T-74]}
+  - {id: OSN-T-20, reason: removed}

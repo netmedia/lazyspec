@@ -169,3 +169,12 @@ test('a projects folder that is not there: the folder the server runs in', () =>
   assert.deepStrictEqual(about.projects, ['acme-portal']);
   assert.match(about.foldersNotFound[0], /no-such-folder/);
 });
+
+test('find by an item id: its id in each result; openspec/project-tasks.md too', async () => {
+  fs.writeFileSync(path.join(root, 'openspec', 'project-tasks.md'), '# Project tasks\n\n## 1. Infra\n\n- [ ] 1.1 ACM-T-04 Set up hosting\n- [ ] ACM-T-040 Backups\n- [ ] ACM-T-05 Monitoring\n');
+  const found = JSON.parse(await ok('find', { query: 'acm-t-04' }));
+  assert.deepStrictEqual(found.results.map(r => r.id), ['ACM-T-04', 'ACM-T-040']);
+  assert.strictEqual(found.results[0].in, 'Project tasks');
+  const plain = JSON.parse(await ok('find', { query: '1.4' }));
+  assert.ok(plain.results.every(r => r.id === undefined), 'no ids: none in the results');
+});
