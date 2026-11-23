@@ -7,8 +7,8 @@ import { Change, Entry, find, FindKind, itemTitle, Project, readText, searchInde
 import { kindWord, newModifyChange, removeEntries, requirementBlocks, setInSync, slug, syncState, undoFile, undoHunk, undoRows } from '../../vscode/src/ops';
 import { Tool, UserError } from './mcp';
 import {
-  clip, discover, git, isFile, json, kitScript, missingRoots, onPath, openspec, openspecVersion, powershell, project, projectId, readableCode,
-  readableDoc, readRaw, rel, roots, run, today, writable, writeRaw,
+  checkToolArgs, clip, discover, exportDir, git, isFile, json, KNOWLEDGE_PATHS, kitScript, missingRoots, NETMEDIA_TOOLS, netmediaScript, onPath, openspec,
+  openspecVersion, powershell, project, projectId, python, readableCode, readableDoc, readRaw, rel, roots, run, today, writable, writableFile, writeRaw,
 } from './projects';
 
 declare const LAZYSPEC_VERSION: string;
@@ -58,14 +58,21 @@ function entriesAt(p: Project, items: unknown): { found: Entry[]; missing: strin
 export const tools: Tool[] = [
   {
     name: 'about', title: 'About LazySpec', readOnly: true,
-    description: 'LazySpec\'s version, the folders it looks in, the projects it found, and whether git, GitHub CLI, the OpenSpec CLI and PowerShell are there. Call it first when a skill needs a minimum LazySpec version or something does not work.',
+    description: 'LazySpec\'s version, the folders it looks in, the projects it found, and whether git, GitHub CLI, the OpenSpec CLI, PowerShell and the Netmedia tools (Python with python-docx, openpyxl and pyyaml; where each tool\'s script comes from) are there. Call it first when a skill needs a minimum LazySpec version or something does not work.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    run: () => ({
-      text: json({
-        lazyspec: VERSION, folders: roots(), foldersNotFound: missingRoots().length ? missingRoots() : undefined, projects: discover().map(f => f.id), node: process.version,
-        git: !!onPath('git'), gh: !!onPath('gh'), openspec: openspecVersion(), powershell: powershell(),
-      }),
-    }),
+    run: () => {
+      const py = python();
+      const check = run(py.cmd, [...py.pre, '-c', 'import sys, docx, openpyxl, yaml; print(sys.version.split()[0])'], process.cwd(), 30000);
+      const netmediaTools = Object.fromEntries(Object.keys(NETMEDIA_TOOLS).map(n => [n, netmediaScript(n).from || 'not found']));
+      return {
+        text: json({
+          lazyspec: VERSION, folders: roots(), foldersNotFound: missingRoots().length ? missingRoots() : undefined, projects: discover().map(f => f.id), node: process.version,
+          git: !!onPath('git'), gh: !!onPath('gh'), openspec: openspecVersion(), powershell: powershell(),
+          python: check.missing ? 'not found' : check.code ? `${py.cmd}: python-docx, openpyxl or pyyaml missing (Netmedia setup: ~/.netmedia/python)` : `${check.out.trim()} (${py.env ? '~/.netmedia/python' : py.cmd})`,
+          netmediaTools,
+        }),
+      };
+    },
   },
   {
     name: 'list_projects', title: 'List projects', readOnly: true,
@@ -222,11 +229,13 @@ export const tools: Tool[] = [
   },
   {
     name: 'edit_document', title: 'Edit a document', destructive: true,
-    description: 'Replace text in a document under openspec/ (exact text, as read_document shows it). A main spec\'s requirements and scenarios (openspec/specs/) are not edited directly: use change_spec_requirement or remove_items, which make a change for it, as OpenSpec wants.',
-    inputSchema: schema({ path: str('The file, under openspec/.'), old_text: str('The exact text to replace (unique in the file unless replace_all).'), new_text: str('The new text.'), replace_all: bool('Replace every occurrence.') }, ['path', 'old_text', 'new_text']),
+    description: 'Replace text in a document under openspec/ (exact text, as read_document shows it), or in one of the process\'s files outside it (write_file lists them). A main spec\'s requirements and scenarios (openspec/specs/) are not edited directly: use change_spec_requirement or remove_items, which make a change for it, as OpenSpec wants.',
+    inputSchema: schema({ path: str('The file, under openspec/ or one of the process\'s files (write_file).'), old_text: str('The exact text to replace (unique in the file unless replace_all).'), new_text: str('The new text.'), replace_all: bool('Replace every occurrence.') }, ['path', 'old_text', 'new_text']),
     run: (a) => {
       const p = project(a.project);
-      const file = writable(p, a.path);
+      const target = path.resolve(p.root, s(a.path)).toLowerCase();
+      const under = (dir: string) => target.startsWith(dir.toLowerCase() + path.sep);
+      const file = under(p.osDir) && !under(exportDir(p)) ? writable(p, a.path) : writableFile(p, a.path);
       if (!isFile(file)) { throw new UserError(`There's no ${rel(p, file)}; write_document makes new documents.`); }
       const { text, nl, bom } = readRaw(file);
       const oldT = s(a.old_text).replace(/\r\n/g, '\n'), newT = s(a.new_text).replace(/\r\n/g, '\n');
@@ -255,6 +264,73 @@ export const tools: Tool[] = [
       const old = exists ? readRaw(file) : { nl: '\n', bom: false };
       writeRaw(file, s(a.content).replace(/\n*$/, '\n'), old.nl, old.bom);
       return { text: `${rel(p, file)}: ${exists ? 'replaced' : 'written'}.` };
+    },
+  },
+  {
+    name: 'write_file', title: 'Write a process file', destructive: true,
+    description: 'Write a whole file the process keeps outside the specs - the same files on every surface: in the export folder (netmedia: exportDir: in openspec/config.yaml, default openspec/exports/) the Markdown, JSON, YAML or CSV sources and data of exports (an offer\'s Markdown, an estimate\'s JSON, a price plan); the team\'s shared knowledge: .claude/offers.yaml, .claude/estimates/, .claude/rules/*-profile.md and *-gotchas.md. An existing file is replaced only with overwrite.',
+    inputSchema: schema({ path: str('The file, from the project folder.'), content: str('The whole file.'), overwrite: bool('Replace the file when it exists.') }, ['path', 'content']),
+    run: (a) => {
+      const p = project(a.project);
+      const file = writableFile(p, a.path);
+      const exists = isFile(file);
+      if (exists && !a.overwrite) { throw new UserError(`${rel(p, file)} exists; read it (read_code) and use edit_document, or overwrite.`); }
+      const old = exists ? readRaw(file) : { nl: '\n', bom: false };
+      writeRaw(file, s(a.content).replace(/\n*$/, '\n'), old.nl, old.bom);
+      return { text: `${rel(p, file)}: ${exists ? 'replaced' : 'written'}.` };
+    },
+  },
+  {
+    name: 'list_exports', title: 'List the export folder', readOnly: true,
+    description: 'The files in the project\'s export folder (netmedia: exportDir: in openspec/config.yaml, default openspec/exports/): spec exports, estimate workbooks, offers - newest first, with size and date.',
+    inputSchema: schema({ pattern: str('Only names that contain this text (e.g. .xlsx).') }),
+    run: (a) => {
+      const p = project(a.project);
+      const dir = exportDir(p);
+      const want = s(a.pattern).toLowerCase();
+      const out: { file: string; size: number; modified: string }[] = [];
+      const walk = (d: string, depth: number) => {
+        let entries: fs.Dirent[] = [];
+        try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) {
+          const f = path.join(d, e.name);
+          if (e.isDirectory()) { if (depth < 3) { walk(f, depth + 1); } continue; }
+          if (want && !e.name.toLowerCase().includes(want)) { continue; }
+          const st = fs.statSync(f);
+          out.push({ file: rel(p, f), size: st.size, modified: st.mtime.toISOString().slice(0, 16).replace('T', ' ') });
+        }
+      };
+      walk(dir, 0);
+      out.sort((x, y) => y.modified.localeCompare(x.modified));
+      return { text: out.length ? json({ folder: rel(p, dir), files: out }) : `Nothing in ${rel(p, dir)}/${want ? ` matching "${want}"` : ''}.` };
+    },
+  },
+  {
+    name: 'run_tool', title: 'Run a Netmedia tool', destructive: true,
+    description: `Run one of the Netmedia plugins' tools in the project folder - the same script Claude Code runs, so every surface gives the same result: ${Object.entries(NETMEDIA_TOOLS).map(([n, t]) => `${n} (${t.what})`).join('; ')}. args are the script's own arguments, as its skill writes them (paths from the project folder; they must stay inside the project). Python tools need the Netmedia Python environment (about shows it).`,
+    inputSchema: schema({
+      tool: { type: 'string', enum: Object.keys(NETMEDIA_TOOLS), description: 'The tool.' },
+      args: { type: 'array', items: { type: 'string' }, description: 'The script\'s arguments, one per item.' },
+    }, ['tool']),
+    run: (a) => {
+      const p = project(a.project);
+      const name = s(a.tool);
+      const t = NETMEDIA_TOOLS[name];
+      if (!t) { throw new UserError(`tool: one of ${Object.keys(NETMEDIA_TOOLS).join(', ')}.`); }
+      const args = Array.isArray(a.args) ? (a.args as unknown[]).map(x => s(x)) : [];
+      checkToolArgs(p, args);
+      const { file, from } = netmediaScript(name);
+      if (!file) { return { text: `The ${t.plugin} plugin's ${t.script} was not found (installed plugin or LazySpec's bundled copy).`, isError: true }; }
+      let r;
+      if (t.runtime === 'python') {
+        const py = python();
+        r = run(py.cmd, [...py.pre, file, ...args], p.root, 600000);
+        if (r.missing) { return { text: 'Python is not there. Netmedia setup: Python 3.12 and ~/.netmedia/python with python-docx, openpyxl, pyyaml and pillow (the team onboarding).', isError: true }; }
+      } else {
+        r = run(process.execPath, [file, ...args], p.root, 600000);
+      }
+      const text = clip(`${r.out}\n${r.err}`.trim() || (r.code ? 'Failed.' : 'Done.'), 30000);
+      return { text: `[${name} from ${from}]\n${text}`, isError: r.code !== 0 };
     },
   },
   {
@@ -444,7 +520,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'save', title: 'Save as a pull request', destructive: true,
-    description: 'Save the work: commit what changed in openspec/ (nothing else) on a branch of its own (a new spec/<name> branch when on the main branch), push it, and open a pull request with GitHub CLI when it is there (else the link to open one). Tell the user what will be committed first.',
+    description: 'Save the work: commit what changed in openspec/ and the team\'s shared knowledge (.claude/offers.yaml, .claude/estimates/, .claude/rules/) - never the export folder or code - on a branch of its own (a new spec/<name> branch when on the main branch), push it, and open a pull request with GitHub CLI when it is there (else the link to open one). Tell the user what will be committed first.',
     inputSchema: schema({ message: str('The commit message: what changed and why, one line.'), branch: str('The branch name (default spec/<message>-<date>).'), body: str('The pull request\'s description (Markdown).'), pull_request: bool('Open a pull request (default true).') }, ['message']),
     run: (a) => {
       const p = project(a.project);
@@ -461,10 +537,12 @@ export const tools: Tool[] = [
         steps.push(`✓ new branch ${name} (from ${cur})`);
         cur = name;
       } else { steps.push(`✓ on branch ${cur}`); }
-      must(git(p, ['add', '-A', '--', 'openspec', ':(exclude)openspec/exports']), 'git add');
-      const staged = git(p, ['diff', '--cached', '--name-only', '--', 'openspec']).out.trim();
-      if (!staged) { return { text: `${steps.join('\n')}\nNothing changed in openspec/ to save.` }; }
-      must(git(p, ['commit', '-m', msg, '--', 'openspec']), 'git commit');
+      const knowledge = KNOWLEDGE_PATHS.filter(k => fs.existsSync(path.join(p.root, k)));
+      const exportsAt = rel(p, exportDir(p));
+      must(git(p, ['add', '-A', '--', 'openspec', ...knowledge, ':(exclude)openspec/exports', `:(exclude)${exportsAt}`]), 'git add');
+      const staged = git(p, ['diff', '--cached', '--name-only', '--', 'openspec', ...knowledge]).out.trim();
+      if (!staged) { return { text: `${steps.join('\n')}\nNothing changed in openspec/ or the shared knowledge to save.` }; }
+      must(git(p, ['commit', '-m', msg, '--', 'openspec', ...knowledge]), 'git commit');
       steps.push(`✓ committed ${staged.split('\n').length} file(s): ${msg}`);
       must(git(p, ['push', '-u', 'origin', cur], 120000), 'git push');
       steps.push(`✓ pushed to origin/${cur}`);
@@ -485,7 +563,7 @@ export const tools: Tool[] = [
   },
   {
     name: 'export_document', title: 'Export for the client',
-    description: 'A document for the client in the company look (PDF, Word or HTML) into openspec/exports/: the whole specification (optionally with the plan), one spec or change (item), a saved bundle (item), or groups. Uses LazySpec\'s exporter (PowerShell; Edge or Chrome for PDF).',
+    description: 'A document for the client in the company look (PDF, Word or HTML) into the export folder (netmedia: exportDir: in openspec/config.yaml, default openspec/exports/): the whole specification (optionally with the plan), one spec or change (item), a saved bundle (item), or groups. Uses LazySpec\'s exporter (PowerShell; Edge or Chrome for PDF).',
     inputSchema: schema({
       format: { type: 'string', enum: ['pdf', 'word', 'html'], description: 'The format.' },
       item: str('A spec, a change or a saved bundle (its name); without it, the whole specification.'),
