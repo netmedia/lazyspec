@@ -221,7 +221,7 @@ export function powershell(): string {
 /** The scripts of the Netmedia plugins (AIToolbelt) that run_tool may run, by name. The scripts exist once, in
  *  AIToolbelt; nothing here is a copy of their logic. */
 export const NETMEDIA_TOOLS: Record<string, { plugin: string; script: string; runtime: 'python' | 'node'; what: string }> = {
-  'offer-prep': { plugin: 'netmedia', script: 'skills/prepare-offer/scripts/offer_prep.py', runtime: 'python', what: 'offer preparation: workbook sheets, headers, sections, specs, remembered picks, rates, prices, file name' },
+  'offer-prep': { plugin: 'netmedia', script: 'skills/make-offer-planning/scripts/offer_prep.py', runtime: 'python', what: 'offer and project plan preparation (netmedia:make-offer-planning): workbook sheets, headers, sections, specs, remembered picks, rates, prices, file name, planning rules, holidays, the schedule' },
   offer: { plugin: 'netmedia-document', script: 'offer/offer.py', runtime: 'python', what: 'the offer document: new, check, build (Word, PDF)' },
   estimate: { plugin: 'netmedia', script: 'skills/estimate/scripts/build_estimate.py', runtime: 'python', what: 'the estimate workbook' },
   document: { plugin: 'netmedia-document', script: 'scripts/netmedia_document.py', runtime: 'python', what: 'a Netmedia document (Word, PDF) from Markdown' },

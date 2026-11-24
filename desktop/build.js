@@ -67,7 +67,7 @@ fs.cpSync(path.join(repo, 'tools', 'lazyspec', 'netmedia-document'), path.join(s
 // reached: copied from AIToolbelt (NETMEDIA_AITOOLBELT, else the clone next to this repository) - a generated copy,
 // never edited here. Without AIToolbelt the extension is packed without them and run_tool says so.
 const NETMEDIA_BUNDLE = {
-  netmedia: ['skills/prepare-offer/scripts', 'skills/estimate/scripts', 'skills/estimate/assets'],
+  netmedia: ['skills/make-offer-planning/scripts', 'skills/estimate/scripts', 'skills/estimate/assets'],
   'netmedia-tools': ['skills/translate/scripts', 'skills/hasek/scripts'],
   'netmedia-document': ['scripts', 'theme', 'offer'],
 };
