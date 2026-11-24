@@ -1,6 +1,6 @@
 {
   "name": "lazyspec",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "LazySpec: a project's OpenSpec specs and changes as tools - read, find, edit, tick, out of date, undo, validate, archive, export, save as a pull request.",
   "author": {
     "name": "Netmedia",
