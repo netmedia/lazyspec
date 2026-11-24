@@ -145,6 +145,9 @@ test('run_tool runs the Netmedia script itself', { skip: !fs.existsSync(PLUGINS)
   if (/Python is not there/.test(r.text)) { return; }
   assert.ok(!r.isError, r.text);
   assert.match(r.text, /P2026-1123-029-Online-placanja-v001/);
+  const h = await tool('run_tool', { tool: 'offer-prep', args: ['holidays', '--from', '2026-12-01', '--months', '1'] });
+  assert.ok(!h.isError, h.text);
+  assert.match(h.text, /2026-12-25/);
 });
 
 test('save commits openspec/ and the shared knowledge only, on a branch, and pushes it', async () => {

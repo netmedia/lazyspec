@@ -15,7 +15,7 @@ Made for product managers: refine, clarify and investigate specs with Claude, wi
 | Keep it right | `out_of_date`, `mark_in_sync`, `validate`, `archive_change`, `undo_list`, `undo` |
 | Investigate the code (read-only) | `search_code`, `read_code` |
 | Process files outside the specs | `write_file` (the export folder's sources, the team's shared knowledge), `list_exports` |
-| Netmedia tools | `run_tool`: the Netmedia plugins' scripts (estimate, offer preparation, offer, document, translate, hasek) - the same scripts Claude Code runs |
+| Netmedia tools | `run_tool`: the Netmedia plugins' scripts (estimate, offer and project plan preparation, offer, document, translate, hasek) - the same scripts Claude Code runs |
 | Git, for people who don't use git | `git_status`, `get_latest`, `save` (commits `openspec/` and the shared knowledge, on a `spec/...` branch, pushes, opens a pull request) |
 | For the client | `export_document` (PDF, Word, HTML in the company look, into the export folder) |
 
